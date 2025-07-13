@@ -28,8 +28,11 @@ CREATE TABLE public.profiles (
     username TEXT NOT NULL,
     full_name TEXT,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    is_approved BOOLEAN NOT NULL DEFAULT false
 );
+-- Optionally, set all existing users to approved (except new signups)
+-- UPDATE profiles SET is_approved = true WHERE is_approved IS NULL;
 
 -- User roles table
 CREATE TABLE public.user_roles (
