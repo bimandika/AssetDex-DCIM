@@ -2,7 +2,7 @@
 
 A modern web application for managing datacenter server inventory with user management, role-based access control, and comprehensive server tracking capabilities.
 
-<img width="1826" height="1448" alt="image" src="https://github.com/user-attachments/assets/ea3fdd61-6176-4b00-a654-fd1d87e57d7b" />
+<img width="1816" height="1448" alt="image" src="https://github.com/user-attachments/assets/f270e3cd-91ae-470f-bf74-c8f84bb3f5bf" />
 
 
 ## Features
