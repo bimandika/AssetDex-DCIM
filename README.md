@@ -197,26 +197,6 @@ The application uses Supabase's auto-generated API. Key endpoints include:
 
 All endpoints support filtering, sorting, and pagination via URL parameters.
 
-## Deployment
-
-### Docker Hub
-
-Pre-built images are available on Docker Hub:
-
-```bash
-docker pull datacenter-inventory:latest
-docker run -p 3000:80 --env-file .env datacenter-inventory:latest
-```
-
-### Cloud Deployment
-
-The application can be deployed to any platform that supports Docker:
-
-- **Digital Ocean App Platform**
-- **AWS ECS/Fargate**
-- **Google Cloud Run**
-- **Azure Container Instances**
-- **Heroku** (with Docker support)
 
 ### Custom Domain and SSL
 
