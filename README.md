@@ -1,4 +1,4 @@
-# AssetDex - Datacenter Server Inventory
+# AssetDex - Datacenter Server Inventory Management
 
 A modern web application for managing datacenter server inventory with user management, role-based access control, and comprehensive server tracking capabilities.
 
