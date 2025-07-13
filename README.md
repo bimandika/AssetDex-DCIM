@@ -23,7 +23,7 @@ A modern web application for managing datacenter server inventory with user mana
 
 ### 1️⃣ Clone the Repository
 ```bash
-git clone https://github.com/bimandika/AssetDex-DCIM)](https://github.com/bimandika/AssetDex-DCIM.git
+git clone https://github.com/bimandika/AssetDex-DCIM.git
 cd AssetDex-DCIM
 ```
 
