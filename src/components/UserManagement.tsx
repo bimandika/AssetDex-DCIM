@@ -19,6 +19,9 @@ interface UserProfile extends Tables<"profiles"> {
 }
 
 const UserManagement = () => {
+  // ...existing state
+  const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
+
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -167,6 +170,32 @@ const UserManagement = () => {
       });
     } finally {
       setAddingUser(false);
+    }
+  };
+
+  // Approve user handler
+  const handleApproveUser = async (userId: string) => {
+    try {
+      setApprovingUserId(userId);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_approved: true })
+        .eq("id", userId);
+      if (error) throw error;
+      toast({
+        title: "User Approved",
+        description: "User has been approved successfully.",
+      });
+      fetchUsers();
+    } catch (error) {
+      console.error("Error approving user:", error);
+      toast({
+        title: "Error",
+        description: "Failed to approve user.",
+        variant: "destructive"
+      });
+    } finally {
+      setApprovingUserId(null);
     }
   };
 
@@ -407,6 +436,7 @@ const UserManagement = () => {
                   <TableHead>Username</TableHead>
                   <TableHead>Full Name</TableHead>
                   <TableHead>Current Role</TableHead>
+                  <TableHead>Approval</TableHead>
                   <TableHead>Member Since</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -420,6 +450,20 @@ const UserManagement = () => {
                       <Badge className={getRoleBadgeColor(user.user_roles[0]?.role)}>
                         {user.user_roles[0]?.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {user.is_approved ? (
+                        <Badge className="bg-green-100 text-green-700">Approved</Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={approvingUserId === user.id}
+                          onClick={() => handleApproveUser(user.id)}
+                        >
+                          {approvingUserId === user.id ? "Approving..." : "Approve"}
+                        </Button>
+                      )}
                     </TableCell>
                     <TableCell className="text-slate-500">
                       {new Date(user.created_at).toLocaleDateString()}
@@ -519,6 +563,16 @@ const UserManagement = () => {
                           </div>
                         </DialogContent>
                       </Dialog>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteUser(user)}
+                        disabled={user.id === supabase.auth.user()?.id || (user.user_roles[0]?.role === "super_admin" && roleStats.super_admin === 1)}
+                      >
+                        Delete
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

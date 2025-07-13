@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requiredRole = 'viewer' }: ProtectedRouteProps) => {
-  const { user, loading, hasRole } = useAuth();
+  const { user, profile, loading, hasRole } = useAuth();
 
   if (loading) {
     return (
@@ -29,6 +29,17 @@ const ProtectedRoute = ({ children, requiredRole = 'viewer' }: ProtectedRoutePro
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h1>
           <p className="text-gray-600">You don't have permission to access this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile && profile.is_approved === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-yellow-600 mb-2">Account Pending Approval</h1>
+          <p className="text-gray-600">Your account is awaiting admin approval. Please contact your administrator if you need assistance.</p>
         </div>
       </div>
     );

@@ -7,6 +7,7 @@ interface UserProfile {
   id: string;
   username: string;
   full_name: string | null;
+  is_approved: boolean;
 }
 
 interface UserRole {
