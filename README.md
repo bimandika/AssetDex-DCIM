@@ -58,7 +58,7 @@ docker compose up
 
 ### 5️⃣ Database Migration (Automatic or Manual)
 - 🟢 **Automatic:**
-  - The migration script (`scripts/run-migration.sh`) runs automatically after the React app starts (via Docker Compose).
+  - The schema will be created by one time running container and then check supabase if the table apprears then its normal, if it not you can running manually
 - 🟡 **Manual Fallback:**
   1. Go to your [Supabase Dashboard](http://localhost:8000)
      - 🧑‍💻 **Login Credentials:**
