@@ -152,7 +152,7 @@ DECLARE
   admin_user_id uuid;
   admin_email text := 'admin@localhost.com';
   admin_username text := 'admin';
-  admin_password text := 'admin';
+  admin_password text := 'admin123456';
 BEGIN
   -- Check if admin user already exists
   SELECT id INTO admin_user_id 
@@ -304,7 +304,7 @@ BEGIN
   RAISE NOTICE '==================================================';
   RAISE NOTICE 'Default admin credentials:';
   RAISE NOTICE 'Email: admin@localhost.com';
-  RAISE NOTICE 'Password: admin';
+  RAISE NOTICE 'Password: admin123456';
   RAISE NOTICE '==================================================';
   RAISE NOTICE 'Please change the admin password after first login!';
   RAISE NOTICE '==================================================';

@@ -1,6 +1,6 @@
-version: '3.8'
-
+# version is intentionally removed as it's not needed in newer compose versions
 services:
+  # Main application service
   assetdex:
     build: .
     ports:
@@ -10,8 +10,6 @@ services:
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./scripts/run-migration.sh:/app/scripts/run-migration.sh:ro
-      - ./database/consolidated-migration.sql:/app/database/consolidated-migration.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
@@ -19,16 +17,57 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: ["sh", "-c", "npm run dev 
-/app/scripts/run-migration.sh"]
+    command: ["nginx", "-g", "daemon off;"]
+    depends_on:
+      db-schema-initiator:
+        condition: service_completed_successfully
 
-  # Optional: Add Supabase local development stack
-  # Uncomment the following if you want to run Supabase locally
+  # Database schema initializer (runs once and exits)
+  db-schema-initiator:
+    # Use postgres client image that already has psql installed
+    image: postgres:15-alpine
+    working_dir: /app
+    environment:
+      # Database connection details - point to your local Supabase
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}  # This should match your Supabase DB service name
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./database:/app/database:ro
+    
+    # Add network configuration at the root level
+    networks:
+      - supabase_network
+
+    # Run the migration script directly
+    entrypoint: ["/bin/sh", "-exc", "
+      echo '=== Starting migration ===' && \
+      echo 'Current directory:' && pwd && ls -la && \
+      echo 'Scripts directory:' && ls -la /app/scripts/ && \
+      echo 'Database directory:' && ls -la /app/database/ && \
+      cd /app && \
+      sh /app/scripts/run-migration.sh
+    "]
+
+# Network configuration
+networks:
+  supabase_network:
+    external: true
+    name: supabase_default
+
+  # Supabase local development stack
+  # Uncomment the following if you want to run full Supabase stack locally
   # supabase:
   #   image: supabase/supabase:latest
   #   ports:
   #     - "54321:54321"
   #   environment:
-  #     - POSTGRES_PASSWORD=your-super-secret-and-long-postgres-password
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
   #   volumes:
   #     - ./supabase:/docker-entrypoint-initdb.d
+
+# No volumes needed for Supabase connection

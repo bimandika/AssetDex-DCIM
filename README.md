@@ -38,7 +38,7 @@ cp .env.example .env
 
 ### 3️⃣ Start Supabase Backend
 ```bash
-docker compose -f docker-compose-supabase.yml up
+docker compose -f docker-compose-supabase.yml up -d
 ```
 - Wait until all Supabase services are healthy.
 - Stop with:
@@ -71,7 +71,7 @@ docker compose up
 ### 6️⃣ Login
 - **Default Admin:**
   - Email: `admin@localhost.com`
-  - Password: `admin`
+  - Password: `admin123456`
 
 > 🚨 **Security Reminder:**
 > 
