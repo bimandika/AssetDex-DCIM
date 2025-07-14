@@ -266,14 +266,11 @@ CREATE POLICY "Engineers can manage property definitions" ON public.property_def
 CREATE POLICY "Anyone can view servers" ON public.servers
   FOR SELECT USING (true);
 
-CREATE POLICY "Engineers can insert servers" ON public.servers
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL AND has_role(auth.uid(), 'engineer'::public.user_role));
+CREATE POLICY "Engineers can manage servers" ON public.servers
+  FOR ALL USING (auth.uid() IS NOT NULL AND has_role(auth.uid(), 'engineer'::public.user_role));
 
-CREATE POLICY "Engineers can update servers" ON public.servers
-  FOR UPDATE USING (auth.uid() IS NOT NULL AND has_role(auth.uid(), 'engineer'::public.user_role));
-
-CREATE POLICY "Super admins can delete servers" ON public.servers
-  FOR DELETE USING (auth.uid() IS NOT NULL AND has_role(auth.uid(), 'super_admin'::public.user_role));
+CREATE POLICY "Super admins can manage all servers" ON public.servers
+  FOR ALL USING (auth.uid() IS NOT NULL AND has_role(auth.uid(), 'super_admin'::public.user_role));
 
 -- ============================================================================
 -- 7. INITIAL DATA AND SETUP
