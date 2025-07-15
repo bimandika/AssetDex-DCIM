@@ -41,7 +41,7 @@ docker compose -f docker-compose-supabase.yml up -d
 ```bash
 docker compose up
 ```
-- The app will be available at [http://localhost:3000](http://localhost:3000)
+- The app will be available at [http://localhost:3001](http://localhost:3001)
 - Stop with:
   ```bash
   docker compose down
