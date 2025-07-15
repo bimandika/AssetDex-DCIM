@@ -21,22 +21,13 @@ A modern web application for managing datacenter server inventory with user mana
 - Docker & Docker Compose
 - (Dev only) Node.js 18+ and npm
 
-### 1️⃣ Clone the Repository
+### 1️ Clone the Repository
 ```bash
 git clone https://github.com/bimandika/AssetDex-DCIM.git
 cd AssetDex-DCIM
 ```
 
-### 2️⃣ Configure Environment
-```bash
-cp .env.example .env
-# Edit .env if needed (local Supabase is default)
-```
-- By default, `.env` uses:
-  - `SUPABASE_URL="http://localhost:8000"`
-  - `SUPABASE_ANON_KEY="..."` (see file)
-
-### 3️⃣ Start Supabase Backend
+### 2 Start Supabase Backend
 ```bash
 docker compose -f docker-compose-supabase.yml up -d
 ```
@@ -46,7 +37,7 @@ docker compose -f docker-compose-supabase.yml up -d
   docker compose -f docker-compose-supabase.yml down
   ```
 
-### 4️⃣ Start Main App (React Frontend)
+### 3 Start Main App (React Frontend)
 ```bash
 docker compose up
 ```
