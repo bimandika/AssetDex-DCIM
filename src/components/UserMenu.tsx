@@ -11,9 +11,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { User, LogOut, Settings } from "lucide-react";
+import { User, LogOut, KeyRound } from "lucide-react";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
 const UserMenu = () => {
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { user, profile, userRole, signOut } = useAuth();
 
   if (!user || !profile) {
@@ -65,15 +67,23 @@ const UserMenu = () => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <Settings className="h-4 w-4 mr-2" />
-          Profile Settings
+        <DropdownMenuItem onSelect={(e) => {
+          e.preventDefault();
+          setChangePasswordOpen(true);
+        }}>
+          <KeyRound className="h-4 w-4 mr-2" />
+          Change Password
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={signOut}>
+        <DropdownMenuItem onSelect={signOut}>
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
         </DropdownMenuItem>
+        
+        <ChangePasswordDialog 
+          open={changePasswordOpen} 
+          onOpenChange={setChangePasswordOpen} 
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

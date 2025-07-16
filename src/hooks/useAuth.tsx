@@ -22,6 +22,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, username: string, fullName?: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  updatePassword: (currentPassword: string, newPassword: string) => Promise<{ error: any }>;
   hasRole: (role: 'super_admin' | 'engineer' | 'viewer') => boolean;
 }
 
@@ -194,6 +195,39 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  const updatePassword = async (currentPassword: string, newPassword: string) => {
+    try {
+      // First, reauthenticate the user
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: currentPassword,
+      });
+
+      if (authError) {
+        return { error: new Error('Current password is incorrect') };
+      }
+
+      // Update the password
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Your password has been updated successfully.",
+      });
+
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      return { 
+        error: error instanceof Error ? error : new Error('Failed to update password') 
+      };
+    }
+  };
+
   const hasRole = (role: 'super_admin' | 'engineer' | 'viewer') => {
     if (!userRole) return false;
     
@@ -215,6 +249,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     signIn,
     signUp,
     signOut,
+    updatePassword,
     hasRole,
   };
 
