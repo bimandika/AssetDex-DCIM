@@ -1,0 +1,9 @@
+[functions.admin-update-user]
+# Require JWT verification
+verify_jwt = true
+
+# Allow CORS for all origins
+cors = true
+
+# Allowed HTTP methods
+methods = ["POST", "PATCH", "OPTIONS"]
