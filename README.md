@@ -92,7 +92,7 @@ If you want to run the application in development mode:
 ### Prerequisites
 
 - Node.js 18+ and npm
-- A Supabase project
+- Docker or Podman
 
 ### Setup
 
@@ -110,7 +110,9 @@ cp .env.example .env
 npm run dev
 ```
 
-The application will be available at [http://localhost:8080](http://localhost:8080).
+The application will be available at [http://localhost:3001](http://localhost:3001).
+
+If you want to using supabase cloud, you can simply change the SUPABASE_URL and SUPABASE_ANON_KEY on client.ts and .env
 
 ## Supabase Setup Guide
 
