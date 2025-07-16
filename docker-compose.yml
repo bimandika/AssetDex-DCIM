@@ -11,6 +11,8 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
+    networks:
+      - supabase_default
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
@@ -41,7 +43,7 @@ services:
     
     # Add network configuration at the root level
     networks:
-      - supabase_network
+      - supabase_default
 
     # Run the migration script directly
     entrypoint: ["/bin/sh", "-exc", "
@@ -55,9 +57,8 @@ services:
 
 # Network configuration
 networks:
-  supabase_network:
-    external: true
-    name: supabase_default
+  supabase_default:
+    external: true 
 
   # Supabase local development stack
   # Uncomment the following if you want to run full Supabase stack locally
