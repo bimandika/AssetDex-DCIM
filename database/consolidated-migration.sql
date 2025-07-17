@@ -27,6 +27,7 @@ CREATE TABLE public.profiles (
     id UUID NOT NULL PRIMARY KEY,
     username TEXT NOT NULL,
     full_name TEXT,
+    status BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
@@ -127,11 +128,12 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, full_name)
+  INSERT INTO public.profiles (id, username, full_name, status)
   VALUES (
     new.id, 
     COALESCE(new.raw_user_meta_data ->> 'username', new.email),
-    COALESCE(new.raw_user_meta_data ->> 'full_name', '')
+    COALESCE(new.raw_user_meta_data ->> 'full_name', ''),
+    true
   );
   
   -- Assign default viewer role
@@ -195,8 +197,8 @@ BEGIN
     ) RETURNING id INTO admin_user_id;
     
     -- Create profile for admin user
-    INSERT INTO public.profiles (id, username, full_name)
-    VALUES (admin_user_id, admin_username, 'System Administrator')
+    INSERT INTO public.profiles (id, username, full_name, status)
+    VALUES (admin_user_id, admin_username, 'System Administrator', true)
     ON CONFLICT (id) DO NOTHING;
     
     -- Set admin role (remove viewer role if exists)

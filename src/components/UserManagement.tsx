@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, BadgeProps } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loader2, Eye, EyeOff, Key } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loader2, Eye, EyeOff, Key, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, Enums } from "@/integrations/supabase/types";
@@ -36,6 +36,7 @@ const UserManagement = () => {
   const [newPassword, setNewPassword] = useState("");
   const [isResetting, setIsResetting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   const { toast } = useToast();
 
   const roles: { value: Enums<"user_role">; label: string; description: string }[] = [
@@ -381,10 +382,60 @@ const UserManagement = () => {
     }
   };
 
+  const getStatusBadge = (isActive: boolean) => {
+    const badgeProps: BadgeProps = {
+      variant: "outline",
+      className: isActive 
+        ? "bg-green-50 text-green-700 border-green-200" 
+        : "bg-amber-50 text-amber-700 border-amber-200"
+    };
+
+    return isActive ? (
+      <Badge {...badgeProps}>
+        <Check className="h-3 w-3 mr-1" /> Active
+      </Badge>
+    ) : (
+      <Badge {...badgeProps}>
+        <X className="h-3 w-3 mr-1" /> Pending
+      </Badge>
+    );
+  };
+
+  const handleUpdateUserStatus = async (userId: string, newStatus: boolean) => {
+    try {
+      setUpdatingStatus(userId);
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({ status: newStatus })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `User has been ${newStatus ? 'approved' : 'rejected'} successfully`,
+      });
+
+      // Refresh the users list
+      fetchUsers();
+    } catch (error) {
+      console.error("Error updating user status:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update user status",
+        variant: "destructive"
+      });
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
   const filteredUsers = users.filter(user =>
     user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.user_roles[0]?.role.toLowerCase().includes(searchTerm.toLowerCase())
+    user.user_roles[0]?.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.status ? 'active' : 'inactive').includes(searchTerm.toLowerCase())
   );
 
   const roleStats = users.reduce((acc, user) => {
@@ -666,6 +717,7 @@ const UserManagement = () => {
                 <TableRow>
                   <TableHead>Username</TableHead>
                   <TableHead>Full Name</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Current Role</TableHead>
                   <TableHead>Member Since</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -674,8 +726,18 @@ const UserManagement = () => {
               <TableBody>
                 {filteredUsers.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.username}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center">
+                        {user.username}
+                        {user.status === false && (
+                          <span className="ml-2 text-xs text-amber-600">(Pending)</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{user.full_name || "—"}</TableCell>
+                    <TableCell>
+                      {getStatusBadge(user.status !== false)}
+                    </TableCell>
                     <TableCell>
                       <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.user_roles[0]?.role)}`}>
                         {user.user_roles[0]?.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -709,18 +771,51 @@ const UserManagement = () => {
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setUserToDelete(user);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                          title="Delete User"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {user.status === false ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleUpdateUserStatus(user.id, true)}
+                              title="Approve User"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              disabled={updatingStatus === user.id}
+                            >
+                              {updatingStatus === user.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Check className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setUserToDelete(user);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                              title="Reject User"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setUserToDelete(user);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                              title="Delete User"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

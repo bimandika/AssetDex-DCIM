@@ -162,13 +162,34 @@ The application includes several Docker configuration files:
 - `nginx.conf` - Optimized Nginx configuration
 - `.dockerignore` - Excludes unnecessary files from build
 
-## User Roles
+## User Management
+
+### User Roles
 
 The application supports three user roles:
 
 - **Super Admin** - Full access to all features including user management
 - **Engineer** - Can view, create, and edit servers and properties
 - **Viewer** - Read-only access to server information
+
+### User Sign-up and Approval Flow
+
+1. **New User Registration**
+   - New users can sign up through the registration form
+   - Upon registration, accounts are created with `status: false` (inactive) by default
+   - Users see an informational message that their account is pending admin approval
+   - An email notification is sent to administrators about the new registration
+
+2. **Admin Approval Process**
+   - Super Admins can view pending user registrations in the User Management section
+   - Each pending user has Approve/Reject actions available
+   - Approved users receive an email notification that their account has been activated
+   - Rejected users are notified via email with an optional reason
+
+3. **Account Activation**
+   - Only users with `status: true` can log in to the system
+   - Inactive users see a clear message that their account is pending approval
+   - Super Admins can deactivate/reactivate accounts at any time
 
 ## Database Schema
 

@@ -7,6 +7,7 @@ interface UserProfile {
   id: string;
   username: string;
   full_name: string | null;
+  status: boolean;
 }
 
 interface UserRole {
@@ -85,18 +86,47 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   useEffect(() => {
+    const checkUserStatus = async (user: User) => {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('status')
+        .eq('id', user.id)
+        .single();
+
+      if (!profileData?.status) {
+        await supabase.auth.signOut();
+        toast({
+          title: "Account Pending Approval",
+          description: "Your account is pending admin approval. Please contact your administrator.",
+          variant: "destructive",
+        });
+        return false;
+      }
+      return true;
+    };
+
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event, session);
-        setSession(session);
-        setUser(session?.user ?? null);
         
         if (session?.user) {
-          setTimeout(() => {
-            fetchUserProfile(session.user.id);
-          }, 0);
+          const isActive = await checkUserStatus(session.user);
+          if (!isActive) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setUserRole(null);
+            setLoading(false);
+            return;
+          }
+          
+          setSession(session);
+          setUser(session.user);
+          await fetchUserProfile(session.user.id);
         } else {
+          setSession(null);
+          setUser(null);
           setProfile(null);
           setUserRole(null);
         }
@@ -106,17 +136,33 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       console.log('Initial session:', session);
-      setSession(session);
-      setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserProfile(session.user.id);
+        const isActive = await checkUserStatus(session.user);
+        if (!isActive) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setUserRole(null);
+          setLoading(false);
+          return;
+        }
+        
+        setSession(session);
+        setUser(session.user);
+        await fetchUserProfile(session.user.id);
+      } else {
+        setSession(null);
+        setUser(null);
       }
       
       setLoading(false);
-    });
+    };
+    
+    initializeAuth();
 
     return () => subscription.unsubscribe();
   }, []);
@@ -124,6 +170,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signIn = async (email: string, password: string) => {
     try {
       console.log('Attempting sign in with:', email);
+      
+      // First, sign in the user
       const { error, data } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -138,24 +186,57 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           description: error.message,
           variant: "destructive",
         });
+        return { error };
       }
       
-      return { error };
+      // Check user status if login was successful
+      if (data.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('status')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (profileError) {
+          console.error('Error fetching user status:', profileError);
+          await supabase.auth.signOut(); // Sign out the user if we can't verify status
+          return { 
+            error: new Error('Unable to verify your account status. Please try again later.') 
+          };
+        }
+        
+        if (profileData.status === false) {
+          // User is inactive, sign them out and show message
+          await supabase.auth.signOut();
+          return { 
+            error: new Error('Your account is pending admin approval. Please contact your administrator.') 
+          };
+        }
+      }
+      
+      return { error: null };
     } catch (error) {
       console.error('Sign in error:', error);
-      return { error };
+      // Ensure user is signed out on any error
+      await supabase.auth.signOut();
+      return { 
+        error: error instanceof Error ? error : new Error('An unexpected error occurred during sign in') 
+      };
     }
   };
 
   const signUp = async (email: string, password: string, username: string, fullName?: string) => {
     try {
-      const redirectUrl = `${window.location.origin}/`;
+      // First, sign out any existing session to prevent auto-login
+      await supabase.auth.signOut();
       
-      const { error } = await supabase.auth.signUp({
+      // Create the auth user without auto-login
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: redirectUrl,
+          // Don't auto confirm the user
+          emailRedirectTo: `${window.location.origin}/auth?registered=true`,
           data: {
             username,
             full_name: fullName || ''
@@ -163,22 +244,55 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
       });
       
-      if (error) {
+      if (signUpError) {
         toast({
           title: "Sign Up Failed",
-          description: error.message,
+          description: signUpError.message,
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "Sign Up Successful",
-          description: "Please check your email to confirm your account.",
-        });
+        return { error: signUpError };
       }
       
-      return { error };
+      // If user is created, update their profile to set status to false
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ 
+            status: false,
+            username,
+            full_name: fullName || ''
+          })
+          .eq('id', data.user.id);
+          
+        if (profileError) {
+          console.error('Error updating profile status:', profileError);
+          toast({
+            title: "Account Created",
+            description: "Your account has been created but there was an error updating your status. Please contact support.",
+            variant: "destructive"
+          });
+          return { error: profileError };
+        }
+      }
+      
+      // Ensure we're signed out after registration
+      await supabase.auth.signOut();
+      
+      // Clear any existing session data
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setUserRole(null);
+      
+      return { error: null };
+      
     } catch (error) {
       console.error('Sign up error:', error);
+      toast({
+        title: "Sign Up Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
       return { error };
     }
   };

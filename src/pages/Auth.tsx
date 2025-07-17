@@ -1,18 +1,19 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CheckCircle, X } from "lucide-react";
 import { Database, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect } from "react";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [signUpSuccess, setSignUpSuccess] = useState(false);
   const [signInData, setSignInData] = useState({
     email: "",
     password: "",
@@ -26,14 +27,15 @@ const Auth = () => {
 
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
-
+  
+  // Handle redirect for authenticated users
   useEffect(() => {
     if (user) {
       navigate("/");
     }
   }, [user, navigate]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
     
@@ -46,18 +48,36 @@ const Auth = () => {
     setIsLoading(false);
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
     
-    const { error } = await signUp(
-      signUpData.email,
-      signUpData.password,
-      signUpData.username,
-      signUpData.fullName
-    );
-    
-    setIsLoading(false);
+    try {
+      const { error } = await signUp(
+        signUpData.email, 
+        signUpData.password,
+        signUpData.username,
+        signUpData.fullName
+      );
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Show success message
+      setSignUpSuccess(true);
+      // Reset form
+      setSignUpData({
+        email: "",
+        password: "",
+        username: "",
+        fullName: ""
+      });
+    } catch (error) {
+      console.error("Sign up error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -204,9 +224,27 @@ const Auth = () => {
                       </Button>
                     </div>
                   </div>
-                  <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Creating Account..." : "Create Account"}
-                  </Button>
+                  <div className="space-y-4">
+                    <div className="text-sm text-muted-foreground text-center p-2 bg-muted/50 rounded-md">
+                      Your account will be accessible after admin approval. Please contact the administrator.
+                    </div>
+                    <Button 
+                      type="submit" 
+                      className="w-full" 
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Creating account..." : "Create account"}
+                    </Button>
+                    {signUpSuccess && (
+                      <Alert className="mt-4">
+                        <CheckCircle className="h-4 w-4" />
+                        <AlertTitle>Account Created</AlertTitle>
+                        <AlertDescription>
+                          Your account has been created and is pending admin approval. You will receive an email once your account is activated.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
                 </form>
               </TabsContent>
             </Tabs>
