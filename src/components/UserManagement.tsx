@@ -168,7 +168,7 @@ const UserManagement = () => {
     if (!newUserEmail || !newUserRole) {
       toast({
         title: "Error",
-        description: "Please provide email and role",
+        description: "Please fill in all fields",
         variant: "destructive"
       });
       return;
@@ -176,49 +176,108 @@ const UserManagement = () => {
 
     try {
       setAddingUser(true);
-
-      // Use Supabase's Admin API to create a user
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: newUserEmail,
-        email_confirm: true,
-        user_metadata: {
-          username: newUserEmail.split('@')[0]
-        }
+      
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+      
+      // Get the base URL from the Supabase client configuration
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
+      
+      // Generate a more secure random password
+      const randomPassword = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        .map(byte => (byte % 36).toString(36))
+        .join('') + 'A1!'; // Ensure it has at least one uppercase and one special character
+      
+      console.log(`Temporary password for ${newUserEmail}: ${randomPassword}`);
+      
+      // Call the admin-create-user Edge Function
+      const response = await fetch(`${baseUrl}/functions/v1/admin-create-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          email: newUserEmail,
+          password: randomPassword,
+          fullName: newUserEmail.split('@')[0],
+          role: newUserRole
+        })
       });
-
-      if (error) throw error;
-
-      if (data.user) {
-        // The user creation trigger should handle profile creation and default role
-        // But we'll update the role to the selected one
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .update({ role: newUserRole })
-          .eq("user_id", data.user.id);
-
-        if (roleError) {
-          console.error("Error updating role:", roleError);
-          // Don't throw here as user was created successfully
-        }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to create user');
       }
 
-      toast({
-        title: "Success",
-        description: `User invited successfully! They will receive an email to set their password.`
-      });
+      // Show success message with temporary password (only visible to admin)
+      const handleCopyPassword = () => {
+        navigator.clipboard.writeText(randomPassword);
+        toast({
+          title: "Copied!",
+          description: "Password copied to clipboard",
+          duration: 2000
+        });
+      };
 
-      // Reset form and close dialog
+      toast({
+        title: "User Created Successfully",
+        description: (
+          <div className="space-y-2">
+            <p>User account created for {newUserEmail}</p>
+            <div className="bg-yellow-50 p-2 rounded-md text-sm text-yellow-800 border border-yellow-200">
+              <div className="flex justify-between items-center mb-1">
+                <p className="font-medium">Temporary Password:</p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs h-6 px-2 text-yellow-700 hover:bg-yellow-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyPassword();
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+              <div className="flex items-center justify-between bg-yellow-100 px-3 py-2 rounded font-mono text-sm mb-2">
+                <span className="select-all">{randomPassword}</span>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyPassword();
+                  }}
+                  className="ml-2 text-yellow-600 hover:text-yellow-800"
+                  title="Copy to clipboard"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+              <p className="text-xs text-yellow-700">Please provide this password to the user securely.</p>
+              <p className="text-xs text-yellow-700">They will be prompted to change it on first login.</p>
+            </div>
+          </div>
+        ),
+        duration: 10000, // Show for 10 seconds
+        className: "[&>div]:w-full" // Make toast take full width
+      });
+      
+      // Reset form and refresh user list
       setNewUserEmail("");
       setNewUserRole("");
       setIsAddUserDialogOpen(false);
-      
-      // Refresh users list
       fetchUsers();
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error adding user:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to add user",
+        description: error instanceof Error ? error.message : "Failed to add user",
         variant: "destructive"
       });
     } finally {
@@ -337,7 +396,8 @@ const UserManagement = () => {
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="text-sm text-blue-800">
                     <p className="font-medium">How it works:</p>
-                    <p>The user will receive an invitation email to set their password and access the system.</p>
+                    <p>After creating the user, you'll need to provide them with the temporary password shown in the success message.</p>
+                    <p className="mt-1 text-xs">The user will be prompted to change their password on first login.</p>
                   </div>
                 </div>
 
