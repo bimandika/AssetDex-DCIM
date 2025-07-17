@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail } from "lucide-react";
+import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, Enums } from "@/integrations/supabase/types";
@@ -29,6 +29,9 @@ const UserManagement = () => {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserRole, setNewUserRole] = useState<Enums<"user_role"> | "">("");
   const [addingUser, setAddingUser] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
   const roles: { value: Enums<"user_role">; label: string; description: string }[] = [
@@ -105,6 +108,59 @@ const UserManagement = () => {
         description: "Failed to update user role",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    
+    try {
+      setIsDeleting(true);
+      
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+      
+      // Get the base URL from the Supabase client configuration
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
+      
+      // Call the admin-delete-user Edge Function
+      const response = await fetch(`${baseUrl}/functions/v1/admin-delete-user`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          userId: userToDelete.id  // Changed from user_id to userId to match Edge Function expectation
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete user');
+      }
+      
+      toast({
+        title: "Success",
+        description: "User has been deleted successfully"
+      });
+      
+      // Refresh the users list
+      fetchUsers();
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete user",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -424,7 +480,19 @@ const UserManagement = () => {
                     <TableCell className="text-slate-500">
                       {new Date(user.created_at).toLocaleDateString()}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setUserToDelete(user);
+                          setIsDeleteDialogOpen(true);
+                        }}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
                       <Dialog open={isEditDialogOpen && editingUser?.id === user.id} onOpenChange={(open) => {
                         setIsEditDialogOpen(open);
                         if (!open) {
@@ -534,6 +602,44 @@ const UserManagement = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {userToDelete?.username}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setUserToDelete(null);
+              }}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteUser}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete User'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
