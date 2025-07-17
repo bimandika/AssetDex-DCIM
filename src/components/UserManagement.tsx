@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loader2 } from "lucide-react";
+import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loader2, Eye, EyeOff, Key } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, Enums } from "@/integrations/supabase/types";
@@ -32,6 +32,10 @@ const UserManagement = () => {
   const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
 
   const roles: { value: Enums<"user_role">; label: string; description: string }[] = [
@@ -108,6 +112,85 @@ const UserManagement = () => {
         description: "Failed to update user role",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingUserId || !newPassword) {
+      toast({
+        title: "Error",
+        description: "Please enter a new password",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsResetting(true);
+      
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        console.error('Session error or no active session:', sessionError);
+        throw new Error(sessionError?.message || 'No active session. Please log in again.');
+      }
+      
+      // Get the base URL from the Supabase client configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
+      // Construct the function URL for the dedicated password reset endpoint
+      const functionUrl = `${supabaseUrl}/functions/v1/admin-reset-password`;
+      
+      console.log('Calling password reset function:', { functionUrl, userId: resettingUserId });
+      
+      // Call the admin-reset-password Edge Function
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          userId: resettingUserId,
+          newPassword: newPassword
+        })
+      });
+      
+      const responseData = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        console.error('Error response from server:', { 
+          status: response.status,
+          statusText: response.statusText,
+          responseData 
+        });
+        
+        throw new Error(
+          responseData.error?.message || 
+          responseData.message || 
+          `Failed to reset password (Status: ${response.status})`
+        );
+      }
+
+      // Show success message
+      toast({
+        title: "Success",
+        description: "Password has been reset successfully"
+      });
+      
+      // Reset form and close dialog
+      setNewPassword("");
+      setResettingUserId(null);
+    } catch (error) {
+      console.error("Error in handleResetPassword:", error);
+      
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -427,6 +510,67 @@ const UserManagement = () => {
             <Shield className="h-3 w-3 mr-1" />
             Super Admin Only
           </Badge>
+
+          {/* Reset Password Dialog */}
+          <Dialog open={!!resettingUserId} onOpenChange={(open) => !open && setResettingUserId(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reset User Password</DialogTitle>
+                <DialogDescription>
+                  Set a new password for this user. They will need to use this password to log in.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="newPassword"
+                      type={showPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimum 8 characters. Include uppercase, lowercase, and numbers.
+                  </p>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setResettingUserId(null);
+                      setNewPassword("");
+                    }}
+                    disabled={isResetting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleResetPassword}
+                    disabled={!newPassword || newPassword.length < 8 || isResetting}
+                  >
+                    {isResetting ? "Updating..." : "Update Password"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -533,120 +677,51 @@ const UserManagement = () => {
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>{user.full_name || "—"}</TableCell>
                     <TableCell>
-                      <Badge className={getRoleBadgeColor(user.user_roles[0]?.role)}>
+                      <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.user_roles[0]?.role)}`}>
                         {user.user_roles[0]?.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </Badge>
+                      </div>
                     </TableCell>
-                    <TableCell className="text-slate-500">
-                      {new Date(user.created_at).toLocaleDateString()}
+                    <TableCell>
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setUserToDelete(user);
-                          setIsDeleteDialogOpen(true);
-                        }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete</span>
-                      </Button>
-                      <Dialog open={isEditDialogOpen && editingUser?.id === user.id} onOpenChange={(open) => {
-                        setIsEditDialogOpen(open);
-                        if (!open) {
-                          setEditingUser(null);
-                          setNewRole("");
-                        }
-                      }}>
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingUser(user);
-                              setNewRole(user.user_roles[0]?.role || "");
-                              setIsEditDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="h-3 w-3 mr-1" />
-                            Edit Role
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Edit User Role</DialogTitle>
-                            <DialogDescription>
-                              Change the role for {user.username} ({user.full_name})
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label>Current Role</Label>
-                              <p className="text-sm text-slate-600">
-                                {user.user_roles[0]?.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                              </p>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              <Label>New Role</Label>
-                              <Select value={newRole} onValueChange={(value: Enums<"user_role">) => setNewRole(value)}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {roles.map((role) => (
-                                    <SelectItem key={role.value} value={role.value}>
-                                      <div className="flex flex-col">
-                                        <span className="font-medium">{role.label}</span>
-                                        <span className="text-xs text-slate-500">{role.description}</span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            {newRole === "super_admin" && (
-                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                                <div className="flex items-start space-x-2">
-                                  <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                                  <div className="text-sm">
-                                    <p className="font-medium text-yellow-800">Warning</p>
-                                    <p className="text-yellow-700">
-                                      Super Admins have full access to the system including user management.
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="flex justify-end space-x-2">
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setIsEditDialogOpen(false);
-                                  setEditingUser(null);
-                                  setNewRole("");
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  if (newRole && editingUser) {
-                                    handleRoleChange(editingUser.id, newRole);
-                                  }
-                                }}
-                                disabled={!newRole || newRole === user.user_roles[0]?.role}
-                              >
-                                Update Role
-                              </Button>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setResettingUserId(user.id);
+                            setNewPassword('');
+                          }}
+                          title="Reset Password"
+                        >
+                          <Key className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingUser(user);
+                            setNewRole(user.user_roles[0]?.role || '');
+                            setIsEditDialogOpen(true);
+                          }}
+                          title="Edit Role"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setUserToDelete(user);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          title="Delete User"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -662,6 +737,78 @@ const UserManagement = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Role Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User Role</DialogTitle>
+            <DialogDescription>
+              Change the role for {editingUser?.username || 'this user'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>New Role</Label>
+              <Select 
+                value={newRole} 
+                onValueChange={(value: Enums<"user_role">) => setNewRole(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{role.label}</span>
+                        <span className="text-xs text-slate-500">{role.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {newRole === "super_admin" && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-yellow-800">Warning</p>
+                    <p className="text-yellow-700">
+                      Super Admins have full access to the system including user management.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditDialogOpen(false);
+                  setEditingUser(null);
+                  setNewRole("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (newRole && editingUser) {
+                    handleRoleChange(editingUser.id, newRole);
+                  }
+                }}
+                disabled={!newRole || (editingUser && newRole === editingUser.user_roles[0]?.role)}
+              >
+                Update Role
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

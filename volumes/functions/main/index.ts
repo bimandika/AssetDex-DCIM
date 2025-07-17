@@ -15,6 +15,12 @@ serve(async (req) => {
       const { handler } = await import('../admin-delete-user/index.ts')
       return await handler(req)
     }
+
+    // Admin reset password endpoint
+    if (url.pathname === '/admin-reset-password' && req.method === 'POST') {
+      const { handler } = await import('../admin-reset-password/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,

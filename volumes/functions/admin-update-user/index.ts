@@ -49,6 +49,8 @@ export const handler = async (req: Request): Promise<Response> => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    
+    console.log('Updating user:', { userId, updates });
 
     if (updates.role && adminUser.id === userId) {
       return new Response(
@@ -67,16 +69,25 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // Update user in auth if there are auth updates
     if (Object.keys(updateData).length > 0) {
-      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      console.log('Attempting to update user with data:', { userId, updateData });
+      
+      const { data: userData, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
         userId,
         updateData
-      )
+      );
+      
+      console.log('Update result:', { userData, updateError });
 
       if (updateError) {
+        console.error('Update error:', updateError);
         return new Response(
-          JSON.stringify({ error: 'Failed to update user', details: updateError.message }),
+          JSON.stringify({ 
+            error: 'Failed to update user', 
+            details: updateError.message,
+            code: updateError.status 
+          }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+        );
       }
     }
 
@@ -159,13 +170,13 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     )
 
-  } catch (error) {
-    console.error('Error in admin-update-user:', error)
+  } catch (error: any) {
+    console.error('Error in admin-update-user:', error);
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error',
-        details: error.message,
-        stack: error.stack 
+        details: error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' ? { stack: error?.stack } : {})
       }),
       { 
         status: 500, 
@@ -174,6 +185,6 @@ export const handler = async (req: Request): Promise<Response> => {
           'Content-Type': 'application/json' 
         } 
       }
-    )
+    );
   }
 }
