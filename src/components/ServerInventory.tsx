@@ -13,23 +13,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+// Types matching the database enums
+type DeviceType = 'Server' | 'Storage' | 'Network';
+type AllocationType = 'IAAS' | 'PAAS' | 'SAAS' | 'Load Balancer' | 'Database';
+type EnvironmentType = 'Production' | 'Testing' | 'Pre-Production' | 'Development';
+
 interface Server {
   id: string;
+  serial_number?: string;
   hostname: string;
-  device_type: 'Server' | 'Storage' | 'Network';
+  brand?: string;
+  model?: string;
+  ip_address?: string;
+  ip_oob?: string;
+  operating_system?: string;
   dc_site: string;
   dc_building?: string;
   dc_floor?: string;
   dc_room?: string;
-  allocation?: 'IAAS/PAAS' | 'SAAS' | 'Load Balancer' | 'Database';
-  environment?: 'Production' | 'Testing' | 'Pre-Production' | 'Development';
-  ip_address?: string;
-  serial_number?: string;
-  manufacturer?: string;
-  model?: string;
-  specifications?: any;
+  allocation?: AllocationType;
   status: string;
+  device_type: DeviceType;
+  warranty?: string;
   notes?: string;
+  environment?: EnvironmentType;
+  created_by?: string;
   created_at: string;
   updated_at: string;
 }
@@ -43,21 +51,24 @@ const ServerInventory = () => {
   const [filterEnvironment, setFilterEnvironment] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Omit<Server, 'id' | 'created_at' | 'updated_at' | 'created_by'>>({
     hostname: "",
-    device_type: "" as 'Server' | 'Storage' | 'Network' | "",
+    serial_number: "",
+    brand: "",
+    model: "",
+    ip_address: "",
+    ip_oob: "",
+    operating_system: "",
     dc_site: "",
     dc_building: "",
     dc_floor: "",
     dc_room: "",
-    allocation: "" as 'IAAS/PAAS' | 'SAAS' | 'Load Balancer' | 'Database' | "",
-    environment: "" as 'Production' | 'Testing' | 'Pre-Production' | 'Development' | "",
-    ip_address: "",
-    serial_number: "",
-    manufacturer: "",
-    model: "",
+    allocation: undefined,
     status: "Active",
-    notes: ""
+    device_type: "Server" as DeviceType,
+    warranty: "",
+    notes: "",
+    environment: undefined
   });
 
   const { hasRole } = useAuth();
@@ -106,7 +117,9 @@ const ServerInventory = () => {
         server.hostname.toLowerCase().includes(searchTerm.toLowerCase()) ||
         server.dc_site.toLowerCase().includes(searchTerm.toLowerCase()) ||
         server.ip_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase())
+        server.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.serial_number?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -124,19 +137,22 @@ const ServerInventory = () => {
   const resetForm = () => {
     setFormData({
       hostname: "",
-      device_type: "",
+      serial_number: "",
+      brand: "",
+      model: "",
+      ip_address: "",
+      ip_oob: "",
+      operating_system: "",
       dc_site: "",
       dc_building: "",
       dc_floor: "",
       dc_room: "",
-      allocation: "",
-      environment: "",
-      ip_address: "",
-      serial_number: "",
-      manufacturer: "",
-      model: "",
+      allocation: undefined,
       status: "Active",
-      notes: ""
+      device_type: "Server" as DeviceType,
+      warranty: "",
+      notes: "",
+      environment: undefined
     });
     setEditingServer(null);
   };
@@ -163,25 +179,30 @@ const ServerInventory = () => {
     }
 
     try {
+      const serverData = {
+        hostname: formData.hostname,
+        serial_number: formData.serial_number || null,
+        brand: formData.brand || null,
+        model: formData.model || null,
+        ip_address: formData.ip_address || null,
+        ip_oob: formData.ip_oob || null,
+        operating_system: formData.operating_system || null,
+        dc_site: formData.dc_site,
+        dc_building: formData.dc_building || null,
+        dc_floor: formData.dc_floor || null,
+        dc_room: formData.dc_room || null,
+        allocation: formData.allocation || null,
+        status: formData.status,
+        device_type: formData.device_type,
+        warranty: formData.warranty || null,
+        notes: formData.notes || null,
+        environment: formData.environment || null
+      };
+
       if (editingServer) {
         const { error } = await supabase
           .from('servers')
-          .update({
-            hostname: formData.hostname,
-            device_type: formData.device_type,
-            dc_site: formData.dc_site,
-            dc_building: formData.dc_building || null,
-            dc_floor: formData.dc_floor || null,
-            dc_room: formData.dc_room || null,
-            allocation: formData.allocation || null,
-            environment: formData.environment || null,
-            ip_address: formData.ip_address || null,
-            serial_number: formData.serial_number || null,
-            manufacturer: formData.manufacturer || null,
-            model: formData.model || null,
-            status: formData.status,
-            notes: formData.notes || null,
-          })
+          .update(serverData)
           .eq('id', editingServer.id);
 
         if (error) throw error;
@@ -193,22 +214,7 @@ const ServerInventory = () => {
       } else {
         const { error } = await supabase
           .from('servers')
-          .insert({
-            hostname: formData.hostname,
-            device_type: formData.device_type,
-            dc_site: formData.dc_site,
-            dc_building: formData.dc_building || null,
-            dc_floor: formData.dc_floor || null,
-            dc_room: formData.dc_room || null,
-            allocation: formData.allocation || null,
-            environment: formData.environment || null,
-            ip_address: formData.ip_address || null,
-            serial_number: formData.serial_number || null,
-            manufacturer: formData.manufacturer || null,
-            model: formData.model || null,
-            status: formData.status,
-            notes: formData.notes || null,
-          });
+          .insert(serverData);
 
         if (error) throw error;
 
@@ -235,19 +241,22 @@ const ServerInventory = () => {
     setEditingServer(server);
     setFormData({
       hostname: server.hostname,
-      device_type: server.device_type,
+      serial_number: server.serial_number || "",
+      brand: server.brand || "",
+      model: server.model || "",
+      ip_address: server.ip_address || "",
+      ip_oob: server.ip_oob || "",
+      operating_system: server.operating_system || "",
       dc_site: server.dc_site,
       dc_building: server.dc_building || "",
       dc_floor: server.dc_floor || "",
       dc_room: server.dc_room || "",
-      allocation: server.allocation || "",
-      environment: server.environment || "",
-      ip_address: server.ip_address || "",
-      serial_number: server.serial_number || "",
-      manufacturer: server.manufacturer || "",
-      model: server.model || "",
+      allocation: server.allocation,
       status: server.status,
-      notes: server.notes || ""
+      device_type: server.device_type,
+      warranty: server.warranty || "",
+      notes: server.notes || "",
+      environment: server.environment
     });
     setIsAddDialogOpen(true);
   };
@@ -287,16 +296,16 @@ const ServerInventory = () => {
     }
   };
 
-  const getDeviceTypeBadge = (type: string) => {
+  const getDeviceTypeBadge = (type: DeviceType) => {
     const variants = {
       'Server': 'default',
       'Storage': 'secondary',
       'Network': 'outline'
     } as const;
-    return <Badge variant={variants[type as keyof typeof variants]}>{type}</Badge>;
+    return <Badge variant={variants[type]}>{type}</Badge>;
   };
 
-  const getEnvironmentBadge = (env?: string) => {
+  const getEnvironmentBadge = (env?: EnvironmentType) => {
     if (!env) return null;
     const variants = {
       'Production': 'destructive',
@@ -304,7 +313,12 @@ const ServerInventory = () => {
       'Testing': 'secondary',
       'Development': 'outline'
     } as const;
-    return <Badge variant={variants[env as keyof typeof variants]}>{env}</Badge>;
+    return <Badge variant={variants[env]}>{env}</Badge>;
+  };
+
+  const getAllocationBadge = (allocation?: AllocationType) => {
+    if (!allocation) return null;
+    return <Badge variant="outline">{allocation}</Badge>;
   };
 
   if (loading) {
@@ -343,7 +357,7 @@ const ServerInventory = () => {
                   Add Server
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingServer ? 'Edit Server' : 'Add New Server'}
@@ -365,10 +379,73 @@ const ServerInventory = () => {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="serial_number">Serial Number</Label>
+                      <Input
+                        id="serial_number"
+                        value={formData.serial_number}
+                        onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
+                        placeholder="SN123456789"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="brand">Brand</Label>
+                      <Input
+                        id="brand"
+                        value={formData.brand}
+                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                        placeholder="Dell, HPE, Cisco..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="model">Model</Label>
+                      <Input
+                        id="model"
+                        value={formData.model}
+                        onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                        placeholder="PowerEdge R740, ProLiant DL380..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="ip_address">IP Address</Label>
+                      <Input
+                        id="ip_address"
+                        value={formData.ip_address}
+                        onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
+                        placeholder="192.168.1.100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ip_oob">OOB/IPMI IP</Label>
+                      <Input
+                        id="ip_oob"
+                        value={formData.ip_oob}
+                        onChange={(e) => setFormData({ ...formData, ip_oob: e.target.value })}
+                        placeholder="192.168.1.100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="operating_system">Operating System</Label>
+                      <Input
+                        id="operating_system"
+                        value={formData.operating_system}
+                        onChange={(e) => setFormData({ ...formData, operating_system: e.target.value })}
+                        placeholder="Ubuntu 22.04, Windows Server 2022..."
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="device_type">Device Type *</Label>
                       <Select
                         value={formData.device_type}
-                        onValueChange={(value) => setFormData({ ...formData, device_type: value as 'Server' | 'Storage' | 'Network' })}
+                        onValueChange={(value) => setFormData({ ...formData, device_type: value as DeviceType })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select device type" />
@@ -389,7 +466,7 @@ const ServerInventory = () => {
                         id="dc_site"
                         value={formData.dc_site}
                         onChange={(e) => setFormData({ ...formData, dc_site: e.target.value })}
-                        placeholder="Site-A"
+                        placeholder="DC1"
                         required
                       />
                     </div>
@@ -399,7 +476,7 @@ const ServerInventory = () => {
                         id="dc_building"
                         value={formData.dc_building}
                         onChange={(e) => setFormData({ ...formData, dc_building: e.target.value })}
-                        placeholder="Building-1"
+                        placeholder="Building A"
                       />
                     </div>
                   </div>
@@ -411,7 +488,7 @@ const ServerInventory = () => {
                         id="dc_floor"
                         value={formData.dc_floor}
                         onChange={(e) => setFormData({ ...formData, dc_floor: e.target.value })}
-                        placeholder="Floor-2"
+                        placeholder="1"
                       />
                     </div>
                     <div className="space-y-2">
@@ -420,7 +497,7 @@ const ServerInventory = () => {
                         id="dc_room"
                         value={formData.dc_room}
                         onChange={(e) => setFormData({ ...formData, dc_room: e.target.value })}
-                        placeholder="Room-101"
+                        placeholder="Server Room 101"
                       />
                     </div>
                   </div>
@@ -429,15 +506,16 @@ const ServerInventory = () => {
                     <div className="space-y-2">
                       <Label htmlFor="allocation">Allocation</Label>
                       <Select
-                        value={formData.allocation}
-                        onValueChange={(value) => setFormData({ ...formData, allocation: value as 'IAAS/PAAS' | 'SAAS' | 'Load Balancer' | 'Database' })}
+                        value={formData.allocation || ''}
+                        onValueChange={(value) => setFormData({ ...formData, allocation: value as AllocationType })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select allocation" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="IAAS/PAAS">IAAS/PAAS</SelectItem>
-                          <SelectItem value="SAAS">SAAS</SelectItem>
+                          <SelectItem value="IAAS">IaaS</SelectItem>
+                          <SelectItem value="PAAS">PaaS</SelectItem>
+                          <SelectItem value="SAAS">SaaS</SelectItem>
                           <SelectItem value="Load Balancer">Load Balancer</SelectItem>
                           <SelectItem value="Database">Database</SelectItem>
                         </SelectContent>
@@ -446,80 +524,30 @@ const ServerInventory = () => {
                     <div className="space-y-2">
                       <Label htmlFor="environment">Environment</Label>
                       <Select
-                        value={formData.environment}
-                        onValueChange={(value) => setFormData({ ...formData, environment: value as 'Production' | 'Testing' | 'Pre-Production' | 'Development' })}
+                        value={formData.environment || ''}
+                        onValueChange={(value) => setFormData({ ...formData, environment: value as EnvironmentType })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select environment" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Production">Production</SelectItem>
-                          <SelectItem value="Testing">Testing</SelectItem>
                           <SelectItem value="Pre-Production">Pre-Production</SelectItem>
+                          <SelectItem value="Testing">Testing</SelectItem>
                           <SelectItem value="Development">Development</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="ip_address">IP Address</Label>
-                      <Input
-                        id="ip_address"
-                        value={formData.ip_address}
-                        onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
-                        placeholder="192.168.1.100"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="serial_number">Serial Number</Label>
-                      <Input
-                        id="serial_number"
-                        value={formData.serial_number}
-                        onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
-                        placeholder="SN123456789"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="manufacturer">Manufacturer</Label>
-                      <Input
-                        id="manufacturer"
-                        value={formData.manufacturer}
-                        onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
-                        placeholder="Dell, HP, Cisco..."
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="model">Model</Label>
-                      <Input
-                        id="model"
-                        value={formData.model}
-                        onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                        placeholder="PowerEdge R740"
-                      />
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value) => setFormData({ ...formData, status: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Inactive">Inactive</SelectItem>
-                        <SelectItem value="Maintenance">Maintenance</SelectItem>
-                        <SelectItem value="Retired">Retired</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="warranty">Warranty Information</Label>
+                    <Input
+                      id="warranty"
+                      value={formData.warranty}
+                      onChange={(e) => setFormData({ ...formData, warranty: e.target.value })}
+                      placeholder="Warranty details..."
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -533,16 +561,19 @@ const ServerInventory = () => {
                     />
                   </div>
 
-                  <div className="flex justify-end space-x-2">
+                  <div className="flex justify-end space-x-2 pt-4">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsAddDialogOpen(false)}
+                      onClick={() => {
+                        setIsAddDialogOpen(false);
+                        resetForm();
+                      }}
                     >
                       Cancel
                     </Button>
                     <Button type="submit">
-                      {editingServer ? 'Update' : 'Add'} Server
+                      {editingServer ? 'Update Server' : 'Add Server'}
                     </Button>
                   </div>
                 </form>
@@ -592,81 +623,100 @@ const ServerInventory = () => {
         </div>
 
         {/* Server Table */}
-        <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Hostname</TableHead>
+              <TableHead>Serial #</TableHead>
+              <TableHead>Brand/Model</TableHead>
+              <TableHead>IP Address</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Allocation</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Environment</TableHead>
+              <TableHead>Updated</TableHead>
+              {canEdit && <TableHead className="w-[100px]">Actions</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredServers.length === 0 ? (
               <TableRow>
-                <TableHead>Hostname</TableHead>
-                <TableHead>Device Type</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Environment</TableHead>
-                <TableHead>IP Address</TableHead>
-                <TableHead>Status</TableHead>
-                {canEdit && <TableHead>Actions</TableHead>}
+                <TableCell colSpan={canEdit ? 11 : 10} className="text-center py-8 text-gray-500">
+                  {servers.length === 0 ? "No servers found. Add your first server!" : "No servers match your search criteria."}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredServers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={canEdit ? 7 : 6} className="text-center py-8 text-gray-500">
-                    {servers.length === 0 ? "No servers found. Add your first server!" : "No servers match your search criteria."}
+            ) : (
+              filteredServers.map((server) => (
+                <TableRow key={server.id}>
+                  <TableCell className="font-medium">{server.hostname}</TableCell>
+                  <TableCell className="font-mono text-xs">{server.serial_number || '-'}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{server.brand || '-'}</span>
+                      <span className="text-xs text-muted-foreground">{server.model || ''}</span>
+                    </div>
                   </TableCell>
-                </TableRow>
-              ) : (
-                filteredServers.map((server) => (
-                  <TableRow key={server.id}>
-                    <TableCell className="font-medium">{server.hostname}</TableCell>
-                    <TableCell>{getDeviceTypeBadge(server.device_type)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{server.ip_address || '-'}</span>
+                      {server.ip_oob && (
+                        <span className="text-xs text-muted-foreground">OOB: {server.ip_oob}</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{getDeviceTypeBadge(server.device_type)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{server.dc_site}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {[server.dc_building, server.dc_floor, server.dc_room].filter(Boolean).join(' / ')}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{getAllocationBadge(server.allocation)}</TableCell>
+                  <TableCell>
+                    <Badge variant={server.status === 'Active' ? 'default' : 'secondary'}>
+                      {server.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {new Date(server.updated_at).toLocaleDateString()}
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(server.updated_at).toLocaleTimeString()}
+                    </div>
+                  </TableCell>
+                  {canEdit && (
                     <TableCell>
-                      <div className="text-sm">
-                        <div>{server.dc_site}</div>
-                        {(server.dc_building || server.dc_floor || server.dc_room) && (
-                          <div className="text-gray-500">
-                            {[server.dc_building, server.dc_floor, server.dc_room].filter(Boolean).join(' > ')}
-                          </div>
-                        )}
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(server)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(server.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </TableCell>
-                    <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
-                    <TableCell>{server.ip_address || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant={server.status === 'Active' ? 'default' : 'secondary'}>
-                        {server.status}
-                      </Badge>
-                    </TableCell>
-                    {canEdit && (
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(server)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {hasRole('super_admin') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(server.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                  )}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
 
         {/* Summary */}
         <div className="mt-6 flex flex-wrap gap-4 text-sm text-gray-600">
           <div>Total Servers: {filteredServers.length}</div>
-          <div>Active: {filteredServers.filter(s => s.status === 'Active').length}</div>
           <div>Production: {filteredServers.filter(s => s.environment === 'Production').length}</div>
         </div>
       </CardContent>

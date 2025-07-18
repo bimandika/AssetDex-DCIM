@@ -64,8 +64,13 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
           throw new Error("File must contain at least a header and one data row");
         }
 
-        const headers = lines[0].split(',').map(h => h.trim());
-        const requiredHeaders = ['serialNumber', 'brand'];
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
+        const requiredHeaders = [
+          'serialnumber', 'hostname', 'brand', 'model', 
+          'ipaddress', 'ipoob', 'operatingsystem',
+          'dcsite', 'allocation', 'environment', 'status', 
+          'devicetype', 'warranty'
+        ];
         const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
         
         if (missingHeaders.length > 0) {
@@ -88,9 +93,10 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
           await new Promise(resolve => setTimeout(resolve, 50));
           
           // Basic validation
-          if (!row.serialNumber || !row.brand) {
+          const missingFields = requiredHeaders.filter(header => !row[header]);
+          if (missingFields.length > 0) {
             failedCount++;
-            errors.push(`Row ${i}: Missing required fields`);
+            errors.push(`Row ${i}: Missing required fields - ${missingFields.join(', ')}`);
           } else {
             successCount++;
             // Here you would actually save to your database
@@ -122,13 +128,127 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
   };
 
   const downloadTemplate = () => {
-    const template = [
-      'serialNumber,brand,model,location,rack,unit,ipOOB,ipOS,tenant,os,status,warranty,notes',
-      'SN001234567,Dell,PowerEdge R740,DC-East,A-12,U15-U16,192.168.1.101,10.0.1.101,Production,Ubuntu 22.04,Active,2025-03-15,Primary web server',
-      'SN001234568,HPE,ProLiant DL380,DC-West,B-08,U20-U21,192.168.1.102,10.0.1.102,Development,CentOS 8,Maintenance,2024-12-20,Scheduled maintenance'
-    ].join('\n');
+    const headers = [
+      'serial_number',
+      'hostname',
+      'brand',
+      'model',
+      'ip_address',
+      'ip_oob',
+      'operating_system',
+      'dc_site',
+      'dc_building',
+      'dc_floor',
+      'dc_room',
+      'allocation',
+      'environment',
+      'status',
+      'device_type',
+      'warranty',
+      'notes',
+    ].join(',');
+    
+    const exampleData = [
+      [
+        'SER12345',
+        'server-01',
+        'Dell',
+        'PowerEdge R740',
+        '192.168.1.100',
+        '10.0.0.1',
+        'Ubuntu 22.04 LTS',
+        'DC-East',
+        'Building-A',
+        '1',
+        '101',
+        'IAAS',
+        'Production',
+        'Active',
+        'Server',
+        '3 Years, Expires 12/31/2025',
+        'Primary production server'
+      ],
+      [
+        'SN2345678',
+        'db-primary-01',
+        'HPE',
+        'ProLiant DL380',
+        '192.168.1.101',
+        '10.0.0.2',
+        'Oracle Linux 8',
+        'DC-West',
+        'Building-B',
+        '2',
+        '205',
+        'Database',
+        'Production',
+        'Active',
+        'Database Server',
+        '5 Years, Expires 06/30/2027',
+        'Primary database server'
+      ],
+      [
+        'SN3456789',
+        'storage-01',
+        'Dell',
+        'PowerVault ME4',
+        '192.168.1.102',
+        '10.0.0.3',
+        'Storage OS 2.1',
+        'DC-North',
+        'Building-C',
+        '1',
+        '110',
+        'PAAS',
+        'Production',
+        'Active',
+        'Storage',
+        '5 Years, Expires 09/30/2026',
+        'Primary storage array'
+      ],
+      [
+        'SN4567890',
+        'fw-01',
+        'Cisco',
+        'ASA 5525-X',
+        '192.168.1.103',
+        '10.0.0.4',
+        'Cisco ASA 9.16',
+        'DC-South',
+        'Building-A',
+        '1',
+        '103',
+        'Load Balancer',
+        'Production',
+        'Active',
+        'Network',
+        '3 Years, Expires 03/31/2025',
+        'Main firewall'
+      ],
+      [
+        'SN5678901',
+        'dev-app-01',
+        'Dell',
+        'PowerEdge R640',
+        '192.168.2.100',
+        '10.0.1.1',
+        'CentOS 7',
+        'DC-Central',
+        'Building-D',
+        '3',
+        '301',
+        'IAAS',
+        'Development',
+        'Active',
+        'Application Server',
+        '1 Year, Expires 12/31/2024',
+        'Development application server'
+      ]
+    ];
+    
+    const csvContent = [headers, ...exampleData.map(row => row.join(','))].join('\n');
 
-    const blob = new Blob([template], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

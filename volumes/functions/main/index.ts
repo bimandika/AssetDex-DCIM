@@ -4,6 +4,12 @@ serve(async (req) => {
   const url = new URL(req.url)
   
   try {
+    // Filter servers endpoint
+    if (url.pathname === '/filter-servers' && (req.method === 'POST' || req.method === 'GET')) {
+      const { handler } = await import('../filter-servers/index.ts')
+      return await handler(req)
+    }
+
     // Admin create user endpoint
     if (url.pathname === '/admin-create-user' && req.method === 'POST') {
       const { handler } = await import('../admin-create-user/index.ts')

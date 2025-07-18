@@ -88,24 +88,25 @@ export type Database = {
       }
       servers: {
         Row: {
-          allocation: Database["public"]["Enums"]["allocation_type"] | null
-          created_at: string
-          created_by: string | null
-          dc_building: string | null
+          id: string
+          serial_number: string | null
+          hostname: string
+          brand: string | null
+          model: string | null
+          ip_address: string | null
+          ip_oob?: string | null
+          operating_system?: string | null
+          dc_site: string | null
           dc_floor: string | null
           dc_room: string | null
-          dc_site: string
-          device_type: Database["public"]["Enums"]["device_type"]
-          environment: Database["public"]["Enums"]["environment_type"] | null
-          hostname: string
-          id: string
-          ip_address: string | null
-          manufacturer: string | null
-          model: string | null
-          notes: string | null
-          serial_number: string | null
-          specifications: Json | null
+          warranty: string | null
+          allocation: Database["public"]["Enums"]["allocation_type"] | null
           status: string | null
+          device_type: Database["public"]["Enums"]["device_type"]
+          notes: string | null
+          environment: Database["public"]["Enums"]["environment_type"] | null
+          created_by: string | null
+          created_at: string
           updated_at: string
         }
         Insert: {
@@ -121,11 +122,11 @@ export type Database = {
           hostname: string
           id?: string
           ip_address?: string | null
-          manufacturer?: string | null
+          brand?: string | null
+          warranty?: string | null
           model?: string | null
           notes?: string | null
           serial_number?: string | null
-          specifications?: Json | null
           status?: string | null
           updated_at?: string
         }
@@ -142,11 +143,11 @@ export type Database = {
           hostname?: string
           id?: string
           ip_address?: string | null
-          manufacturer?: string | null
+          brand?: string | null
+          warranty?: string | null
           model?: string | null
           notes?: string | null
           serial_number?: string | null
-          specifications?: Json | null
           status?: string | null
           updated_at?: string
         }
@@ -191,7 +192,7 @@ export type Database = {
       }
     }
     Enums: {
-      allocation_type: "IAAS/PAAS" | "SAAS" | "Load Balancer" | "Database"
+      allocation_type: "IAAS" | "SAAS" | "Load Balancer" | "Database" | "PAAS"
       device_type: "Server" | "Storage" | "Network"
       environment_type:
         | "Production"

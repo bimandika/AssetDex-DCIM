@@ -198,6 +198,41 @@ The application uses the following main tables:
 - `profiles` - Extended user information
 - `user_roles` - Role-based access control
 - `servers` - Server inventory data
+
+## Standardized Server Fields
+
+The server inventory follows a standardized field order across the application (UI, database, and imports/exports):
+
+1. **Serial Number** - Unique identifier for the hardware
+2. **Hostname** - Server hostname (required)
+3. **Manufacturer** - Hardware manufacturer (e.g., Dell, HPE, Cisco)
+4. **Model** - Hardware model (e.g., PowerEdge R740)
+5. **IP Address** - Primary IP address
+6. **DC Site** - Datacenter location (required)
+7. **DC Building** - Building identifier
+8. **DC Floor** - Floor number/identifier
+9. **DC Room** - Room identifier
+10. **Allocation** - Resource allocation type:
+    - IAAS (Infrastructure as a Service)
+    - PAAS (Platform as a Service)
+    - SAAS (Software as a Service)
+    - Load Balancer
+    - Database
+11. **Environment** - Deployment environment:
+    - Production
+    - Testing
+    - Pre-Production
+    - Development
+12. **Status** - Current operational status:
+    - Active
+    - Inactive
+    - Maintenance
+    - Retired
+13. **Device Type** - Hardware type (required):
+    - Server
+    - Storage
+    - Network
+14. **Notes** - Additional information or comments
 - `property_definitions` - Dynamic server properties
 
 ## API Documentation
