@@ -49,6 +49,12 @@ const ServerInventory = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterEnvironment, setFilterEnvironment] = useState<string>("all");
+  const [filterBrand, setFilterBrand] = useState<string>("all");
+  const [filterModel, setFilterModel] = useState<string>("all");
+  const [filterAllocation, setFilterAllocation] = useState<string>("all");
+  const [filterOS, setFilterOS] = useState<string>("all");
+  const [filterSite, setFilterSite] = useState<string>("all");
+  const [filterBuilding, setFilterBuilding] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
   const [formData, setFormData] = useState<Omit<Server, 'id' | 'created_at' | 'updated_at' | 'created_by'>>({
@@ -81,7 +87,7 @@ const ServerInventory = () => {
 
   useEffect(() => {
     filterServers();
-  }, [servers, searchTerm, filterType, filterEnvironment]);
+  }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding]);
 
   const fetchServers = async () => {
     try {
@@ -115,11 +121,16 @@ const ServerInventory = () => {
     if (searchTerm) {
       filtered = filtered.filter(server =>
         server.hostname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.dc_site.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.dc_site?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         server.ip_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         server.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         server.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        server.serial_number?.toLowerCase().includes(searchTerm.toLowerCase())
+        server.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.operating_system?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.dc_building?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.dc_floor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        server.dc_room?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (server.allocation?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
       );
     }
 
@@ -129,6 +140,30 @@ const ServerInventory = () => {
 
     if (filterEnvironment !== "all") {
       filtered = filtered.filter(server => server.environment === filterEnvironment);
+    }
+
+    if (filterBrand !== "all") {
+      filtered = filtered.filter(server => server.brand === filterBrand);
+    }
+
+    if (filterModel !== "all") {
+      filtered = filtered.filter(server => server.model === filterModel);
+    }
+
+    if (filterAllocation !== "all") {
+      filtered = filtered.filter(server => server.allocation === filterAllocation);
+    }
+
+    if (filterOS !== "all") {
+      filtered = filtered.filter(server => server.operating_system === filterOS);
+    }
+
+    if (filterSite !== "all") {
+      filtered = filtered.filter(server => server.dc_site === filterSite);
+    }
+
+    if (filterBuilding !== "all") {
+      filtered = filtered.filter(server => server.dc_building === filterBuilding);
     }
 
     setFilteredServers(filtered);
@@ -585,40 +620,158 @@ const ServerInventory = () => {
       <CardContent>
         {/* Filters */}
         <div className="mb-6 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search servers..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search all fields..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Device Types</SelectItem>
-                <SelectItem value="Server">Server</SelectItem>
-                <SelectItem value="Storage">Storage</SelectItem>
-                <SelectItem value="Network">Network</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterEnvironment} onValueChange={setFilterEnvironment}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Environments</SelectItem>
-                <SelectItem value="Production">Production</SelectItem>
-                <SelectItem value="Testing">Testing</SelectItem>
-                <SelectItem value="Pre-Production">Pre-Production</SelectItem>
-                <SelectItem value="Development">Development</SelectItem>
-              </SelectContent>
-            </Select>
+
+            {/* Filter Dropdowns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger>
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Device Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Device Types</SelectItem>
+                  <SelectItem value="Server">Server</SelectItem>
+                  <SelectItem value="Storage">Storage</SelectItem>
+                  <SelectItem value="Network">Network</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterEnvironment} onValueChange={setFilterEnvironment}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Environment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Environments</SelectItem>
+                  <SelectItem value="Production">Production</SelectItem>
+                  <SelectItem value="Testing">Testing</SelectItem>
+                  <SelectItem value="Pre-Production">Pre-Production</SelectItem>
+                  <SelectItem value="Development">Development</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterBrand} onValueChange={setFilterBrand}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Brand" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Brands</SelectItem>
+                  <SelectItem value="Dell">Dell</SelectItem>
+                  <SelectItem value="HPE">HPE</SelectItem>
+                  <SelectItem value="Cisco">Cisco</SelectItem>
+                  <SelectItem value="Juniper">Juniper</SelectItem>
+                  <SelectItem value="NetApp">NetApp</SelectItem>
+                  <SelectItem value="Huawei">Huawei</SelectItem>
+                  <SelectItem value="Inspur">Inspur</SelectItem>
+                  <SelectItem value="Kaytus">Kaytus</SelectItem>
+                  <SelectItem value="ZTE">ZTE</SelectItem>
+                  <SelectItem value="Meta Brain">Meta Brain</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterModel} onValueChange={setFilterModel}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Models</SelectItem>
+                  <SelectItem value="PowerEdge R740">PowerEdge R740</SelectItem>
+                  <SelectItem value="PowerEdge R750">PowerEdge R750</SelectItem>
+                  <SelectItem value="PowerEdge R750xd">PowerEdge R750xd</SelectItem>
+                  <SelectItem value="PowerVault ME4">PowerVault ME4</SelectItem>
+                  <SelectItem value="ProLiant DL380">ProLiant DL380</SelectItem>
+                  <SelectItem value="ProLiant DL360">ProLiant DL360</SelectItem>
+                  <SelectItem value="Apollo 4510">Apollo 4510</SelectItem>
+                  <SelectItem value="ASA 5525-X">ASA 5525-X</SelectItem>
+                  <SelectItem value="Nexus 93180YC-EX">Nexus 93180YC-EX</SelectItem>
+                  <SelectItem value="MX204">MX204</SelectItem>
+                  <SelectItem value="AFF A400">AFF A400</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterAllocation} onValueChange={setFilterAllocation}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Allocation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Allocations</SelectItem>
+                  <SelectItem value="IAAS">IaaS</SelectItem>
+                  <SelectItem value="PAAS">PaaS</SelectItem>
+                  <SelectItem value="SAAS">SaaS</SelectItem>
+                  <SelectItem value="Load Balancer">Load Balancer</SelectItem>
+                  <SelectItem value="Database">Database</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterOS} onValueChange={setFilterOS}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Operating System" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All OS</SelectItem>
+                  <SelectItem value="Ubuntu 22.04 LTS">Ubuntu 22.04 LTS</SelectItem>
+                  <SelectItem value="Ubuntu 20.04 LTS">Ubuntu 20.04 LTS</SelectItem>
+                  <SelectItem value="RHEL 8">RHEL 8</SelectItem>
+                  <SelectItem value="CentOS 7">CentOS 7</SelectItem>
+                  <SelectItem value="Oracle Linux 8">Oracle Linux 8</SelectItem>
+                  <SelectItem value="Windows Server 2022">Windows Server 2022</SelectItem>
+                  <SelectItem value="Windows Server 2019">Windows Server 2019</SelectItem>
+                  <SelectItem value="Storage OS 2.1">Storage OS 2.1</SelectItem>
+                  <SelectItem value="Cisco ASA 9.16">Cisco ASA 9.16</SelectItem>
+                  <SelectItem value="NX-OS 9.3">NX-OS 9.3</SelectItem>
+                  <SelectItem value="JunOS 21.2">JunOS 21.2</SelectItem>
+                  <SelectItem value="ONTAP 9.10">ONTAP 9.10</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterSite} onValueChange={setFilterSite}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Site" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sites</SelectItem>
+                  <SelectItem value="DC-East">DC-East</SelectItem>
+                  <SelectItem value="DC-West">DC-West</SelectItem>
+                  <SelectItem value="DC-North">DC-North</SelectItem>
+                  <SelectItem value="DC-South">DC-South</SelectItem>
+                  <SelectItem value="DC-Central">DC-Central</SelectItem>
+                  <SelectItem value="DC1">DC1</SelectItem>
+                  <SelectItem value="DC2">DC2</SelectItem>
+                  <SelectItem value="DC3">DC3</SelectItem>
+                  <SelectItem value="DC4">DC4</SelectItem>
+                  <SelectItem value="DC5">DC5</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterBuilding} onValueChange={setFilterBuilding}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Building" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Buildings</SelectItem>
+                  <SelectItem value="Building-A">Building A</SelectItem>
+                  <SelectItem value="Building-B">Building B</SelectItem>
+                  <SelectItem value="Building-C">Building C</SelectItem>
+                  <SelectItem value="Building-D">Building D</SelectItem>
+                  <SelectItem value="Building-E">Building E</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -635,7 +788,7 @@ const ServerInventory = () => {
               <TableHead>Allocation</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Environment</TableHead>
-              <TableHead>Updated</TableHead>
+              <TableHead>Warranty</TableHead>
               {canEdit && <TableHead className="w-[100px]">Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -682,10 +835,7 @@ const ServerInventory = () => {
                   </TableCell>
                   <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
                   <TableCell className="whitespace-nowrap">
-                    {new Date(server.updated_at).toLocaleDateString()}
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(server.updated_at).toLocaleTimeString()}
-                    </div>
+                    {server.warranty || '-'}
                   </TableCell>
                   {canEdit && (
                     <TableCell>
@@ -715,9 +865,8 @@ const ServerInventory = () => {
         </Table>
 
         {/* Summary */}
-        <div className="mt-6 flex flex-wrap gap-4 text-sm text-gray-600">
+        <div className="mt-6 text-sm text-gray-600">
           <div>Total Servers: {filteredServers.length}</div>
-          <div>Production: {filteredServers.filter(s => s.environment === 'Production').length}</div>
         </div>
       </CardContent>
     </Card>
