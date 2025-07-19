@@ -4,9 +4,9 @@ serve(async (req) => {
   const url = new URL(req.url)
   
   try {
-    // Filter servers endpoint
-    if (url.pathname === '/filter-servers' && (req.method === 'POST' || req.method === 'GET')) {
-      const { handler } = await import('../filter-servers/index.ts')
+    // Get enums endpoint
+    if (url.pathname === '/get-enums' && req.method === 'GET') {
+      const { handler } = await import('../get-enums/index.ts')
       return await handler(req)
     }
 

@@ -32,6 +32,24 @@ CREATE TYPE public.environment_type AS ENUM ('Production', 'Testing', 'Pre-Produ
 -- Server status types
 CREATE TYPE public.server_status AS ENUM ('Active', 'Ready' ,'Inactive', 'Maintenance', 'Decommissioned', 'Retired');
 
+-- Rack types
+CREATE TYPE public.rack_type AS ENUM (
+  'RACK-01', 'RACK-02', 'RACK-03', 'RACK-04', 'RACK-05',
+  'RACK-06', 'RACK-07', 'RACK-08', 'RACK-09', 'RACK-10',
+  'RACK-11', 'RACK-12', 'RACK-15', 'RACK-20', 'RACK-25',
+  'RACK-30', 'RACK-31'
+);
+
+-- Unit position types
+CREATE TYPE public.unit_type AS ENUM (
+  'U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U7', 'U8', 'U9', 'U10',
+  'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19', 'U20',
+  'U21', 'U22', 'U23', 'U24', 'U25', 'U26', 'U27', 'U28', 'U29', 'U30',
+  'U31', 'U32', 'U33', 'U34', 'U35', 'U36', 'U37', 'U38', 'U39', 'U40',
+  'U41', 'U42', 'U43', 'U44', 'U45', 'U46', 'U47', 'U48', 'U49', 'U50',
+  'U51', 'U52', 'U53'
+);
+
 -- Brand types
 CREATE TYPE public.brand_type AS ENUM ('Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE','Meta Brain');
 
@@ -113,8 +131,8 @@ CREATE TABLE public.servers (
     allocation public.allocation_type,
     status public.server_status DEFAULT 'Active'::public.server_status,
     device_type public.device_type NOT NULL,
-    rack TEXT,
-    unit TEXT,
+    rack public.rack_type,
+    unit public.unit_type,
     warranty DATE,
     notes TEXT,
     environment public.environment_type,
@@ -500,3 +518,94 @@ BEGIN
   RAISE NOTICE '==================================================';
 END;
 $$;
+
+-- ============================================================================
+-- 7. UTILITY FUNCTIONS
+-- ============================================================================
+
+-- Function to get all enum values for the application
+CREATE OR REPLACE FUNCTION public.get_enum_values()
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  result json;
+BEGIN
+  SELECT json_build_object(
+    'status', ARRAY['Active', 'Ready', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
+    'deviceTypes', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'device_type'
+    ),
+    'allocationTypes', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'allocation_type'
+    ),
+    'environmentTypes', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'environment_type'
+    ),
+    'brands', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'brand_type'
+    ),
+    'models', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'model_type'
+    ),
+    'osTypes', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'os_type'
+    ),
+    'sites', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'site_type'
+    ),
+    'buildings', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'building_type'
+    ),
+    'racks', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'rack_type'
+    ),
+    'units', (
+      SELECT array_agg(enumlabel ORDER BY enumsortorder)
+      FROM pg_enum 
+      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
+      WHERE pg_type.typname = 'unit_type'
+    )
+  ) INTO result;
+  
+  RETURN result;
+END;
+$$;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION public.get_enum_values() TO authenticated;
+
+-- Comment for documentation
+COMMENT ON FUNCTION public.get_enum_values() IS 'Returns all enum values used in the application as a JSON object';
+
+-- ============================================================================
+-- END OF MIGRATION
+-- ============================================================================

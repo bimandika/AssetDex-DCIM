@@ -87,6 +87,7 @@ const ServerInventory = () => {
   const [filterOS, setFilterOS] = useState<string>("all");
   const [filterSite, setFilterSite] = useState<string>("all");
   const [filterBuilding, setFilterBuilding] = useState<string>("all");
+  const [filterRack, setFilterRack] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
@@ -143,7 +144,7 @@ const ServerInventory = () => {
 
   useEffect(() => {
     filterServers();
-  }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding, filterStatus]);
+  }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding, filterRack, filterStatus]);
 
   // Define the database server type that matches what Supabase returns
   type DatabaseServer = {
@@ -272,6 +273,10 @@ const ServerInventory = () => {
 
     if (filterBuilding !== "all") {
       filtered = filtered.filter(server => server.dc_building === filterBuilding);
+    }
+
+    if (filterRack !== "all") {
+      filtered = filtered.filter(server => server.rack === filterRack);
     }
 
     if (filterStatus !== "all") {
@@ -1021,6 +1026,21 @@ const ServerInventory = () => {
                   <SelectItem value="Building-D">Building D</SelectItem>
                   <SelectItem value="Building-E">Building E</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterRack} onValueChange={setFilterRack}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Rack" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Racks</SelectItem>
+                  {Array.from({ length: 31 }, (_, i) => (
+                    <SelectItem key={`RACK-${String(i + 1).padStart(2, '0')}`} 
+                              value={`RACK-${String(i + 1).padStart(2, '0')}`}>
+                      RACK-{String(i + 1).padStart(2, '0')}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
