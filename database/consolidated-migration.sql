@@ -29,6 +29,30 @@ CREATE TYPE public.allocation_type AS ENUM ('IAAS', 'PAAS', 'SAAS', 'Load Balanc
 -- Environment types
 CREATE TYPE public.environment_type AS ENUM ('Production', 'Testing', 'Pre-Production', 'Development');
 
+-- Brand types
+CREATE TYPE public.brand_type AS ENUM ('Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE','Meta Brain');
+
+-- Model types
+CREATE TYPE public.model_type AS ENUM (
+  'PowerEdge R740', 'PowerEdge R750', 'PowerEdge R750xd', 'PowerVault ME4', 
+  'ProLiant DL380', 'ProLiant DL360', 'Apollo 4510', 'ASA 5525-X', 
+  'Nexus 93180YC-EX', 'MX204', 'AFF A400', 'Other'
+);
+
+-- Operating System types
+CREATE TYPE public.os_type AS ENUM (
+  'Ubuntu 22.04 LTS', 'Ubuntu 20.04 LTS', 'RHEL 8', 'CentOS 7', 
+  'Oracle Linux 8', 'Windows Server 2022', 'Windows Server 2019',
+  'Storage OS 2.1', 'Cisco ASA 9.16', 'NX-OS 9.3', 'JunOS 21.2',
+  'ONTAP 9.10', 'Other'
+);
+
+-- Data Center Site types
+CREATE TYPE public.site_type AS ENUM ('DC-East', 'DC-West', 'DC-North', 'DC-South', 'DC-Central','DC1','DC2','DC3','DC4','DC5');
+
+-- Building types
+CREATE TYPE public.building_type AS ENUM ('Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other');
+
 -- ============================================================================
 -- 2. TABLES
 -- ============================================================================
@@ -74,179 +98,145 @@ CREATE TABLE public.servers (
     id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
     serial_number TEXT,
     hostname TEXT NOT NULL,
-    brand TEXT,
-    model TEXT,
+    brand public.brand_type,
+    model public.model_type,
     ip_address TEXT,
     ip_oob TEXT,
-    operating_system TEXT,
-    dc_site TEXT NOT NULL,
-    dc_building TEXT,
+    operating_system public.os_type,
+    dc_site public.site_type NOT NULL,
+    dc_building public.building_type,
     dc_floor TEXT,
     dc_room TEXT,
     allocation public.allocation_type,
     status TEXT DEFAULT 'Active'::text,
     device_type public.device_type NOT NULL,
-    warranty TEXT,
+    warranty DATE,
     notes TEXT,
     environment public.environment_type,
     created_by UUID,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    CONSTRAINT valid_warranty CHECK (warranty IS NULL OR warranty >= CURRENT_DATE)
 );
 
 -- ============================================================================
 -- 3. SAMPLE DATA
 -- ============================================================================
 
--- Insert sample server records
+-- Insert 25 sample server records with valid enum values
 INSERT INTO public.servers (
   id, serial_number, hostname, brand, model, ip_address, ip_oob, operating_system,
   dc_site, dc_building, dc_floor, dc_room,
   allocation, environment, status, device_type, warranty, notes, created_by, created_at, updated_at
 ) VALUES
--- Production Web Servers
+-- Production Web Servers (1-5)
 (gen_random_uuid(), 'SN12345678', 'web-prod-01', 'Dell', 'PowerEdge R740', '192.168.1.10', '10.0.0.1', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', '3 Years, Expires 2025-12-31', 'Primary web server', 
+ 'IAAS', 'Production', 'Active', 'Server', '2025-12-31', 'Primary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN12345679', 'web-prod-02', 'Dell', 'PowerEdge R740', '192.168.1.11', '10.0.0.2', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', '3 Years, Expires 2025-12-31', 'Secondary web server',
+ 'IAAS', 'Production', 'Active', 'Server', '2025-12-31', 'Secondary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Database Servers
+-- Database Servers (6-10)
 (gen_random_uuid(), 'SN23456789', 'db-primary-01', 'HPE', 'ProLiant DL380', '192.168.1.20', '10.0.0.3', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', '5 Years, Expires 2027-06-30', 'Primary database server',
+ 'Database', 'Production', 'Active', 'Server', '2027-06-30', 'Primary database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN23456780', 'db-replica-01', 'HPE', 'ProLiant DL380', '192.168.1.21', '10.0.0.4', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', '5 Years, Expires 2027-06-30', 'Database replica',
+ 'Database', 'Production', 'Active', 'Server', '2027-06-30', 'Database replica',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Storage
+-- Storage (11-15)
 (gen_random_uuid(), 'SN34567890', 'storage-01', 'Dell', 'PowerVault ME4', '192.168.1.30', '10.0.0.5', 'Storage OS 2.1',
  'DC-West', 'Building-B', '2', '201',
- 'PAAS', 'Production', 'Active', 'Storage', '5 Years, Expires 2026-09-30', 'Primary storage array',
+ 'PAAS', 'Production', 'Active', 'Storage', '2026-09-30', 'Primary storage array',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Network Equipment
-(gen_random_uuid(), 'SN45678901', 'fw-01', 'Cisco', 'ASA 5525-X', '192.168.1.40', '10.0.0.6', 'Cisco ASA 9.16',
- 'DC-East', 'Building-A', '1', '103',
- 'Load Balancer', 'Production', 'Active', 'Network', '3 Years, Expires 2025-03-31', 'Main firewall',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Development Servers
-(gen_random_uuid(), 'SN56789012', 'dev-app-01', 'Dell', 'PowerEdge R640', '192.168.1.50', '10.0.0.7', 'CentOS 7',
- 'DC-Central', 'Building-C', '3', '301',
- 'IAAS', 'Development', 'Active', 'Server', '1 Year, Expires 2024-12-31', 'Development app server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Testing Environment
-(gen_random_uuid(), 'SN67890123', 'test-db-01', 'HPE', 'ProLiant DL360', '192.168.2.10', '10.0.0.8', 'PostgreSQL 14',
- 'DC-South', 'Building-D', '1', '105',
- 'Database', 'Testing', 'Active', 'Server', '2 Years, Expires 2025-06-30', 'Test database server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Pre-Production
-(gen_random_uuid(), 'SN78901234', 'stage-web-01', 'Dell', 'PowerEdge R740', '192.168.3.10', '10.0.0.9', 'Ubuntu 20.04 LTS',
- 'DC-North', 'Building-E', '2', '205',
- 'IAAS', 'Pre-Production', 'Active', 'Server', '2 Years, Expires 2024-12-31', 'Staging web server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Backup Storage
-(gen_random_uuid(), 'SN89012345', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.1.60', '10.0.0.10', 'Storage OS 2.1',
- 'DC-West', 'Building-B', '2', '202',
- 'PAAS', 'Production', 'Active', 'Storage', '5 Years, Expires 2026-09-30', 'Backup storage array',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Application Servers
-(gen_random_uuid(), 'SN90123456', 'app-prod-01', 'Dell', 'PowerEdge R750', '192.168.4.10', '10.0.1.11', 'RHEL 8',
- 'DC-East', 'Building-A', '2', '201',
- 'IAAS', 'Production', 'Active', 'Server', '3 Years, Expires 2025-12-31', 'Primary application server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN90123457', 'app-dev-01', 'HPE', 'ProLiant DL360', '192.168.5.10', '10.0.2.11', 'Ubuntu 22.04 LTS',
- 'DC-Central', 'Building-C', '2', '302',
- 'IAAS', 'Development', 'Active', 'Server', '2 Years, Expires 2024-12-31', 'Development environment server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Database Servers
-(gen_random_uuid(), 'SN90123458', 'db-mysql-01', 'Dell', 'PowerEdge R740xd', '192.168.6.10', '10.0.3.11', 'MySQL 8.0',
- 'DC-West', 'Building-B', '1', '102',
- 'Database', 'Production', 'Active', 'Server', '4 Years, Expires 2026-06-30', 'MySQL database server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN90123459', 'db-mongodb-01', 'HPE', 'Apollo 4510', '192.168.6.11', '10.0.3.12', 'MongoDB 6.0',
- 'DC-West', 'Building-B', '1', '103',
- 'Database', 'Production', 'Active', 'Server', '4 Years, Expires 2026-06-30', 'MongoDB NoSQL server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Network Devices
-(gen_random_uuid(), 'SN90123460', 'core-sw-01', 'Cisco', 'Nexus 93180YC-EX', '192.168.7.10', '10.0.4.11', 'NX-OS 9.3',
- 'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', '5 Years, Expires 2027-01-31', 'Core network switch A',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN90123461', 'edge-rtr-01', 'Juniper', 'MX204', '192.168.7.11', '10.0.4.12', 'JunOS 21.2',
- 'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', '5 Years, Expires 2027-01-31', 'Edge router for internet connectivity',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Storage
-(gen_random_uuid(), 'SN90123462', 'nas-archive-01', 'NetApp', 'AFF A400', '192.168.8.10', '10.0.5.11', 'ONTAP 9.10',
+(gen_random_uuid(), 'SN34567891', 'nas-archive-01', 'NetApp', 'AFF A400', '192.168.1.31', '10.0.0.6', 'ONTAP 9.10',
  'DC-North', 'Building-D', '1', '301',
- 'PAAS', 'Production', 'Active', 'Storage', '5 Years, Expires 2027-03-31', 'High-performance NAS for archive',
+ 'PAAS', 'Production', 'Active', 'Storage', '2027-03-31', 'High-performance NAS',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Monitoring and Management
-(gen_random_uuid(), 'SN90123463', 'mon-01', 'Dell', 'PowerEdge R6515', '192.168.9.10', '10.0.6.11', 'CentOS 8',
- 'DC-Central', 'Building-C', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', '3 Years, Expires 2025-09-30', 'Primary monitoring server',
+-- Network Devices (16-20)
+(gen_random_uuid(), 'SN45678901', 'core-sw-01', 'Cisco', 'Nexus 93180YC-EX', '192.168.1.40', '10.0.0.7', 'NX-OS 9.3',
+ 'DC-East', 'Building-A', '1', 'MDF',
+ 'IAAS', 'Production', 'Active', 'Network', '2026-09-30', 'Core switch 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Test Environment
-(gen_random_uuid(), 'SN90123464', 'test-app-01', 'HPE', 'ProLiant DL380', '192.168.10.10', '10.0.7.11', 'Windows Server 2022',
- 'DC-South', 'Building-D', '2', '201',
- 'IAAS', 'Testing', 'Active', 'Server', '2 Years, Expires 2024-12-31', 'Windows application test server',
+(gen_random_uuid(), 'SN45678902', 'fw-01', 'Cisco', 'ASA 5525-X', '192.168.1.50', '10.0.0.8', 'Cisco ASA 9.16',
+ 'DC-East', 'Building-A', '1', 'MDF',
+ 'Load Balancer', 'Production', 'Active', 'Network', '2027-01-31', 'Main firewall',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Staging Environment
-(gen_random_uuid(), 'SN90123465', 'stage-db-01', 'Dell', 'PowerEdge R740', '192.168.11.10', '10.0.8.11', 'PostgreSQL 14',
+-- Development Servers (21-25)
+(gen_random_uuid(), 'SN56789012', 'dev-app-01', 'Dell', 'PowerEdge R750', '192.168.1.60', '10.0.1.1', 'Ubuntu 22.04 LTS',
+ 'DC-Central', 'Building-C', '3', '301',
+ 'IAAS', 'Development', 'Active', 'Server', '2025-12-31', 'Development app server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN56789013', 'dev-db-01', 'Dell', 'PowerEdge R740', '192.168.1.61', '10.0.1.2', 'Oracle Linux 8',
+ 'DC-Central', 'Building-C', '3', '302',
+ 'Database', 'Development', 'Active', 'Server', '2025-12-31', 'Development database',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Testing Environment (26-30)
+(gen_random_uuid(), 'SN67890123', 'test-db-01', 'HPE', 'ProLiant DL360', '192.168.2.10', '10.0.2.1', 'Oracle Linux 8',
+ 'DC-South', 'Building-D', '1', '105',
+ 'Database', 'Testing', 'Active', 'Server', '2026-06-30', 'Test database server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN67890124', 'test-app-01', 'Dell', 'PowerEdge R740', '192.168.2.11', '10.0.2.2', 'Ubuntu 20.04 LTS',
+ 'DC-South', 'Building-D', '1', '105',
+ 'IAAS', 'Testing', 'Active', 'Server', '2026-06-30', 'Test application server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Additional Servers (31-35)
+(gen_random_uuid(), 'SN78901234', 'stage-web-01', 'Dell', 'PowerEdge R740', '192.168.3.10', '10.0.3.1', 'Ubuntu 20.04 LTS',
+ 'DC-North', 'Building-E', '2', '205',
+ 'IAAS', 'Pre-Production', 'Active', 'Server', '2025-12-31', 'Staging web server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN78901235', 'stage-db-01', 'Dell', 'PowerEdge R740', '192.168.3.11', '10.0.3.2', 'RHEL 8',
  'DC-North', 'Building-E', '2', '206',
- 'Database', 'Pre-Production', 'Active', 'Server', '3 Years, Expires 2025-12-31', 'Pre-Production database server',
+ 'Database', 'Pre-Production', 'Active', 'Server', '2026-12-31', 'Staging database',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Backup Servers
-(gen_random_uuid(), 'SN90123466', 'backup-01', 'HPE', 'ProLiant DL380', '192.168.12.10', '10.0.9.11', 'RHEL 8',
- 'DC-West', 'Building-B', '2', '203',
- 'IAAS', 'Production', 'Active', 'Server', '4 Years, Expires 2026-06-30', 'Primary backup server',
+-- Additional Network (36-40)
+(gen_random_uuid(), 'SN89012345', 'edge-rtr-01', 'Juniper', 'MX204', '192.168.4.10', '10.0.4.1', 'JunOS 21.2',
+ 'DC-East', 'Building-A', '1', 'MDF',
+ 'IAAS', 'Production', 'Active', 'Network', '2027-01-31', 'Edge router',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Development Servers
-(gen_random_uuid(), 'SN90123467', 'dev-db-01', 'Dell', 'PowerEdge R640', '192.168.13.10', '10.1.0.11', 'MySQL 8.0',
+(gen_random_uuid(), 'SN89012346', 'core-sw-02', 'Cisco', 'Nexus 93180YC-EX', '192.168.4.11', '10.0.4.2', 'NX-OS 9.3',
+ 'DC-East', 'Building-A', '1', 'MDF',
+ 'IAAS', 'Production', 'Active', 'Network', '2026-09-30', 'Core switch 2',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Additional Storage (41-45)
+(gen_random_uuid(), 'SN90123456', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.5.10', '10.0.5.1', 'Storage OS 2.1',
+ 'DC-West', 'Building-B', '2', '202',
+ 'PAAS', 'Production', 'Active', 'Storage', '2026-09-30', 'Backup storage array',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN90123457', 'dev-stor-01', 'Dell', 'PowerVault ME4', '192.168.5.11', '10.0.5.2', 'Storage OS 2.1',
  'DC-Central', 'Building-C', '3', '303',
- 'Database', 'Development', 'Active', 'Server', '2 Years, Expires 2024-12-31', 'Development database server',
+ 'PAAS', 'Development', 'Active', 'Storage', '2026-12-31', 'Development storage',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Network Security
-(gen_random_uuid(), 'SN90123468', 'ids-01', 'Palo Alto', 'PA-3220', '192.168.14.10', '10.1.1.11', 'PAN-OS 10.2',
- 'DC-East', 'Building-A', '1', '104',
- 'IAAS', 'Production', 'Active', 'Network', '5 Years, Expires 2027-05-31', 'Intrusion detection system',
+-- Additional Application Servers (46-50)
+(gen_random_uuid(), 'SN90123458', 'app-prod-01', 'Dell', 'PowerEdge R750', '192.168.6.10', '10.0.6.1', 'RHEL 8',
+ 'DC-East', 'Building-A', '2', '201',
+ 'IAAS', 'Production', 'Active', 'Server', '2026-12-31', 'Application server 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Storage for Development
-(gen_random_uuid(), 'SN90123469', 'dev-stor-01', 'Dell', 'PowerVault ME4024', '192.168.15.10', '10.1.2.11', 'Storage OS 2.1',
- 'DC-Central', 'Building-C', '3', '304',
- 'PAAS', 'Development', 'Active', 'Storage', '3 Years, Expires 2025-12-31', 'Development storage array',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Load Balancer
-(gen_random_uuid(), 'SN90123470', 'lb-02', 'F5', 'BIG-IP 1600', '192.168.16.10', '10.1.3.11', 'BIG-IP 16.1',
- 'DC-East', 'Building-A', '1', '105',
- 'Load Balancer', 'Production', 'Active', 'Network', '5 Years, Expires 2027-02-28', 'Secondary load balancer',
+(gen_random_uuid(), 'SN90123459', 'app-prod-02', 'HPE', 'ProLiant DL380', '192.168.6.11', '10.0.6.2', 'RHEL 8',
+ 'DC-East', 'Building-A', '2', '201',
+ 'IAAS', 'Production', 'Active', 'Server', '2026-12-31', 'Application server 2',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now());
 
 -- ============================================================================

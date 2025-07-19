@@ -165,7 +165,7 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
         'Production',
         'Active',
         'Server',
-        '3 Years, Expires 12/31/2025',
+        '2025-12-31',
         'Primary production server'
       ],
       [
@@ -183,8 +183,8 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
         'Database',
         'Production',
         'Active',
-        'Database Server',
-        '5 Years, Expires 06/30/2027',
+        'Server',
+        '2027-06-30',
         'Primary database server'
       ],
       [
@@ -203,7 +203,7 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
         'Production',
         'Active',
         'Storage',
-        '5 Years, Expires 09/30/2026',
+        '2026-09-30',
         'Primary storage array'
       ],
       [
@@ -222,14 +222,14 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
         'Production',
         'Active',
         'Network',
-        '3 Years, Expires 03/31/2025',
+        '2025-03-31',
         'Main firewall'
       ],
       [
         'SN5678901',
         'dev-app-01',
         'Dell',
-        'PowerEdge R640',
+        'PowerEdge R750',
         '192.168.2.100',
         '10.0.1.1',
         'CentOS 7',
@@ -240,8 +240,8 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
         'IAAS',
         'Development',
         'Active',
-        'Application Server',
-        '1 Year, Expires 12/31/2024',
+        'Server',
+        '2024-12-31',
         'Development application server'
       ]
     ];
