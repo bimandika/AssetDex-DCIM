@@ -29,6 +29,9 @@ CREATE TYPE public.allocation_type AS ENUM ('IAAS', 'PAAS', 'SAAS', 'Load Balanc
 -- Environment types
 CREATE TYPE public.environment_type AS ENUM ('Production', 'Testing', 'Pre-Production', 'Development');
 
+-- Server status types
+CREATE TYPE public.server_status AS ENUM ('Active', 'Ready' ,'Inactive', 'Maintenance', 'Decommissioned', 'Retired');
+
 -- Brand types
 CREATE TYPE public.brand_type AS ENUM ('Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE','Meta Brain');
 
@@ -108,8 +111,10 @@ CREATE TABLE public.servers (
     dc_floor TEXT,
     dc_room TEXT,
     allocation public.allocation_type,
-    status TEXT DEFAULT 'Active'::text,
+    status public.server_status DEFAULT 'Active'::public.server_status,
     device_type public.device_type NOT NULL,
+    rack TEXT,
+    unit TEXT,
     warranty DATE,
     notes TEXT,
     environment public.environment_type,
@@ -122,121 +127,143 @@ CREATE TABLE public.servers (
 -- ============================================================================
 -- 3. SAMPLE DATA
 -- ============================================================================
-
 -- Insert 25 sample server records with valid enum values
 INSERT INTO public.servers (
   id, serial_number, hostname, brand, model, ip_address, ip_oob, operating_system,
   dc_site, dc_building, dc_floor, dc_room,
-  allocation, environment, status, device_type, warranty, notes, created_by, created_at, updated_at
+  allocation, environment, status, device_type, rack, unit, warranty, notes, created_by, created_at, updated_at
 ) VALUES
--- Production Web Servers (1-5)
-(gen_random_uuid(), 'SN12345678', 'web-prod-01', 'Dell', 'PowerEdge R740', '192.168.1.10', '10.0.0.1', 'Ubuntu 22.04 LTS',
+-- Production Web Servers (1-3)
+(gen_random_uuid(), 'SN2023W001', 'web-prod-01', 'Dell', 'PowerEdge R740', '192.168.1.10', '10.0.0.1', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', '2025-12-31', 'Primary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U42', '2025-12-31', 'Primary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN12345679', 'web-prod-02', 'Dell', 'PowerEdge R740', '192.168.1.11', '10.0.0.2', 'Ubuntu 22.04 LTS',
+(gen_random_uuid(), 'SN2023W002', 'web-prod-02', 'Dell', 'PowerEdge R740', '192.168.1.11', '10.0.0.2', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', '2025-12-31', 'Secondary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U43', '2025-12-31', 'Secondary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Database Servers (6-10)
-(gen_random_uuid(), 'SN23456789', 'db-primary-01', 'HPE', 'ProLiant DL380', '192.168.1.20', '10.0.0.3', 'Oracle Linux 8',
+(gen_random_uuid(), 'SN2023W003', 'web-prod-03', 'Dell', 'PowerEdge R750', '192.168.1.12', '10.0.0.3', 'Ubuntu 22.04 LTS',
+ 'DC-East', 'Building-A', '1', '101',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U44', '2025-12-31', 'Tertiary web server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Database Servers (4-6)
+(gen_random_uuid(), 'SN2023D001', 'db-primary-01', 'HPE', 'ProLiant DL380', '192.168.2.10', '10.0.0.4', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', '2027-06-30', 'Primary database server',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U20', '2026-06-30', 'Primary database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN23456780', 'db-replica-01', 'HPE', 'ProLiant DL380', '192.168.1.21', '10.0.0.4', 'Oracle Linux 8',
+(gen_random_uuid(), 'SN2023D002', 'db-replica-01', 'HPE', 'ProLiant DL380', '192.168.2.11', '10.0.0.5', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', '2027-06-30', 'Database replica',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U21', '2026-06-30', 'Database replica 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Storage (11-15)
-(gen_random_uuid(), 'SN34567890', 'storage-01', 'Dell', 'PowerVault ME4', '192.168.1.30', '10.0.0.5', 'Storage OS 2.1',
+(gen_random_uuid(), 'SN2023D003', 'db-backup-01', 'Dell', 'PowerEdge R750', '192.168.2.12', '10.0.0.6', 'RHEL 8',
+ 'DC-West', 'Building-B', '1', '201',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-10', 'U15', '2026-06-30', 'Backup database server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Storage (7-9)
+(gen_random_uuid(), 'SN2023S001', 'storage-01', 'Dell', 'PowerVault ME4', '192.168.3.10', '10.0.0.7', 'Storage OS 2.1',
  'DC-West', 'Building-B', '2', '201',
- 'PAAS', 'Production', 'Active', 'Storage', '2026-09-30', 'Primary storage array',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-11', 'U10', '2026-09-30', 'Primary storage array',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN34567891', 'nas-archive-01', 'NetApp', 'AFF A400', '192.168.1.31', '10.0.0.6', 'ONTAP 9.10',
+(gen_random_uuid(), 'SN2023S002', 'nas-archive-01', 'NetApp', 'AFF A400', '192.168.3.11', '10.0.0.8', 'ONTAP 9.10',
  'DC-North', 'Building-D', '1', '301',
- 'PAAS', 'Production', 'Active', 'Storage', '2027-03-31', 'High-performance NAS',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-15', 'U15', '2027-03-31', 'High-performance NAS',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Network Devices (16-20)
-(gen_random_uuid(), 'SN45678901', 'core-sw-01', 'Cisco', 'Nexus 93180YC-EX', '192.168.1.40', '10.0.0.7', 'NX-OS 9.3',
+(gen_random_uuid(), 'SN2023S003', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.3.12', '10.0.0.9', 'Storage OS 2.1',
+ 'DC-South', 'Building-E', '1', '401',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-20', 'U20', '2026-12-31', 'Backup storage array',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Network Devices (10-12)
+(gen_random_uuid(), 'SN2023N001', 'core-sw-01', 'Cisco', 'Nexus 93180YC-EX', '192.168.4.10', '10.0.0.10', 'NX-OS 9.3',
  'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', '2026-09-30', 'Core switch 1',
+ 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U1', '2026-09-30', 'Core switch 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN45678902', 'fw-01', 'Cisco', 'ASA 5525-X', '192.168.1.50', '10.0.0.8', 'Cisco ASA 9.16',
+(gen_random_uuid(), 'SN2023N002', 'fw-01', 'Cisco', 'ASA 5525-X', '192.168.4.11', '10.0.0.11', 'Cisco ASA 9.16',
  'DC-East', 'Building-A', '1', 'MDF',
- 'Load Balancer', 'Production', 'Active', 'Network', '2027-01-31', 'Main firewall',
+ 'Load Balancer', 'Production', 'Active', 'Network', 'RACK-01', 'U2', '2027-01-31', 'Main firewall',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Development Servers (21-25)
-(gen_random_uuid(), 'SN56789012', 'dev-app-01', 'Dell', 'PowerEdge R750', '192.168.1.60', '10.0.1.1', 'Ubuntu 22.04 LTS',
+(gen_random_uuid(), 'SN2023N003', 'edge-rtr-01', 'Juniper', 'MX204', '192.168.4.12', '10.0.0.12', 'JunOS 21.2',
+ 'DC-East', 'Building-A', '1', 'MDF',
+ 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U3', '2027-01-31', 'Edge router',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Development Servers (13-15)
+(gen_random_uuid(), 'SN2023D004', 'dev-app-01', 'Dell', 'PowerEdge R750', '192.168.5.10', '10.0.1.1', 'Ubuntu 22.04 LTS',
  'DC-Central', 'Building-C', '3', '301',
- 'IAAS', 'Development', 'Active', 'Server', '2025-12-31', 'Development app server',
+ 'IAAS', 'Development', 'Active', 'Server', 'RACK-30', 'U15', '2025-12-31', 'Development app server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN56789013', 'dev-db-01', 'Dell', 'PowerEdge R740', '192.168.1.61', '10.0.1.2', 'Oracle Linux 8',
+(gen_random_uuid(), 'SN2023D005', 'dev-db-01', 'Dell', 'PowerEdge R740', '192.168.5.11', '10.0.1.2', 'Oracle Linux 8',
  'DC-Central', 'Building-C', '3', '302',
- 'Database', 'Development', 'Active', 'Server', '2025-12-31', 'Development database',
+ 'Database', 'Development', 'Active', 'Server', 'RACK-30', 'U16', '2025-12-31', 'Development database',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Testing Environment (26-30)
-(gen_random_uuid(), 'SN67890123', 'test-db-01', 'HPE', 'ProLiant DL360', '192.168.2.10', '10.0.2.1', 'Oracle Linux 8',
- 'DC-South', 'Building-D', '1', '105',
- 'Database', 'Testing', 'Active', 'Server', '2026-06-30', 'Test database server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN67890124', 'test-app-01', 'Dell', 'PowerEdge R740', '192.168.2.11', '10.0.2.2', 'Ubuntu 20.04 LTS',
- 'DC-South', 'Building-D', '1', '105',
- 'IAAS', 'Testing', 'Active', 'Server', '2026-06-30', 'Test application server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Servers (31-35)
-(gen_random_uuid(), 'SN78901234', 'stage-web-01', 'Dell', 'PowerEdge R740', '192.168.3.10', '10.0.3.1', 'Ubuntu 20.04 LTS',
- 'DC-North', 'Building-E', '2', '205',
- 'IAAS', 'Pre-Production', 'Active', 'Server', '2025-12-31', 'Staging web server',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN78901235', 'stage-db-01', 'Dell', 'PowerEdge R740', '192.168.3.11', '10.0.3.2', 'RHEL 8',
- 'DC-North', 'Building-E', '2', '206',
- 'Database', 'Pre-Production', 'Active', 'Server', '2026-12-31', 'Staging database',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Network (36-40)
-(gen_random_uuid(), 'SN89012345', 'edge-rtr-01', 'Juniper', 'MX204', '192.168.4.10', '10.0.4.1', 'JunOS 21.2',
- 'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', '2027-01-31', 'Edge router',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN89012346', 'core-sw-02', 'Cisco', 'Nexus 93180YC-EX', '192.168.4.11', '10.0.4.2', 'NX-OS 9.3',
- 'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', '2026-09-30', 'Core switch 2',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
--- Additional Storage (41-45)
-(gen_random_uuid(), 'SN90123456', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.5.10', '10.0.5.1', 'Storage OS 2.1',
- 'DC-West', 'Building-B', '2', '202',
- 'PAAS', 'Production', 'Active', 'Storage', '2026-09-30', 'Backup storage array',
- (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
-
-(gen_random_uuid(), 'SN90123457', 'dev-stor-01', 'Dell', 'PowerVault ME4', '192.168.5.11', '10.0.5.2', 'Storage OS 2.1',
+(gen_random_uuid(), 'SN2023D006', 'dev-web-01', 'HPE', 'ProLiant DL360', '192.168.5.12', '10.0.1.3', 'Ubuntu 22.04 LTS',
  'DC-Central', 'Building-C', '3', '303',
- 'PAAS', 'Development', 'Active', 'Storage', '2026-12-31', 'Development storage',
+ 'IAAS', 'Development', 'Active', 'Server', 'RACK-31', 'U10', '2025-12-31', 'Development web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
--- Additional Application Servers (46-50)
-(gen_random_uuid(), 'SN90123458', 'app-prod-01', 'Dell', 'PowerEdge R750', '192.168.6.10', '10.0.6.1', 'RHEL 8',
- 'DC-East', 'Building-A', '2', '201',
- 'IAAS', 'Production', 'Active', 'Server', '2026-12-31', 'Application server 1',
+-- Testing Environment (16-18)
+(gen_random_uuid(), 'SN2023T001', 'test-db-01', 'HPE', 'ProLiant DL360', '192.168.6.10', '10.0.2.1', 'Oracle Linux 8',
+ 'DC-South', 'Building-D', '1', '105',
+ 'Database', 'Testing', 'Active', 'Server', 'RACK-25', 'U10', '2026-06-30', 'Test database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
-(gen_random_uuid(), 'SN90123459', 'app-prod-02', 'HPE', 'ProLiant DL380', '192.168.6.11', '10.0.6.2', 'RHEL 8',
+(gen_random_uuid(), 'SN2023T002', 'test-app-01', 'Dell', 'PowerEdge R740', '192.168.6.11', '10.0.2.2', 'Ubuntu 20.04 LTS',
+ 'DC-South', 'Building-D', '1', '105',
+ 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U11', '2026-06-30', 'Test application server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023T003', 'test-web-01', 'HPE', 'ProLiant DL380', '192.168.6.12', '10.0.2.3', 'Ubuntu 20.04 LTS',
+ 'DC-South', 'Building-D', '1', '105',
+ 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U12', '2026-06-30', 'Test web server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Staging Environment (19-21)
+(gen_random_uuid(), 'SN2023S004', 'stage-web-01', 'Dell', 'PowerEdge R740', '192.168.7.10', '10.0.3.1', 'Ubuntu 20.04 LTS',
+ 'DC-North', 'Building-E', '2', '205',
+ 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U25', '2025-12-31', 'Staging web server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023S005', 'stage-db-01', 'Dell', 'PowerEdge R740', '192.168.7.11', '10.0.3.2', 'RHEL 8',
+ 'DC-North', 'Building-E', '2', '206',
+ 'Database', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U26', '2026-12-31', 'Staging database',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023S006', 'stage-app-01', 'HPE', 'ProLiant DL380', '192.168.7.12', '10.0.3.3', 'RHEL 8',
+ 'DC-North', 'Building-E', '2', '207',
+ 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U27', '2026-12-31', 'Staging application server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+-- Additional Servers (22-25)
+(gen_random_uuid(), 'SN2023A001', 'monitor-01', 'Dell', 'PowerEdge R750', '192.168.8.10', '10.0.4.1', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '2', '201',
- 'IAAS', 'Production', 'Active', 'Server', '2026-12-31', 'Application server 2',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U10', '2026-12-31', 'Monitoring server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023A002', 'backup-01', 'HPE', 'ProLiant DL380', '192.168.8.11', '10.0.4.2', 'Ubuntu 22.04 LTS',
+ 'DC-West', 'Building-B', '1', '202',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U15', '2026-12-31', 'Backup server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023A003', 'auth-01', 'Dell', 'PowerEdge R740', '192.168.8.12', '10.0.4.3', 'Ubuntu 22.04 LTS',
+ 'DC-East', 'Building-A', '2', '202',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U11', '2026-12-31', 'Authentication server',
+ (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
+
+(gen_random_uuid(), 'SN2023A004', 'log-01', 'HPE', 'ProLiant DL360', '192.168.8.13', '10.0.4.4', 'Ubuntu 22.04 LTS',
+ 'DC-West', 'Building-B', '1', '203',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U16', '2026-12-31', 'Logging server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now());
 
 -- ============================================================================

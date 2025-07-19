@@ -9,6 +9,54 @@ import { Progress } from "@/components/ui/progress";
 import { Upload, Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// Define valid enum values for validation matching the database schema
+type ValidEnumKey = 'brand' | 'model' | 'operating_system' | 'dc_site' | 'dc_building' | 'allocation' | 'environment' | 'status' | 'device_type';
+type ValidEnums = Record<ValidEnumKey, readonly string[]>;
+
+const validEnums: ValidEnums = {
+  brand: ['Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE', 'Meta Brain'],
+  model: [
+    'PowerEdge R740', 'PowerEdge R750', 'PowerEdge R750xd', 'PowerVault ME4',
+    'ProLiant DL380', 'ProLiant DL360', 'Apollo 4510', 'ASA 5525-X',
+    'Nexus 93180YC-EX', 'MX204', 'AFF A400', 'Other'
+  ],
+  operating_system: [
+    'Ubuntu 22.04 LTS', 'Ubuntu 20.04 LTS', 'RHEL 8', 'CentOS 7',
+    'Oracle Linux 8', 'Windows Server 2022', 'Windows Server 2019',
+    'Storage OS 2.1', 'Cisco ASA 9.16', 'NX-OS 9.3', 'JunOS 21.2',
+    'ONTAP 9.10', 'Other'
+  ],
+  dc_site: ['DC-East', 'DC-West', 'DC-North', 'DC-South', 'DC-Central', 'DC1', 'DC2', 'DC3', 'DC4', 'DC5'],
+  dc_building: ['Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other'],
+  allocation: ['IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database'],
+  environment: ['Production', 'Testing', 'Pre-Production', 'Development'],
+  status: ['Active', 'Ready', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
+  device_type: ['Server', 'Storage', 'Network']
+} as const;
+
+interface ServerImportRow {
+  serial_number?: string;
+  hostname: string;
+  brand?: string;
+  model?: string;
+  ip_address?: string;
+  ip_oob?: string;
+  operating_system?: string;
+  dc_site: string;
+  dc_building?: string;
+  dc_floor?: string;
+  dc_room?: string;
+  allocation?: string;
+  environment?: string;
+  status: string;
+  device_type: string;
+  rack?: string;
+  unit?: string;
+  warranty?: string;
+  notes?: string;
+  [key: string]: string | undefined;
+}
+
 interface BulkImportProps {
   onImportComplete: (count: number) => void;
 }
@@ -47,80 +95,153 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
     }
   };
 
+  const validateRow = (row: ServerImportRow): string[] => {
+    const errors: string[] = [];
+    
+    // Check required fields based on NOT NULL constraints
+    const requiredFields: (keyof ServerImportRow)[] = ['hostname', 'dc_site', 'device_type'];
+    
+    requiredFields.forEach(field => {
+      if (!row[field]?.trim()) {
+        errors.push(`Missing required field: ${field}`);
+      }
+    });
+
+    // Validate enum values with case sensitivity
+    (Object.entries(validEnums) as [ValidEnumKey, readonly string[]][]).forEach(([field, validValues]) => {
+      const value = row[field];
+      if (value && !validValues.includes(value)) {
+        errors.push(`Invalid ${field}: "${value}". Must be one of: ${validValues.join(', ')}`);
+      }
+    });
+
+    // Validate IP addresses (both ip_address and ip_oob are optional but must be valid if provided)
+    const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+    if (row.ip_address && !ipRegex.test(row.ip_address)) {
+      errors.push(`Invalid IP address: ${row.ip_address}`);
+    }
+    if (row.ip_oob && !ipRegex.test(row.ip_oob)) {
+      errors.push(`Invalid OOB IP address: ${row.ip_oob}`);
+    }
+
+    // Validate warranty date format (YYYY-MM-DD) - optional but must be valid if provided
+    if (row.warranty) {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(row.warranty)) {
+        errors.push(`Invalid warranty date format: ${row.warranty}. Use YYYY-MM-DD format.`);
+      } else {
+        const date = new Date(row.warranty);
+        if (isNaN(date.getTime())) {
+          errors.push(`Invalid warranty date: ${row.warranty}`);
+        } else if (date < new Date()) {
+          // Warn but don't block import for past warranty dates
+          console.warn(`Warning: Warranty date ${row.warranty} is in the past`);
+        }
+      }
+    }
+
+    return errors;
+  };
+
+  const parseCSV = (content: string): ServerImportRow[] => {
+    const lines = content.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      throw new Error("File must contain at least a header and one data row");
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[\s-]/g, '_'));
+    const requiredHeaders = ['hostname', 'dc_site', 'device_type'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+    
+    if (missingHeaders.length > 0) {
+      throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
+    }
+
+    return lines.slice(1).map((line, index) => {
+      const values = line.split(',').map(v => v.trim());
+      const row: Partial<ServerImportRow> = {};
+      
+      headers.forEach((header, i) => {
+        if (values[i] !== undefined) {
+          row[header as keyof ServerImportRow] = values[i] || undefined;
+        }
+      });
+      
+      return row as ServerImportRow;
+    });
+  };
+
   const handleImport = async () => {
     if (!file) return;
 
     setIsImporting(true);
     setImportProgress(0);
+    setImportResults(null);
 
     try {
-      // Simulate file processing
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result as string;
-        const lines = content.split('\n').filter(line => line.trim());
-        
-        if (lines.length < 2) {
-          throw new Error("File must contain at least a header and one data row");
-        }
+      const content = await file.text();
+      const rows = parseCSV(content);
+      let successCount = 0;
+      const errors: string[] = [];
 
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
-        const requiredHeaders = [
-          'serialnumber', 'hostname', 'brand', 'model', 
-          'ipaddress', 'ipoob', 'operatingsystem',
-          'dcsite', 'allocation', 'environment', 'status', 
-          'devicetype', 'warranty'
-        ];
-        const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-        
-        if (missingHeaders.length > 0) {
-          throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
-        }
+      // Process each row with progress updates
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowErrors = validateRow(row);
 
-        let successCount = 0;
-        let failedCount = 0;
-        const errors: string[] = [];
-
-        for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',').map(v => v.trim());
-          const row: Record<string, string> = {};
-          
-          headers.forEach((header, index) => {
-            row[header] = values[index] || '';
-          });
-
-          // Simulate processing delay
-          await new Promise(resolve => setTimeout(resolve, 50));
-          
-          // Basic validation
-          const missingFields = requiredHeaders.filter(header => !row[header]);
-          if (missingFields.length > 0) {
-            failedCount++;
-            errors.push(`Row ${i}: Missing required fields - ${missingFields.join(', ')}`);
-          } else {
+        if (rowErrors.length > 0) {
+          errors.push(`Row ${i + 2}: ${rowErrors.join('; ')}`);
+        } else {
+          try {
+            // TODO: Replace with actual API call to save the server
+            // await saveServer(row);
             successCount++;
-            // Here you would actually save to your database
-            console.log('Importing server:', row);
+          } catch (error) {
+            errors.push(`Row ${i + 2}: Failed to save - ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-
-          setImportProgress((i / (lines.length - 1)) * 100);
         }
 
-        setImportResults({ success: successCount, failed: failedCount, errors });
-        onImportComplete(successCount);
-        
-        toast({
-          title: "Import Complete",
-          description: `Successfully imported ${successCount} servers${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
-        });
+        // Update progress
+        setImportProgress(((i + 1) / rows.length) * 100);
+      }
+
+      const failedCount = rows.length - successCount;
+      const results = {
+        success: successCount,
+        failed: failedCount,
+        errors
       };
 
-      reader.readAsText(file);
+      setImportResults(results);
+      onImportComplete(successCount);
+
+      // Show success/error toast
+      if (errors.length === 0) {
+        toast({
+          title: "Import Successful",
+          description: `Successfully imported ${successCount} servers`,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Import Completed with Errors",
+          description: `Imported ${successCount} servers, ${failedCount} failed`,
+          variant: "destructive"
+        });
+      }
     } catch (error) {
+      console.error("Import failed:", error);
       toast({
         title: "Import Failed",
         description: error instanceof Error ? error.message : "An error occurred during import",
         variant: "destructive"
+      });
+      
+      setImportResults({
+        success: 0,
+        failed: 0,
+        errors: [error instanceof Error ? error.message : "Unknown error during import"]
       });
     } finally {
       setIsImporting(false);
@@ -129,120 +250,174 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
 
   const downloadTemplate = () => {
     const headers = [
-      'serial_number',
-      'hostname',
-      'brand',
-      'model',
-      'ip_address',
-      'ip_oob',
-      'operating_system',
-      'dc_site',
-      'dc_building',
-      'dc_floor',
-      'dc_room',
-      'allocation',
-      'environment',
-      'status',
-      'device_type',
-      'warranty',
-      'notes',
+      'hostname',           // Required
+      'dc_site',            // Required
+      'device_type',        // Required
+      'serial_number',      // Optional
+      'brand',              // Optional
+      'model',              // Optional
+      'ip_address',         // Optional
+      'ip_oob',             // Optional
+      'operating_system',   // Optional
+      'dc_building',        // Optional
+      'dc_floor',           // Optional
+      'dc_room',            // Optional
+      'allocation',         // Optional
+      'environment',        // Optional
+      'status',             // Optional
+      'rack',               // Optional
+      'unit',               // Optional
+      'warranty',           // Optional (YYYY-MM-DD format)
+      'notes'               // Optional
     ].join(',');
     
     const exampleData = [
       [
-        'SER12345',
-        'server-01',
-        'Dell',
-        'PowerEdge R740',
-        '192.168.1.100',
-        '10.0.0.1',
-        'Ubuntu 22.04 LTS',
-        'DC-East',
-        'Building-A',
-        '1',
-        '101',
-        'IAAS',
-        'Production',
-        'Active',
-        'Server',
-        '2025-12-31',
-        'Primary production server'
+        'server-01',            // hostname
+        'DC-East',              // dc_site
+        'Server',               // device_type
+        'SER12345',             // serial_number
+        'Dell',                 // brand
+        'PowerEdge R740',       // model
+        '192.168.1.100',        // ip_address
+        '10.0.0.1',            // ip_oob
+        'Ubuntu 22.04 LTS',     // operating_system
+        'Building-A',           // dc_building
+        '1',                    // dc_floor
+        '101',                  // dc_room
+        'IAAS',                 // allocation
+        'Production',           // environment
+        'Active',               // status
+        'RACK-01',             // rack
+        'U42',                 // unit
+        '2025-12-31',          // warranty
+        'Primary production server' // notes
       ],
       [
-        'SN2345678',
         'db-primary-01',
+        'DC-West',
+        'Server',
+        'SN2345678',
         'HPE',
         'ProLiant DL380',
         '192.168.1.101',
         '10.0.0.2',
         'Oracle Linux 8',
-        'DC-West',
         'Building-B',
         '2',
         '205',
         'Database',
         'Production',
         'Active',
-        'Server',
+        'RACK-02',
+        'U12',
         '2027-06-30',
         'Primary database server'
       ],
       [
-        'SN3456789',
         'storage-01',
+        'DC-North',
+        'Storage',
+        'SN3456789',
         'Dell',
         'PowerVault ME4',
         '192.168.1.102',
         '10.0.0.3',
         'Storage OS 2.1',
-        'DC-North',
         'Building-C',
         '1',
         '110',
         'PAAS',
         'Production',
         'Active',
-        'Storage',
+        'RACK-03',
+        'U1-U4',
         '2026-09-30',
         'Primary storage array'
       ],
       [
-        'SN4567890',
         'fw-01',
+        'DC-South',
+        'Network',
+        'SN4567890',
         'Cisco',
         'ASA 5525-X',
         '192.168.1.103',
         '10.0.0.4',
         'Cisco ASA 9.16',
-        'DC-South',
         'Building-A',
         '1',
         '103',
         'Load Balancer',
         'Production',
         'Active',
-        'Network',
+        'RACK-01',
+        'U1',
         '2025-03-31',
         'Main firewall'
       ],
       [
+        'switch-core-01',
+        'DC-Central',
+        'Network',
         'SN5678901',
-        'dev-app-01',
-        'Dell',
-        'PowerEdge R750',
+        'Cisco',
+        'Nexus 93180YC-EX',
         '192.168.2.100',
         '10.0.1.1',
-        'CentOS 7',
-        'DC-Central',
+        'NX-OS 9.3',
         'Building-D',
-        '3',
-        '301',
+        '1',
+        'MDF',
+        'Load Balancer',
+        'Production',
+        'Active',
+        'RACK-04',
+        'U42-U44',
+        '2026-12-31',
+        'Core network switch'
+      ],
+      [
+        'dev-app-01',
+        'DC-East',
+        'Server',
+        'SN6789012',
+        'Dell',
+        'PowerEdge R750',
+        '192.168.2.101',
+        '10.0.1.2',
+        'CentOS 7',
+        'Building-A',
+        '2',
+        '210',
         'IAAS',
         'Development',
         'Active',
-        'Server',
+        'RACK-05',
+        'U15',
         '2024-12-31',
         'Development application server'
+      ],
+      [
+        'test-web-01',
+        'DC-West',
+        'Server',
+        'SN7890123',
+        'HPE',
+        'ProLiant DL360',
+        '192.168.3.100',
+        '10.0.2.1',
+        'Ubuntu 20.04 LTS',
+        'Building-B',
+        '3',
+        '315',
+        'PAAS',
+        'Testing',
+        'Active',
+        'RACK-06',
+        'U22',
+        '2025-06-30',
+        'Test web server'
       ]
     ];
     
@@ -265,145 +440,78 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Bulk Import Servers</h3>
-        <p className="text-slate-600">Import multiple servers from CSV or Excel files</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Upload className="h-5 w-5" />
-            <span>File Upload</span>
-          </CardTitle>
-          <CardDescription>
-            Upload a CSV or Excel file containing server information
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-300 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <FileText className="h-8 w-8 text-slate-400" />
-              <div>
-                <p className="font-medium">
-                  {file ? file.name : "No file selected"}
-                </p>
-                <p className="text-sm text-slate-500">
-                  {file ? `${(file.size / 1024).toFixed(1)} KB` : "CSV, XLS, XLSX files supported"}
-                </p>
-              </div>
-            </div>
-            <div className="flex space-x-2">
+    <Card className="w-full max-w-4xl mx-auto">
+      <CardHeader>
+        <CardTitle>Bulk Import Servers</CardTitle>
+        <CardDescription>
+          Import multiple servers at once using a CSV file. Download the template below for the correct format.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid gap-4">
+          <div className="grid w-full items-center gap-1.5">
+            <Label htmlFor="csv-file">CSV File</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                id="csv-file"
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                ref={fileInputRef}
+                className="cursor-pointer"
+              />
               <Button
                 variant="outline"
-                onClick={downloadTemplate}
                 size="sm"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download Template
-              </Button>
-              <Button
-                variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                size="sm"
               >
-                <Upload className="h-4 w-4 mr-2" />
-                Select File
+                <Upload className="mr-2 h-4 w-4" />
+                Browse
               </Button>
             </div>
+            <p className="text-sm text-muted-foreground">
+              {file ? file.name : 'No file selected'}
+            </p>
           </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xls,.xlsx"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-
-          {file && (
-            <div className="space-y-4">
-              {isImporting && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Import Progress</Label>
-                    <span className="text-sm text-slate-500">{Math.round(importProgress)}%</span>
-                  </div>
-                  <Progress value={importProgress} className="w-full" />
-                </div>
+          <div className="flex justify-between items-center">
+            <Button
+              onClick={downloadTemplate}
+              variant="outline"
+              disabled={isImporting}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download Template
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={!file || isImporting}
+            >
+              {isImporting ? (
+                <>
+                  <span className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                'Import Servers'
               )}
-
-              <Button
-                onClick={handleImport}
-                disabled={isImporting}
-                className="w-full"
-              >
-                {isImporting ? "Importing..." : "Start Import"}
-              </Button>
-            </div>
-          )}
-
-          {importResults && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Import Results</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span>Successful</span>
-                  </div>
-                  <Badge variant="secondary" className="bg-green-100 text-green-700">
-                    {importResults.success}
-                  </Badge>
-                </div>
-                
-                {importResults.failed > 0 && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                      <span>Failed</span>
-                    </div>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700">
-                      {importResults.failed}
-                    </Badge>
-                  </div>
-                )}
-
-                {importResults.errors.length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Errors:</Label>
-                    <div className="max-h-32 overflow-y-auto space-y-1">
-                      {importResults.errors.map((error, index) => (
-                        <p key={index} className="text-sm text-red-600 bg-red-50 p-2 rounded">
-                          {error}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Import Instructions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2 text-sm">
-            <p><strong>Required columns:</strong> serialNumber, brand</p>
-            <p><strong>Optional columns:</strong> model, location, rack, unit, ipOOB, ipOS, tenant, os, status, warranty, notes</p>
-            <p><strong>File formats:</strong> CSV, XLS, XLSX</p>
-            <p><strong>Note:</strong> First row should contain column headers</p>
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          <div className="mt-6">
+            <h3 className="text-base font-medium mb-2">Import Instructions</h3>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p><strong>Required columns:</strong> hostname, dc_site, device_type</p>
+              <p><strong>Optional columns:</strong> serial_number, brand, model, ip_address, ip_oob, operating_system, dc_building, dc_floor, dc_room, allocation, environment, status, rack, unit, warranty, notes</p>
+              <p><strong>Status values:</strong> {validEnums.status.join(', ')}</p>
+              <p><strong>Device types:</strong> {validEnums.device_type.join(', ')}</p>
+              <p><strong>File format:</strong> CSV (comma-separated values)</p>
+              <p><strong>Note:</strong> First row must contain column headers</p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
