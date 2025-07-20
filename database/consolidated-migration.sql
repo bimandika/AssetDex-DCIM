@@ -22,10 +22,6 @@ CREATE TYPE public.device_type AS ENUM ('Server', 'Storage', 'Network');
 -- Server allocation types
 CREATE TYPE public.allocation_type AS ENUM ('IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database');
 
--- Drop existing type if it has different values
-DROP TYPE IF EXISTS public.allocation_type CASCADE;
-CREATE TYPE public.allocation_type AS ENUM ('IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database');
-
 -- Environment types
 CREATE TYPE public.environment_type AS ENUM ('Production', 'Testing', 'Pre-Production', 'Development');
 
@@ -46,8 +42,7 @@ CREATE TYPE public.unit_type AS ENUM (
   'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18', 'U19', 'U20',
   'U21', 'U22', 'U23', 'U24', 'U25', 'U26', 'U27', 'U28', 'U29', 'U30',
   'U31', 'U32', 'U33', 'U34', 'U35', 'U36', 'U37', 'U38', 'U39', 'U40',
-  'U41', 'U42', 'U43', 'U44', 'U45', 'U46', 'U47', 'U48', 'U49', 'U50',
-  'U51', 'U52', 'U53'
+  'U41', 'U42'
 );
 
 -- Brand types
@@ -159,12 +154,12 @@ INSERT INTO public.servers (
 
 (gen_random_uuid(), 'SN2023W002', 'web-prod-02', 'Dell', 'PowerEdge R740', '192.168.1.11', '10.0.0.2', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U43', '2025-12-31', 'Secondary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U40', '2025-12-31', 'Secondary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023W003', 'web-prod-03', 'Dell', 'PowerEdge R750', '192.168.1.12', '10.0.0.3', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U44', '2025-12-31', 'Tertiary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U32', '2025-12-31', 'Tertiary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Database Servers (4-6)

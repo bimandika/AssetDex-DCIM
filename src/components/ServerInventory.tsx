@@ -44,7 +44,8 @@ interface Server {
   dc_floor: string | null;
   dc_room: string | null;
   rack: string | null;
-  unit: string | null;
+  unit: string | null;  // Starting unit (e.g., "U1")
+  unit_height: number;  // Height in U (e.g., 1, 2, 4, etc.)
   allocation: AllocationType | null;
   status: ServerStatus;
   device_type: DeviceType;
@@ -60,17 +61,18 @@ interface Server {
 const serverFormSchema = z.object({
   hostname: z.string().min(1, 'Hostname is required'),
   serial_number: z.string().min(1, 'Serial number is required'),
-  brand: z.string().nullable(),
-  model: z.string().nullable(),
+  brand: z.string().optional().nullable(),
+  model: z.string().optional().nullable(),
   ip_address: z.string().optional(),
   ip_oob: z.string().optional(),
-  operating_system: z.string().nullable(),
-  dc_site: z.string().min(1, 'Site is required'),
-  dc_building: z.string().nullable(),
+  operating_system: z.string().optional().nullable(),
+  dc_site: z.string().min(1, 'DC site is required'),
+  dc_building: z.string().optional().nullable(),
   dc_floor: z.string().optional(),
   dc_room: z.string().optional(),
   rack: z.string().nullable(),
   unit: z.string().nullable(),
+  unit_height: z.number().min(1, 'Height must be at least 1U').max(10, 'Maximum height is 10U'),
   allocation: z.string().optional().nullable(),
   status: z.string().min(1, 'Status is required'),
   device_type: z.string().min(1, 'Device type is required'),
@@ -89,6 +91,7 @@ const ServerInventory = () => {
   const [warrantyDate, setWarrantyDate] = useState<Date | undefined>(undefined);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   
   // Get dynamic enums and auth
   const { enums } = useEnums();
@@ -133,6 +136,7 @@ const ServerInventory = () => {
     dc_room: string;
     rack: string | null;
     unit: string | null;
+    unit_height: number;
     allocation: AllocationType | null;
     status: ServerStatus;
     device_type: DeviceType;
@@ -142,52 +146,121 @@ const ServerInventory = () => {
   }
 
   // Get default form values based on enums
-  const getDefaultFormValues = useCallback((enums: ServerEnums | null): ServerFormData => {
-    return {
-      hostname: '',
-      serial_number: '',
-      brand: enums?.brands?.[0] || null,
-      model: enums?.models?.[0] || null,
-      ip_address: '',
-      ip_oob: '',
-      operating_system: enums?.osTypes?.[0] || null,
-      dc_site: enums?.sites?.[0] || '',
-      dc_building: enums?.buildings?.[0] || null,
-      dc_floor: '',
-      dc_room: '',
-      rack: enums?.racks?.[0] || null,
-      unit: enums?.units?.[0] || null,
-      allocation: (enums?.allocationTypes?.[0] as AllocationType) || null,
-      status: (enums?.status?.[0] as ServerStatus) || 'Active',
-      device_type: (enums?.deviceTypes?.[0] as DeviceType) || 'Server',
-      warranty: '',
-      notes: '',
-      environment: (enums?.environmentTypes?.[0] as EnvironmentType) || null,
-    };
-  }, []);
+  const getInitialFormData = useCallback((enums: ServerEnums | null): ServerFormData => ({
+    hostname: '',
+    serial_number: '',
+    brand: enums?.brands?.[0] || null,
+    model: enums?.models?.[0] || null,
+    ip_address: '',
+    ip_oob: '',
+    operating_system: enums?.osTypes?.[0] || null,
+    dc_site: enums?.sites?.[0] || '',
+    dc_building: enums?.buildings?.[0] || null,
+    dc_floor: '',
+    dc_room: '',
+    rack: enums?.racks?.[0] || null,
+    unit: enums?.units?.[0] || null,
+    unit_height: 1,
+    allocation: (enums?.allocationTypes?.[0] as AllocationType) || null,
+    status: (enums?.status?.[0] as ServerStatus) || 'Active',
+    device_type: (enums?.deviceTypes?.[0] as DeviceType) || 'Server',
+    warranty: '',
+    notes: '',
+    environment: (enums?.environmentTypes?.[0] as EnvironmentType) || null,
+  }), []);
+
+  // Get available units based on rack and height
+  const getAvailableUnits = useCallback((selectedRack: string | null, currentServerId: string | null, servers: Server[], requiredHeight = 1): string[] => {
+    if (!selectedRack) return [];
+    
+    // Get all servers in the same rack (excluding current server if editing)
+    const rackServers = servers.filter(server => 
+      server.rack === selectedRack && 
+      server.id !== currentServerId
+    );
+
+    // Create a map of occupied units
+    const occupied = new Set<string>();
+    rackServers.forEach(server => {
+      const startUnit = parseInt(server.unit?.substring(1) || '0');
+      const height = server.unit_height || 1;
+      for (let i = 0; i < height; i++) {
+        occupied.add(`U${startUnit + i}`);
+      }
+    });
+
+    // Filter available units that have enough consecutive space
+    return (enums?.units || []).filter(unit => {
+      const startUnit = parseInt(unit.substring(1));
+      for (let i = 0; i < requiredHeight; i++) {
+        if (occupied.has(`U${startUnit + i}`)) return false;
+      }
+      return true;
+    });
+  }, [enums?.units]);
 
   // Initialize form with react-hook-form
   const form = useForm<ServerFormData>({
     resolver: zodResolver(serverFormSchema),
-    defaultValues: getDefaultFormValues(enums),
+    defaultValues: getInitialFormData(enums),
   });
   
   // Watch form values for real-time validation
   const formValues = form.watch();
-  
-  // Update form when enums are loaded
+
+  // Update available units when rack or height changes
   useEffect(() => {
-    if (enums) {
-      form.reset(getDefaultFormValues(enums));
+    const units = getAvailableUnits(
+      form.getValues('rack'), 
+      editingServer?.id || null, 
+      servers, 
+      form.getValues('unit_height')
+    );
+    setAvailableUnits(units);
+    
+    // Reset unit if current selection is no longer valid
+    const currentUnit = form.getValues('unit');
+    if (currentUnit && !units.includes(currentUnit)) {
+      form.setValue('unit', units[0] || null);
     }
-  }, [enums, form, getDefaultFormValues]);
+  }, [form, getAvailableUnits, editingServer?.id, servers]);
+
+  // Helper to show unit range in dropdown
+  const getUnitRange = (startUnit: string, height: number) => {
+    const start = parseInt(startUnit.substring(1));
+    const end = start + (height - 1);
+    return height > 1 ? ` (U${start}-U${end})` : '';
+  };
 
   // Reset form to default values
   const resetForm = useCallback(() => {
-    form.reset(getDefaultFormValues(enums));
+    form.reset(getInitialFormData(enums));
     setEditingServer(null);
     setWarrantyDate(undefined);
-  }, [form, enums]);
+  }, [form, enums, getInitialFormData]);
+  
+  // Update form when enums are loaded or when editing server changes
+  useEffect(() => {
+    if (enums) {
+      const formData = getInitialFormData(enums);
+      if (editingServer) {
+        // If editing, merge with server data
+        form.reset({
+          ...formData,
+          ...editingServer,
+        });
+        
+        // Set warranty date if exists
+        if (editingServer.warranty) {
+          setWarrantyDate(new Date(editingServer.warranty));
+        }
+      } else {
+        // Otherwise use default values
+        form.reset(formData);
+        setWarrantyDate(undefined);
+      }
+    }
+  }, [enums, editingServer, form, getInitialFormData]);
 
   // Get auth and permissions
   const { hasRole } = useAuth();
@@ -213,10 +286,10 @@ const ServerInventory = () => {
         setWarrantyDate(undefined);
       }
     } else {
-      form.reset(getDefaultFormValues(enums));
+      form.reset(getInitialFormData(enums));
       setWarrantyDate(undefined);
     }
-  }, [editingServer, form, enums, getDefaultFormValues]);
+  }, [editingServer, form, enums, getInitialFormData]);
 
   useEffect(() => {
     fetchServers();
@@ -227,7 +300,7 @@ const ServerInventory = () => {
   }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding, filterRack, filterStatus]);
 
   // Define the database server type that matches what Supabase returns
-  type DatabaseServer = {
+  interface DatabaseServer {
     id: string;
     serial_number: string | null;
     hostname: string;
@@ -242,6 +315,7 @@ const ServerInventory = () => {
     dc_room: string | null;
     rack: string | null;
     unit: string | null;
+    unit_height: number;
     allocation: string | null;
     status: string;
     device_type: string;
@@ -279,6 +353,7 @@ const ServerInventory = () => {
         dc_room: server.dc_room,
         rack: server.rack,
         unit: server.unit,
+        unit_height: server.unit_height,
         allocation: server.allocation as AllocationType | null,
         status: server.status as ServerStatus,
         device_type: server.device_type as DeviceType,
@@ -359,8 +434,12 @@ const ServerInventory = () => {
       filtered = filtered.filter(server => server.rack === filterRack);
     }
 
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(server => server.status === filterStatus);
+    }
+
     setFilteredServers(filtered);
-  }
+  };
 
   const handleEdit = (server: Server) => {
     setEditingServer(server);
@@ -396,6 +475,7 @@ const ServerInventory = () => {
         dc_room: values.dc_room,
         rack: values.rack,
         unit: values.unit,
+        unit_height: values.unit_height,
         allocation: values.allocation,
         status: values.status as ServerStatusType,
         device_type: values.device_type,
@@ -543,16 +623,16 @@ const ServerInventory = () => {
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Server
+                  Add Device
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
-                    {editingServer ? 'Edit Server' : 'Add New Server'}
+                    {editingServer ? 'Edit Device' : 'Add New Device'}
                   </DialogTitle>
                   <DialogDescription>
-                    {editingServer ? 'Update server information' : 'Add a new server to the inventory'}
+                    {editingServer ? 'Update device information' : 'Add a new device to the inventory'}
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -790,20 +870,28 @@ const ServerInventory = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="rack">Rack</Label>
                       <Controller
                         name="rack"
                         control={form.control}
                         render={({ field }) => (
-                          <Input
-                            id="rack"
-                            placeholder="RACK-01"
+                          <Select
                             value={field.value || ''}
-                            onChange={field.onChange}
-                            className={form.formState.errors.rack ? 'border-red-500' : ''}
-                          />
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select rack" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.racks?.map((rack) => (
+                                <SelectItem key={rack} value={rack}>
+                                  {rack}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
                       />
                       {form.formState.errors.rack && (
@@ -811,22 +899,95 @@ const ServerInventory = () => {
                       )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="unit">Unit</Label>
+                      <Label htmlFor="unit">Starting Unit</Label>
                       <Controller
                         name="unit"
                         control={form.control}
                         render={({ field }) => (
-                          <Input
-                            id="unit"
-                            placeholder="U42"
+                          <Select
                             value={field.value || ''}
-                            onChange={field.onChange}
-                            className={form.formState.errors.unit ? 'border-red-500' : ''}
-                          />
+                            onValueChange={field.onChange}
+                            disabled={!form.getValues('rack') || availableUnits.length === 0}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={
+                                !form.getValues('rack') 
+                                  ? 'Select rack first' 
+                                  : availableUnits.length === 0 
+                                    ? 'No space available' 
+                                    : 'Select starting unit'
+                              } />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableUnits.map((unit) => (
+                                <SelectItem key={unit} value={unit}>
+                                  {unit}{getUnitRange(unit, form.getValues('unit_height'))}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
                       />
                       {form.formState.errors.unit && (
                         <p className="text-sm text-red-500">{form.formState.errors.unit.message}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="unit_height">Height (U)</Label>
+                      <Controller
+                        name="unit_height"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value.toString()}
+                            onValueChange={(value) => {
+                              const newHeight = parseInt(value, 10);
+                              field.onChange(newHeight);
+                              
+                              // Update available units when height changes
+                              const units = getAvailableUnits(
+                                form.getValues('rack'),
+                                editingServer?.id || null,
+                                servers,
+                                newHeight
+                              );
+                              setAvailableUnits(units);
+                              
+                              // Reset unit if current selection is no longer valid
+                              const currentUnit = form.getValues('unit');
+                              if (currentUnit && !units.includes(currentUnit)) {
+                                form.setValue('unit', units[0] || null);
+                              }
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select height" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 10 }, (_, i) => i + 1).map((height) => {
+                                const hasSpace = getAvailableUnits(
+                                  form.getValues('rack'),
+                                  editingServer?.id || null,
+                                  servers,
+                                  height
+                                ).length > 0;
+                                
+                                return (
+                                  <SelectItem 
+                                    key={height} 
+                                    value={height.toString()}
+                                    disabled={!hasSpace}
+                                  >
+                                    {height}U {!hasSpace ? '(No space)' : ''}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.formState.errors.unit_height && (
+                        <p className="text-sm text-red-500">{form.formState.errors.unit_height.message}</p>
                       )}
                     </div>
                   </div>
@@ -1234,7 +1395,8 @@ const ServerInventory = () => {
                         <span className="text-xs text-muted-foreground mt-1">
                           {[
                             server.rack && `Rack: ${server.rack}`,
-                            server.unit && `Unit: ${server.unit}`
+                            server.unit && `Unit: ${server.unit}`,
+                            server.unit_height > 1 && `Height: ${server.unit_height}U`
                           ].filter(Boolean).join(' • ')}
                         </span>
                       )}
