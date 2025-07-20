@@ -1,5 +1,5 @@
 // @deno-types="https://deno.land/x/supabase_deno@1.0.5/mod.d.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { createClient } from '@supabase/supabase-js'
 
 // Deno environment type declarations
 declare const Deno: {

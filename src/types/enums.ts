@@ -1,5 +1,9 @@
 export type ServerStatus = 'Active' | 'Inactive' | 'Maintenance' | 'Decommissioned' | 'Retired';
 
+export type DeviceType = 'Server' | 'Storage' | 'Network';
+export type EnvironmentType = 'Production' | 'Testing' | 'Pre-Production' | 'Development';
+export type AllocationType = 'IAAS' | 'PAAS' | 'SAAS' | 'Load Balancer' | 'Database';
+
 export interface ServerEnums {
   status: ServerStatus[];
   deviceTypes: string[];

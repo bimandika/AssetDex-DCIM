@@ -1,4 +1,8 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,72 +16,90 @@ import { Plus, Edit, Trash2, Search, Filter, CalendarIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-// Server status enum to match the database
-const ServerStatus = {
-  ACTIVE: 'Active',
-  READY: 'Ready',
-  INACTIVE: 'Inactive',
-  MAINTENANCE: 'Maintenance',
-  DECOMMISSIONED: 'Decommissioned',
-  RETIRED: 'Retired'
-} as const;
-
-type ServerStatus = typeof ServerStatus[keyof typeof ServerStatus];
-import { format } from "date-fns";
+import { useEnums } from "@/hooks/useEnums";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
-// Types matching the database enums
-type DeviceType = 'Server' | 'Storage' | 'Network';
-type AllocationType = 'IAAS' | 'PAAS' | 'SAAS' | 'Load Balancer' | 'Database';
-type EnvironmentType = 'Production' | 'Testing' | 'Pre-Production' | 'Development';
-type BrandType = 'Dell' | 'HPE' | 'Cisco' | 'Juniper' | 'NetApp' | 'Huawei' | 'Inspur' | 'Kaytus' | 'ZTE' | 'Meta Brain';
-type ModelType = 'PowerEdge R740' | 'PowerEdge R750' | 'PowerEdge R750xd' | 'PowerVault ME4' | 'ProLiant DL380' | 'ProLiant DL360' | 'Apollo 4510' | 'ASA 5525-X' | 'Nexus 93180YC-EX' | 'MX204' | 'AFF A400' | 'Other';
-type OSType = 'Ubuntu 22.04 LTS' | 'Ubuntu 20.04 LTS' | 'RHEL 8' | 'CentOS 7' | 'Oracle Linux 8' | 'Windows Server 2022' | 'Windows Server 2019' | 'Storage OS 2.1' | 'Cisco ASA 9.16' | 'NX-OS 9.3' | 'JunOS 21.2' | 'ONTAP 9.10' | 'Other';
-type SiteType = 'DC-East' | 'DC-West' | 'DC-North' | 'DC-South' | 'DC-Central' | 'DC1' | 'DC2' | 'DC3' | 'DC4' | 'DC5';
-type BuildingType = 'Building-A' | 'Building-B' | 'Building-C' | 'Building-D' | 'Building-E' | 'Other';
+// Import types from enums
+import type { 
+  ServerStatus,
+  DeviceType,
+  EnvironmentType,
+  AllocationType,
+  ServerEnums
+} from '@/types/enums';
 
 interface Server {
   id: string;
-  serial_number?: string | null;
+  serial_number: string | null;
   hostname: string;
-  brand?: BrandType | null;
-  model?: ModelType | null;
-  ip_address?: string | null;
-  ip_oob?: string | null;
-  operating_system?: OSType | null;
-  dc_site: SiteType;
-  dc_building?: BuildingType | null;
-  dc_floor?: string | null;
-  dc_room?: string | null;
-  rack?: string | null;
-  unit?: string | null;
-  allocation?: AllocationType | null;
+  brand: string | null;
+  model: string | null;
+  ip_address: string | null;
+  ip_oob: string | null;
+  operating_system: string | null;
+  dc_site: string;
+  dc_building: string | null;
+  dc_floor: string | null;
+  dc_room: string | null;
+  rack: string | null;
+  unit: string | null;
+  allocation: AllocationType | null;
   status: ServerStatus;
   device_type: DeviceType;
-  warranty?: string | null;
-  notes?: string | null;
-  environment?: EnvironmentType | null;
-  created_by?: string | null;
+  warranty: string | null;
+  notes: string | null;
+  environment: EnvironmentType | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
 
+// Form validation schema with proper enum types
+const serverFormSchema = z.object({
+  hostname: z.string().min(1, 'Hostname is required'),
+  serial_number: z.string().min(1, 'Serial number is required'),
+  brand: z.string().nullable(),
+  model: z.string().nullable(),
+  ip_address: z.string().optional(),
+  ip_oob: z.string().optional(),
+  operating_system: z.string().nullable(),
+  dc_site: z.string().min(1, 'Site is required'),
+  dc_building: z.string().nullable(),
+  dc_floor: z.string().optional(),
+  dc_room: z.string().optional(),
+  rack: z.string().nullable(),
+  unit: z.string().nullable(),
+  allocation: z.string().optional().nullable(),
+  status: z.string().min(1, 'Status is required'),
+  device_type: z.string().min(1, 'Device type is required'),
+  warranty: z.string().optional(),
+  notes: z.string().optional(),
+  environment: z.string().optional().nullable(),
+});
+
 const ServerInventory = () => {
+  // State for server data
   const [servers, setServers] = useState<Server[]>([]);
   const [filteredServers, setFilteredServers] = useState<Server[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // State for form and UI
+  const [warrantyDate, setWarrantyDate] = useState<Date | undefined>(undefined);
+  const [editingServer, setEditingServer] = useState<Server | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  
+  // Get dynamic enums and auth
+  const { enums } = useEnums();
+  const { user } = useAuth();
+  const { toast } = useToast();
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredServers.length / itemsPerPage);
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentServers = filteredServers.slice(indexOfFirstItem, indexOfLastItem);
+  // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterEnvironment, setFilterEnvironment] = useState<string>("all");
@@ -89,54 +111,112 @@ const ServerInventory = () => {
   const [filterBuilding, setFilterBuilding] = useState<string>("all");
   const [filterRack, setFilterRack] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [editingServer, setEditingServer] = useState<Server | null>(null);
-  // Define a type for the form data that makes all fields optional except required ones
-  type ServerFormData = Omit<Server, 'id' | 'created_at' | 'updated_at' | 'created_by'> & {
-    brand?: BrandType;
-    model?: ModelType;
-    operating_system?: OSType;
-    dc_building?: BuildingType;
-    allocation?: AllocationType;
-    environment?: EnvironmentType;
-  };
+  
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredServers.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentServers = filteredServers.slice(indexOfFirstItem, indexOfLastItem);
+  
+  // Form data type with proper validation rules
+  interface ServerFormData {
+    hostname: string;
+    serial_number: string;
+    brand: string | null;
+    model: string | null;
+    ip_address: string;
+    ip_oob: string;
+    operating_system: string | null;
+    dc_site: string;
+    dc_building: string | null;
+    dc_floor: string;
+    dc_room: string;
+    rack: string | null;
+    unit: string | null;
+    allocation: AllocationType | null;
+    status: ServerStatus;
+    device_type: DeviceType;
+    warranty: string;
+    notes: string;
+    environment: EnvironmentType | null;
+  }
 
-  const [formData, setFormData] = useState<ServerFormData>({
-    hostname: '',
-    serial_number: '',
-    brand: undefined,
-    model: undefined,
-    ip_address: '',
-    ip_oob: '',
-    operating_system: undefined,
-    dc_site: 'DC1',
-    dc_building: undefined,
-    dc_floor: '',
-    dc_room: '',
-    rack: '',
-    unit: '',
-    allocation: undefined,
-    status: ServerStatus.ACTIVE,
-    device_type: 'Server',
-    warranty: '',
-    notes: '',
-    environment: 'Production',
+  // Get default form values based on enums
+  const getDefaultFormValues = useCallback((enums: ServerEnums | null): ServerFormData => {
+    return {
+      hostname: '',
+      serial_number: '',
+      brand: enums?.brands?.[0] || null,
+      model: enums?.models?.[0] || null,
+      ip_address: '',
+      ip_oob: '',
+      operating_system: enums?.osTypes?.[0] || null,
+      dc_site: enums?.sites?.[0] || '',
+      dc_building: enums?.buildings?.[0] || null,
+      dc_floor: '',
+      dc_room: '',
+      rack: enums?.racks?.[0] || null,
+      unit: enums?.units?.[0] || null,
+      allocation: (enums?.allocationTypes?.[0] as AllocationType) || null,
+      status: (enums?.status?.[0] as ServerStatus) || 'Active',
+      device_type: (enums?.deviceTypes?.[0] as DeviceType) || 'Server',
+      warranty: '',
+      notes: '',
+      environment: (enums?.environmentTypes?.[0] as EnvironmentType) || null,
+    };
+  }, []);
+
+  // Initialize form with react-hook-form
+  const form = useForm<ServerFormData>({
+    resolver: zodResolver(serverFormSchema),
+    defaultValues: getDefaultFormValues(enums),
   });
   
-  const [warrantyDate, setWarrantyDate] = useState<Date | undefined>(undefined);
+  // Watch form values for real-time validation
+  const formValues = form.watch();
+  
+  // Update form when enums are loaded
+  useEffect(() => {
+    if (enums) {
+      form.reset(getDefaultFormValues(enums));
+    }
+  }, [enums, form, getDefaultFormValues]);
 
+  // Reset form to default values
+  const resetForm = useCallback(() => {
+    form.reset(getDefaultFormValues(enums));
+    setEditingServer(null);
+    setWarrantyDate(undefined);
+  }, [form, enums]);
+
+  // Get auth and permissions
   const { hasRole } = useAuth();
-  const { toast } = useToast();
   const canEdit = hasRole('engineer');
 
+  // Update form when editing a server
   useEffect(() => {
     if (editingServer) {
-      setFormData(editingServer);
+      const serverData: Partial<ServerFormData> = {
+        ...editingServer,
+        ip_address: editingServer.ip_address || '',
+        ip_oob: editingServer.ip_oob || '',
+        dc_floor: editingServer.dc_floor || '',
+        dc_room: editingServer.dc_room || '',
+        warranty: editingServer.warranty || '',
+        notes: editingServer.notes || ''
+      };
+      
+      form.reset(serverData as ServerFormData);
       if (editingServer.warranty) {
         setWarrantyDate(new Date(editingServer.warranty));
+      } else {
+        setWarrantyDate(undefined);
       }
+    } else {
+      form.reset(getDefaultFormValues(enums));
+      setWarrantyDate(undefined);
     }
-  }, [editingServer]);
+  }, [editingServer, form, enums, getDefaultFormValues]);
 
   useEffect(() => {
     fetchServers();
@@ -175,7 +255,7 @@ const ServerInventory = () => {
 
   const fetchServers = async () => {
     try {
-      setLoading(true);
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('servers')
         .select('*')
@@ -186,29 +266,29 @@ const ServerInventory = () => {
       // Cast the data to Server[] with proper type safety
       const typedData = (data as DatabaseServer[]).map(server => ({
         id: server.id,
-        serial_number: server.serial_number || undefined,
+        serial_number: server.serial_number || null,
         hostname: server.hostname,
-        brand: (server.brand as BrandType) || undefined,
-        model: (server.model as ModelType) || undefined,
-        ip_address: server.ip_address || undefined,
-        ip_oob: server.ip_oob || undefined,
-        operating_system: (server.operating_system as OSType) || undefined,
-        dc_site: server.dc_site as SiteType,
-        dc_building: (server.dc_building as BuildingType) || undefined,
-        dc_floor: server.dc_floor || undefined,
-        dc_room: server.dc_room || undefined,
-        rack: server.rack || undefined,
-        unit: server.unit || undefined,
-        allocation: (server.allocation as AllocationType) || undefined,
+        brand: server.brand,
+        model: server.model,
+        ip_address: server.ip_address,
+        ip_oob: server.ip_oob,
+        operating_system: server.operating_system,
+        dc_site: server.dc_site,
+        dc_building: server.dc_building,
+        dc_floor: server.dc_floor,
+        dc_room: server.dc_room,
+        rack: server.rack,
+        unit: server.unit,
+        allocation: server.allocation as AllocationType | null,
         status: server.status as ServerStatus,
         device_type: server.device_type as DeviceType,
-        warranty: server.warranty || undefined,
-        notes: server.notes || undefined,
-        environment: (server.environment as EnvironmentType) || undefined,
-        created_by: server.created_by || undefined,
+        warranty: server.warranty,
+        notes: server.notes,
+        environment: server.environment as EnvironmentType | null,
+        created_by: server.created_by,
         created_at: server.created_at,
         updated_at: server.updated_at
-      }));
+      } as Server));
 
       setServers(typedData);
       setFilteredServers(typedData);
@@ -220,7 +300,7 @@ const ServerInventory = () => {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -279,146 +359,94 @@ const ServerInventory = () => {
       filtered = filtered.filter(server => server.rack === filterRack);
     }
 
-    if (filterStatus !== "all") {
-      filtered = filtered.filter(server => server.status === filterStatus);
-    }
-
     setFilteredServers(filtered);
-  };
-
-  const resetForm = () => {
-    setFormData({
-      hostname: '',
-      serial_number: '',
-      brand: undefined,
-      model: undefined,
-      ip_address: '',
-      ip_oob: '',
-      operating_system: undefined,
-      dc_site: 'DC1' as SiteType,
-      dc_building: undefined,
-      dc_floor: '',
-      dc_room: '',
-      rack: '',
-      unit: '',
-      allocation: undefined,
-      status: 'Active' as ServerStatus,
-      device_type: 'Server' as DeviceType,
-      warranty: '',
-      notes: '',
-      environment: 'Production' as EnvironmentType,
-    });
-    setWarrantyDate(undefined);
-    setEditingServer(null);
-  };
+  }
 
   const handleEdit = (server: Server) => {
     setEditingServer(server);
-    setFormData({
-      ...server,
-      // Ensure all required fields are set with proper types
-      hostname: server.hostname,
-      dc_site: server.dc_site,
-      device_type: server.device_type,
-      status: server.status,
-      // Set optional fields with proper types
-      brand: server.brand as BrandType | undefined,
-      model: server.model as ModelType | undefined,
-      operating_system: server.operating_system as OSType | undefined,
-      dc_building: server.dc_building as BuildingType | undefined,
-      allocation: server.allocation as AllocationType | undefined,
-      environment: server.environment as EnvironmentType | undefined,
-    });
+    form.reset(server);
     setIsAddDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmit = async (values: ServerFormData) => {
     if (!canEdit) {
       toast({
-        title: "Permission Denied",
-        description: "You need engineer permissions to manage servers",
-        variant: "destructive",
+        title: 'Permission Denied',
+        description: 'You need engineer permissions to manage servers',
+        variant: 'destructive',
       });
       return;
     }
 
-    if (!formData.hostname || !formData.device_type || !formData.dc_site) {
-      toast({
-        title: "Validation Error",
-        description: "Hostname, Device Type, and DC Site are required",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    setIsLoading(true);
     try {
-      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // Prepare the server data with proper types
-      const serverData = {
-        ...formData,
-        // Ensure required fields are not empty with proper types
-        hostname: formData.hostname,
-        dc_site: formData.dc_site as SiteType,
-        device_type: formData.device_type as DeviceType,
-        status: formData.status as ServerStatus,
-        // Convert empty strings to null for optional fields with proper types
-        serial_number: formData.serial_number || null,
-        brand: formData.brand as BrandType | null,
-        model: formData.model as ModelType | null,
-        ip_address: formData.ip_address || null,
-        ip_oob: formData.ip_oob || null,
-        operating_system: formData.operating_system as OSType | null,
-        dc_building: formData.dc_building as BuildingType | null,
-        dc_floor: formData.dc_floor || null,
-        dc_room: formData.dc_room || null,
-        rack: formData.rack || null,
-        unit: formData.unit || null,
-        allocation: formData.allocation as AllocationType | null,
-        warranty: formData.warranty || null,
-        notes: formData.notes || null,
-        environment: formData.environment as EnvironmentType | null,
+      const serverData: Omit<Server, 'id' | 'created_at' | 'updated_at'> = {
+        hostname: values.hostname,
+        serial_number: values.serial_number,
+        brand: values.brand,
+        model: values.model,
+        ip_address: values.ip_address,
+        ip_oob: values.ip_oob,
+        operating_system: values.operating_system,
+        dc_site: values.dc_site,
+        dc_building: values.dc_building,
+        dc_floor: values.dc_floor,
+        dc_room: values.dc_room,
+        rack: values.rack,
+        unit: values.unit,
+        allocation: values.allocation,
+        status: values.status as ServerStatusType,
+        device_type: values.device_type,
+        warranty: values.warranty,
+        notes: values.notes,
+        environment: values.environment,
+        created_by: user?.id || null,
       };
 
       if (editingServer) {
+        // Update existing server
         const { error } = await supabase
           .from('servers')
           .update(serverData)
           .eq('id', editingServer.id);
 
         if (error) throw error;
-
+        
         toast({
-          title: "Success",
-          description: "Server updated successfully",
+          title: 'Server updated',
+          description: 'The server has been updated successfully.',
         });
       } else {
+        // Create new server
         const { error } = await supabase
           .from('servers')
-          .insert(serverData);
+          .insert([{ 
+            ...serverData, 
+            created_at: new Date().toISOString() 
+          }]);
 
         if (error) throw error;
-
+        
         toast({
-          title: "Success",
-          description: "Server added successfully",
+          title: 'Server created',
+          description: 'The server has been created successfully.',
         });
       }
 
+      await fetchServers();
       setIsAddDialogOpen(false);
       resetForm();
-      fetchServers();
     } catch (error) {
       console.error('Error saving server:', error);
       toast({
-        title: "Error",
-        description: "Failed to save server",
-        variant: "destructive",
+        title: 'Error',
+        description: error.message || 'An error occurred while saving the server.',
+        variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -482,7 +510,7 @@ const ServerInventory = () => {
     return <Badge variant="outline">{allocation}</Badge>;
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Card>
         <CardHeader>
@@ -527,77 +555,82 @@ const ServerInventory = () => {
                     {editingServer ? 'Update server information' : 'Add a new server to the inventory'}
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="hostname">Hostname *</Label>
                       <Input
                         id="hostname"
-                        value={formData.hostname}
-                        onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
                         placeholder="server-001"
-                        required
+                        {...form.register('hostname')}
+                        className={form.formState.errors.hostname ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.hostname && (
+                        <p className="text-sm text-red-500">{form.formState.errors.hostname.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="serial_number">Serial Number</Label>
+                      <Label htmlFor="serial_number">Serial Number *</Label>
                       <Input
                         id="serial_number"
-                        value={formData.serial_number}
-                        onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })}
                         placeholder="SN123456789"
+                        {...form.register('serial_number')}
+                        className={form.formState.errors.serial_number ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.serial_number && (
+                        <p className="text-sm text-red-500">{form.formState.errors.serial_number.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="brand">Brand</Label>
-                      <Select
-                        value={formData.brand || ''}
-                        onValueChange={(value) => setFormData({ ...formData, brand: value as BrandType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select brand" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Dell">Dell</SelectItem>
-                          <SelectItem value="HPE">HPE</SelectItem>
-                          <SelectItem value="Cisco">Cisco</SelectItem>
-                          <SelectItem value="Juniper">Juniper</SelectItem>
-                          <SelectItem value="NetApp">NetApp</SelectItem>
-                          <SelectItem value="Huawei">Huawei</SelectItem>
-                          <SelectItem value="Inspur">Inspur</SelectItem>
-                          <SelectItem value="Kaytus">Kaytus</SelectItem>
-                          <SelectItem value="ZTE">ZTE</SelectItem>
-                          <SelectItem value="Meta Brain">Meta Brain</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="brand"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select brand" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.brands?.map((brand) => (
+                                <SelectItem key={brand} value={brand}>
+                                  {brand}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="model">Model</Label>
-                      <Select
-                        value={formData.model || ''}
-                        onValueChange={(value) => setFormData({ ...formData, model: value as ModelType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="PowerEdge R740">PowerEdge R740</SelectItem>
-                          <SelectItem value="PowerEdge R750">PowerEdge R750</SelectItem>
-                          <SelectItem value="PowerEdge R750xd">PowerEdge R750xd</SelectItem>
-                          <SelectItem value="PowerVault ME4">PowerVault ME4</SelectItem>
-                          <SelectItem value="ProLiant DL380">ProLiant DL380</SelectItem>
-                          <SelectItem value="ProLiant DL360">ProLiant DL360</SelectItem>
-                          <SelectItem value="Apollo 4510">Apollo 4510</SelectItem>
-                          <SelectItem value="ASA 5525-X">ASA 5525-X</SelectItem>
-                          <SelectItem value="Nexus 93180YC-EX">Nexus 93180YC-EX</SelectItem>
-                          <SelectItem value="MX204">MX204</SelectItem>
-                          <SelectItem value="AFF A400">AFF A400</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="model"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select model" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.models?.map((model) => (
+                                <SelectItem key={model} value={model}>
+                                  {model}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -606,109 +639,127 @@ const ServerInventory = () => {
                       <Label htmlFor="ip_address">IP Address</Label>
                       <Input
                         id="ip_address"
-                        value={formData.ip_address}
-                        onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
                         placeholder="192.168.1.100"
+                        {...form.register('ip_address')}
+                        className={form.formState.errors.ip_address ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.ip_address && (
+                        <p className="text-sm text-red-500">{form.formState.errors.ip_address.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="ip_oob">OOB/IPMI IP</Label>
                       <Input
                         id="ip_oob"
-                        value={formData.ip_oob}
-                        onChange={(e) => setFormData({ ...formData, ip_oob: e.target.value })}
                         placeholder="192.168.1.100"
+                        {...form.register('ip_oob')}
+                        className={form.formState.errors.ip_oob ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.ip_oob && (
+                        <p className="text-sm text-red-500">{form.formState.errors.ip_oob.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="operating_system">Operating System</Label>
-                      <Select
-                        value={formData.operating_system || ''}
-                        onValueChange={(value) => setFormData({ ...formData, operating_system: value as OSType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select OS" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Ubuntu 22.04 LTS">Ubuntu 22.04 LTS</SelectItem>
-                          <SelectItem value="Ubuntu 20.04 LTS">Ubuntu 20.04 LTS</SelectItem>
-                          <SelectItem value="RHEL 8">RHEL 8</SelectItem>
-                          <SelectItem value="CentOS 7">CentOS 7</SelectItem>
-                          <SelectItem value="Oracle Linux 8">Oracle Linux 8</SelectItem>
-                          <SelectItem value="Windows Server 2022">Windows Server 2022</SelectItem>
-                          <SelectItem value="Windows Server 2019">Windows Server 2019</SelectItem>
-                          <SelectItem value="Storage OS 2.1">Storage OS 2.1</SelectItem>
-                          <SelectItem value="Cisco ASA 9.16">Cisco ASA 9.16</SelectItem>
-                          <SelectItem value="NX-OS 9.3">NX-OS 9.3</SelectItem>
-                          <SelectItem value="JunOS 21.2">JunOS 21.2</SelectItem>
-                          <SelectItem value="ONTAP 9.10">ONTAP 9.10</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="operating_system"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select OS" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.osTypes?.map((os) => (
+                                <SelectItem key={os} value={os}>
+                                  {os}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="device_type">Device Type *</Label>
-                      <Select
-                        value={formData.device_type}
-                        onValueChange={(value) => setFormData({ ...formData, device_type: value as DeviceType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select device type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Server">Server</SelectItem>
-                          <SelectItem value="Storage">Storage</SelectItem>
-                          <SelectItem value="Network">Network</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="device_type"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select device type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.deviceTypes?.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {type}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="dc_site">DC Site *</Label>
-                      <Select
-                        value={formData.dc_site}
-                        onValueChange={(value) => setFormData({ ...formData, dc_site: value as SiteType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select site" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DC1">DC1</SelectItem>
-                          <SelectItem value="DC2">DC2</SelectItem>
-                          <SelectItem value="DC3">DC3</SelectItem>
-                          <SelectItem value="DC4">DC4</SelectItem>
-                          <SelectItem value="DC5">DC5</SelectItem>
-                          <SelectItem value="DC-East">DC-East</SelectItem>
-                          <SelectItem value="DC-West">DC-West</SelectItem>
-                          <SelectItem value="DC-North">DC-North</SelectItem>
-                          <SelectItem value="DC-South">DC-South</SelectItem>
-                          <SelectItem value="DC-Central">DC-Central</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="dc_site"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select site" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.sites?.map((site) => (
+                                <SelectItem key={site} value={site}>
+                                  {site}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="dc_building">DC Building</Label>
-                      <Select
-                        value={formData.dc_building || ''}
-                        onValueChange={(value) => setFormData({ ...formData, dc_building: value as BuildingType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select building" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Building-A">Building A</SelectItem>
-                          <SelectItem value="Building-B">Building B</SelectItem>
-                          <SelectItem value="Building-C">Building C</SelectItem>
-                          <SelectItem value="Building-D">Building D</SelectItem>
-                          <SelectItem value="Building-E">Building E</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="dc_building"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select building" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.buildings?.map((building) => (
+                                <SelectItem key={building} value={building}>
+                                  {building}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -717,139 +768,203 @@ const ServerInventory = () => {
                       <Label htmlFor="dc_floor">DC Floor</Label>
                       <Input
                         id="dc_floor"
-                        value={formData.dc_floor}
-                        onChange={(e) => setFormData({ ...formData, dc_floor: e.target.value })}
                         placeholder="1"
+                        {...form.register('dc_floor')}
+                        className={form.formState.errors.dc_floor ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.dc_floor && (
+                        <p className="text-sm text-red-500">{form.formState.errors.dc_floor.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="dc_room">DC Room</Label>
                       <Input
                         id="dc_room"
-                        value={formData.dc_room}
-                        onChange={(e) => setFormData({ ...formData, dc_room: e.target.value })}
                         placeholder="Server Room 101"
+                        {...form.register('dc_room')}
+                        className={form.formState.errors.dc_room ? 'border-red-500' : ''}
                       />
+                      {form.formState.errors.dc_room && (
+                        <p className="text-sm text-red-500">{form.formState.errors.dc_room.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="rack">Rack</Label>
-                      <Input
-                        id="rack"
-                        value={formData.rack}
-                        onChange={(e) => setFormData({ ...formData, rack: e.target.value })}
-                        placeholder="RACK-01"
+                      <Controller
+                        name="rack"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Input
+                            id="rack"
+                            placeholder="RACK-01"
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            className={form.formState.errors.rack ? 'border-red-500' : ''}
+                          />
+                        )}
                       />
+                      {form.formState.errors.rack && (
+                        <p className="text-sm text-red-500">{form.formState.errors.rack.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="unit">Unit</Label>
-                      <Input
-                        id="unit"
-                        value={formData.unit}
-                        onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                        placeholder="U42"
+                      <Controller
+                        name="unit"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Input
+                            id="unit"
+                            placeholder="U42"
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            className={form.formState.errors.unit ? 'border-red-500' : ''}
+                          />
+                        )}
                       />
+                      {form.formState.errors.unit && (
+                        <p className="text-sm text-red-500">{form.formState.errors.unit.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="allocation">Allocation</Label>
-                      <Select
-                        value={formData.allocation || ''}
-                        onValueChange={(value) => setFormData({ ...formData, allocation: value as AllocationType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select allocation" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="IAAS">IaaS</SelectItem>
-                          <SelectItem value="PAAS">PaaS</SelectItem>
-                          <SelectItem value="SAAS">SaaS</SelectItem>
-                          <SelectItem value="Load Balancer">Load Balancer</SelectItem>
-                          <SelectItem value="Database">Database</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="allocation"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select allocation" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.allocationTypes?.map((allocation) => (
+                                <SelectItem key={allocation} value={allocation}>
+                                  {allocation}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.formState.errors.allocation && (
+                        <p className="text-sm text-red-500">{form.formState.errors.allocation.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="environment">Environment</Label>
-                      <Select
-                        value={formData.environment || ''}
-                        onValueChange={(value) => setFormData({ ...formData, environment: value as EnvironmentType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select environment" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Production">Production</SelectItem>
-                          <SelectItem value="Pre-Production">Pre-Production</SelectItem>
-                          <SelectItem value="Testing">Testing</SelectItem>
-                          <SelectItem value="Development">Development</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="environment"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select environment" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.environmentTypes?.map((env) => (
+                                <SelectItem key={env} value={env}>
+                                  {env}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.formState.errors.environment && (
+                        <p className="text-sm text-red-500">{form.formState.errors.environment.message}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Warranty Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !warrantyDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {warrantyDate ? format(warrantyDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={warrantyDate}
-                          onSelect={(date) => {
-                            setWarrantyDate(date);
-                            setFormData({ ...formData, warranty: date?.toISOString().split('T')[0] || '' });
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <Controller
+                      name="warranty"
+                      control={form.control}
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => {
+                                field.onChange(date?.toISOString().split('T')[0] || '');
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {form.formState.errors.warranty && (
+                      <p className="text-sm text-red-500">{form.formState.errors.warranty.message}</p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="status">Status</Label>
-                      <Select
-                        value={formData.status}
-                        onValueChange={(value) => setFormData({ ...formData, status: value as ServerStatus })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Active">Active</SelectItem>
-                          <SelectItem value="Inactive">Inactive</SelectItem>
-                          <SelectItem value="Maintenance">Maintenance</SelectItem>
-                          <SelectItem value="Decommissioned">Decommissioned</SelectItem>
-                          <SelectItem value="Retired">Retired</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Controller
+                        name="status"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enums?.status?.map((status) => (
+                                <SelectItem key={status} value={status}>
+                                  {status}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.formState.errors.status && (
+                        <p className="text-sm text-red-500">{form.formState.errors.status.message}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="notes">Notes</Label>
                       <Textarea
                         id="notes"
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                        {...form.register('notes')}
                         placeholder="Additional notes..."
                         rows={3}
-                        className="min-h-[100px]"
+                        className={cn("min-h-[100px]", form.formState.errors.notes ? 'border-red-500' : '')}
                       />
+                      {form.formState.errors.notes && (
+                        <p className="text-sm text-red-500">{form.formState.errors.notes.message}</p>
+                      )}
                     </div>
                   </div>
 
