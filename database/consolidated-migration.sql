@@ -95,6 +95,7 @@ CREATE TABLE public.user_roles (
 -- Property definitions for dynamic server properties
 CREATE TABLE public.property_definitions (
     id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    key TEXT NOT NULL,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     property_type TEXT NOT NULL,
@@ -105,9 +106,16 @@ CREATE TABLE public.property_definitions (
     options JSONB,
     active BOOLEAN DEFAULT true,
     sort_order INTEGER DEFAULT 0,
+    created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    updated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    UNIQUE(name),
+    UNIQUE(key)
 );
+
+COMMENT ON COLUMN public.property_definitions.created_by IS 'ID of the user who created this property definition';
+COMMENT ON COLUMN public.property_definitions.updated_by IS 'ID of the user who last updated this property definition';
 
 -- Servers table
 CREATE TABLE public.servers (
@@ -430,6 +438,28 @@ EXCEPTION
     RETURN result;
 END;
 $$;
+
+-- Function to check if a column exists in the servers table
+CREATE OR REPLACE FUNCTION public.column_exists(
+  column_name text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'servers'
+    AND column_name = $1
+  );
+END;
+$$;
+
+-- Add comment to column_exists function
+COMMENT ON FUNCTION public.column_exists IS 'Checks if a column exists in the servers table';
 
 -- ============================================================================
 -- 5. TRIGGERS

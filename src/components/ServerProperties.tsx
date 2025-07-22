@@ -49,7 +49,8 @@ const defaultProperties: ServerProperty[] = [
   { id: "14", name: "Notes", key: "notes", type: "text", required: true, visible: true, isSystem: true },
   { id: "15", name: "Operating System", key: "operating_system", type: "text", required: true, visible: true, isSystem: true },
   { id: "16", name: "Rack", key: "rack", type: "text", required: true, visible: true, isSystem: true },
-  { id: "17", name: "Unit", key: "unit", type: "text", required: true, visible: true, isSystem: true }
+  { id: "17", name: "Unit", key: "unit", type: "text", required: true, visible: true, isSystem: true },
+  { id: "18", name: "Warranty", key: "warranty", type: "date", required: false, visible: true, isSystem: true, description: "Warranty expiration date" }
 ];
 
 // Columns to exclude from the dynamic schema
@@ -149,24 +150,45 @@ const ServerProperties = () => {
     
     if (!column.type) {
       errors.type = 'Type is required';
-      errors.key = 'This is a reserved SQL keyword and cannot be used as a column key';
     }
     
     return errors;
   };
 
-  const handleAddProperty = async (e?: React.FormEvent) => {
-    // Prevent default form submission if called from form
-    e?.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    const errors = validateColumn(newColumn);
-    
-    if (Object.keys(errors).length > 0) {
-      // Show first error to user
-      const firstError = Object.values(errors)[0];
+    // Ensure required fields are present
+    if (!newColumn.name?.trim() || !newColumn.key?.trim()) {
       toast({
         title: "Validation Error",
-        description: firstError,
+        description: "Name and key are required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Validate the form
+    const errors = validateColumn(newColumn);
+    if (Object.keys(errors).length > 0) {
+      // Show the first error
+      toast({
+        title: "Validation Error",
+        description: Object.values(errors)[0],
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // TypeScript now knows newColumn.key is defined
+    const propertyKey = newColumn.key.toLowerCase();
+    
+    // Check for duplicate keys
+    const keyExists = properties.some(p => p.key.toLowerCase() === propertyKey);
+    if (keyExists) {
+      toast({
+        title: "Validation Error",
+        description: `A property with the key '${propertyKey}' already exists`,
         variant: "destructive"
       });
       return;
@@ -175,45 +197,58 @@ const ServerProperties = () => {
     setIsSubmitting(true);
     
     try {
-      // Call the property-manager Edge Function to add the new column
+      // Prepare the request body to match the working API call
+      const requestBody = {
+        name: newColumn.name,
+        key: newColumn.key,
+        type: newColumn.type,
+        description: newColumn.description || `${newColumn.name} property`,
+        required: newColumn.required || false,
+        options: newColumn.options || [],
+        default_value: newColumn.default_value || null
+      };
+
+      // Call the property-manager Edge Function to add the column
       const { data, error } = await supabase.functions.invoke('property-manager', {
         method: 'POST',
-        body: {
-          name: newColumn.name,
-          key: newColumn.key,
-          type: newColumn.type || 'text',
-          required: newColumn.required || false,
-          description: newColumn.description,
-          options: newColumn.type === 'select' ? newColumn.options : undefined
-        }
+        body: requestBody
       });
 
       if (error) throw error;
 
-      if (data?.success) {
+      if (data) {
+        // Extract the property data from the response
+        const propertyData = data.data || data;
+        
         // Add the new column to the local state
         const column: ServerProperty = {
-          id: `dynamic_${newColumn.key}`,
-          name: newColumn.name || "",
-          key: newColumn.key || "",
-          type: (newColumn.type as ServerProperty['type']) || "text",
-          required: true,
+          id: propertyData.id,
+          name: propertyData.name,
+          key: propertyData.key,
+          type: propertyData.property_type as any,
+          required: propertyData.required || false,
           visible: true,
-          options: newColumn.options || [],
-          is_enum: newColumn.type === 'select',
-          description: newColumn.description
+          options: propertyData.options || [],
+          is_enum: propertyData.property_type === 'select',
+          description: propertyData.description,
+          category: propertyData.category || undefined,
+          default_value: propertyData.default_value || undefined
         };
 
         setProperties(prev => [...prev, column]);
         setNewColumn({ name: "", key: "", type: "text", required: true, options: [] });
         setIsAddDialogOpen(false);
         
+        // Show success message with the property name from the response
         toast({
-          title: "Column Added",
-          description: `Successfully added column '${column.name}' to the servers table`
+          title: "Property Added",
+          description: `Successfully added property '${data.data.name}'
+          
+          Note: Please refresh the page to see the new column in the table.`,
+          duration: 5000 // Show for 5 seconds
         });
       } else {
-        throw new Error(data?.error || "Failed to add column to the database");
+        throw new Error(data?.error || "Failed to add property");
       }
     } catch (err: any) {
       console.error('Error adding column:', err);
@@ -362,7 +397,7 @@ const ServerProperties = () => {
                     Create a new server property to track additional information
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleAddProperty}>
+                <form onSubmit={handleSubmit}>
                 <div className="space-y-4 mt-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Property Name</Label>
@@ -379,7 +414,7 @@ const ServerProperties = () => {
                       id="key"
                       value={newColumn.key || ""}
                       onChange={handleChange}
-                      placeholder="e.g., Networks"
+                      placeholder="e.g., networks"
                     />
                   </div>
                   <div className="space-y-2">

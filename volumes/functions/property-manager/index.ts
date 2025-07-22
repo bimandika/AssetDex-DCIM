@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.51.0'
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.21.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,320 +7,261 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS'
 }
 
-interface ServerProperty {
-  id?: string;
+// Define the property type
+type PropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
+
+interface PropertyDefinition {
   name: string;
   key: string;
-  type: 'text' | 'number' | 'boolean' | 'date' | 'select';
+  type: PropertyType;
   description?: string;
   required?: boolean;
-  default_value?: string;
+  default_value?: string | number | boolean | null;
   options?: string[];
   category?: string;
   sort_order?: number;
-  created_at?: string;
-  updated_at?: string;
 }
 
-// Helper function to map database types to property types
-const mapDbTypeToPropertyType = (dbType: unknown): string => {
-  // If dbType is not a string, return 'text' as default
-  if (typeof dbType !== 'string') {
-    console.warn(`Expected string for dbType, got ${typeof dbType}:`, dbType);
-    return 'text';
+// Core properties that cannot be deleted
+const CORE_PROPERTIES = new Set([
+  'hostname', 'ip_address', 'ip_oob', 'serial_number', 'brand', 'model',
+  'operating_system', 'dc_site', 'dc_building', 'dc_floor', 'dc_room',
+  'allocation', 'environment', 'status', 'notes', 'rack', 'unit'
+]);
+
+// Helper function to handle CORS preflight requests
+const handleOptions = (request: Request): Response => {
+  if (request.headers.get('Origin') !== null &&
+      request.headers.get('Access-Control-Request-Method') !== null &&
+      request.headers.get('Access-Control-Request-Headers') !== null) {
+    return new Response(null, { headers: corsHeaders });
+  } else {
+    return new Response(null, { headers: { Allow: 'GET, POST, PATCH, DELETE, OPTIONS' } });
   }
-  
-  const typeMap: Record<string, string> = {
-    'integer': 'number',
-    'bigint': 'number',
-    'numeric': 'number',
-    'real': 'number',
-    'double precision': 'number',
-    'boolean': 'boolean',
-    'date': 'date',
-    'timestamp': 'date',
-    'timestamp with time zone': 'date',
-    'character varying': 'text',
-    'text': 'text',
-    'jsonb': 'json',
-    'json': 'json',
-    'uuid': 'text'
-  };
-  
-  return typeMap[dbType.toLowerCase()] || 'text';
 };
 
-export const handler = async (req: Request): Promise<Response> => {
+// Main handler function
+const propertyManagerHandler = async (req: Request): Promise<Response> => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
-
-  const supabaseAdmin = createClient(
-    Deno.env.get('SUPABASE_URL') || '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    }
-  )
-
-  // Authorization check
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) {
-    return new Response(
-      JSON.stringify({ error: 'No authorization header' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return handleOptions(req);
   }
 
   try {
-    if (req.method === 'GET') {
-      try {
-        console.log('Returning hardcoded property list...');
-        
-        // Hardcoded response for testing
-        const hardcodedResponse = [
-          {
-            key: 'hostname',
-            name: 'Hostname',
-            type: 'text',
-            required: true,
-            default_value: '',
-            visible: true
-          },
-          {
-            key: 'brand',
-            name: 'Brand',
-            type: 'text',
-            required: true,
-            default_value: '',
-            visible: true
-          },
-          {
-            key: 'model',
-            name: 'Model',
-            type: 'text',
-            required: false,
-            default_value: '',
-            visible: true
-          },
-          {
-            key: 'serial_number',
-            name: 'Serial Number',
-            type: 'text',
-            required: false,
-            default_value: '',
-            visible: true
-          },
-          {
-            key: 'status',
-            name: 'Status',
-            type: 'select',
-            required: true,
-            default_value: 'in_storage',
-            options: ['in_use', 'in_maintenance', 'decommissioned', 'in_storage'],
-            visible: true
-          },
-          {
-            key: 'dc_building',
-            name: 'Data Center Building',
-            type: 'text',
-            required: true,
-            default_value: '',
-            visible: true
-          },
-          {
-            key: 'allocation',
-            name: 'Allocation',
-            type: 'text',
-            required: true,
-            default_value: '',
-            visible: true
-          }
-        ];
-        
-        return new Response(JSON.stringify(hardcodedResponse), { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
-        
-      } catch (err) {
-        console.error('Error in GET handler:', err);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Internal server error', 
-            details: err instanceof Error ? err.message : 'Unknown error'
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    // Create Supabase client with service role key
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
       }
+    );
+
+    // Get the authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header');
     }
 
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (userError || !user) {
+      console.error('Unauthorized:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const userId = user.id;
+
+    // Handle GET request - list all properties
+    if (req.method === 'GET') {
+      const { data: properties, error } = await supabaseAdmin
+        .from('property_definitions')
+        .select('*')
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching properties:', error);
+        throw new Error('Failed to fetch properties');
+      }
+
+      return new Response(
+        JSON.stringify({ data: properties }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle POST request - add new property
     if (req.method === 'POST') {
-      // Add a new column to the servers table
-      const body: ServerProperty = await req.json();
+      const body: PropertyDefinition = await req.json();
       
-      // Validate required fields
-      if (!body.key || !body.type) {
+      if (!body.name || !body.key || !body.type) {
         return new Response(
-          JSON.stringify({ error: 'Missing required fields: key and type are required' }), 
+          JSON.stringify({ error: 'Missing required fields: name, key, type' }),
           { status: 400, headers: corsHeaders }
-        );
-      }
-
-      // Validate column name (key)
-      const columnName = body.key.trim().toLowerCase();
-      if (!/^[a-z_][a-z0-9_]*$/.test(columnName)) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Invalid column name. Must start with a letter or underscore and contain only lowercase letters, numbers, and underscores.'
-          }), 
-          { status: 400, headers: corsHeaders }
-        );
-      }
-
-      // Check for reserved SQL keywords
-      const reservedKeywords = ['select', 'insert', 'update', 'delete', 'where', 'from', 'table', 'column', 'alter', 'create'];
-      if (reservedKeywords.includes(columnName)) {
-        return new Response(
-          JSON.stringify({ 
-            error: `Column name cannot be a reserved SQL keyword: ${columnName}`
-          }),
-          { status: 400, headers: corsHeaders }
-        );
-      }
-
-      // Validate property type
-      const allowedTypes = ['text', 'number', 'boolean', 'date', 'select'];
-      if (!allowedTypes.includes(body.type)) {
-        return new Response(
-          JSON.stringify({ 
-            error: `Invalid column type. Must be one of: ${allowedTypes.join(', ')}`
-          }), 
-          { status: 400, headers: corsHeaders }
-        );
-      }
-      
-      // Check if column already exists
-      const { data: columnExists } = await supabaseAdmin.rpc('column_exists', {
-        table_name: 'servers',
-        column_name: columnName
-      });
-      
-      if (columnExists) {
-        return new Response(
-          JSON.stringify({
-            error: `Column '${columnName}' already exists in the servers table`
-          }),
-          { status: 409, headers: corsHeaders } // 409 Conflict
         );
       }
 
       // Map property type to SQL type
-      let sqlType = 'TEXT';
-      if (body.type === 'number') sqlType = 'NUMERIC';
-      if (body.type === 'boolean') sqlType = 'BOOLEAN';
-      if (body.type === 'date') sqlType = 'DATE';
-      
-      // Add column to servers table with transaction for safety
-      const alterRes = await supabaseAdmin.rpc('execute_sql', {
-        sql: `
-          BEGIN;
-          ALTER TABLE public.servers ADD COLUMN "${columnName}" ${sqlType};
-          
-          -- Add column comment for better documentation
-          COMMENT ON COLUMN public.servers."${columnName}" IS 
-            '${String(body.description || body.name).replace(/'/g, "''")}';
-            
-          COMMIT;
-        `
-      });
+      const sqlType = (() => {
+        switch (body.type) {
+          case 'number': return 'NUMERIC';
+          case 'boolean': return 'BOOLEAN';
+          case 'date': return 'DATE';
+          case 'multiselect': return 'TEXT[]';
+          default: return 'TEXT'; // text, select, etc.
+        }
+      })();
 
-      if (alterRes.error) {
-        return new Response(
-          JSON.stringify({ 
-            error: `Failed to add column to servers table: ${alterRes.error.message}` 
-          }), 
-          { status: 500, headers: corsHeaders }
-        );
+      // Build and execute the SQL to add the column
+      const columnName = body.key;
+      const description = body.description || body.name;
+      
+      // First add the column
+      const addColumnSql = `
+        ALTER TABLE public.servers 
+        ADD COLUMN IF NOT EXISTS "${columnName}" ${sqlType};
+      `;
+      
+      const { data: addColumnResult, error: addColumnError } = await supabaseAdmin
+        .rpc('execute_sql', { sql: addColumnSql });
+
+      if (addColumnError) {
+        console.error('Error adding column:', addColumnError);
+        throw new Error(`Failed to add column: ${addColumnError.message}`);
+      }
+
+      if (!addColumnResult || !addColumnResult.success) {
+        const errorMsg = addColumnResult?.error || 'Unknown error';
+        console.error('Failed to add column:', errorMsg);
+        throw new Error(`Failed to add column: ${errorMsg}`);
+      }
+      
+      // Add comment if description is provided
+      if (description) {
+        const commentSql = `
+          COMMENT ON COLUMN public.servers."${columnName}" IS ${supabaseAdmin.rpc('$1', [description])};
+        `;
+        
+        const { error: commentError } = await supabaseAdmin
+          .rpc('execute_sql', { sql: commentSql });
+          
+        if (commentError) {
+          console.error('Warning: Failed to add column comment:', commentError);
+          // Continue even if comment fails
+        }
+      }
+
+      // Add to property_definitions table
+      const { data: property, error: insertError } = await supabaseAdmin
+        .from('property_definitions')
+        .insert({
+          key: body.key,
+          name: body.name,
+          display_name: body.name, // Using name as display_name if not provided
+          property_type: body.type, // Changed from type to property_type to match schema
+          description: body.description,
+          required: body.required || false,
+          default_value: body.default_value,
+          options: body.options,
+          category: body.category,
+          sort_order: body.sort_order || 0,
+          created_by: userId,
+          updated_by: userId
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error adding property definition:', insertError);
+        throw new Error(`Failed to add property definition: ${insertError.message}`);
       }
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: `Successfully added column '${columnName}' to servers table`,
-          column: columnName,
-          type: body.type
-        }), 
-        { headers: corsHeaders }
+        JSON.stringify({ data: property }),
+        { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Handle DELETE request - remove property
     if (req.method === 'DELETE') {
-      // Remove a column from the servers table
       const { key } = await req.json();
       
       if (!key) {
         return new Response(
-          JSON.stringify({ error: 'Missing required field: key' }), 
+          JSON.stringify({ error: 'Missing required field: key' }),
           { status: 400, headers: corsHeaders }
         );
       }
 
-      // Prevent deletion of core columns
-      const protectedColumns = [
-        // System columns
-        'id', 'created_at', 'updated_at', 'created_by',
-        // Server identification
-        'hostname', 'device_type', 'ip_address', 'serial_number', 'brand', 'model', 'status',
-        // DC organization
-        'dc_site', 'dc_building', 'dc_floor', 'dc_room',
-        // Classification
-        'allocation', 'environment'
-      ];
-      if (protectedColumns.includes(key)) {
+      // Prevent deletion of core properties
+      if (CORE_PROPERTIES.has(key)) {
         return new Response(
-          JSON.stringify({ error: `Cannot delete protected column: ${key}` }), 
+          JSON.stringify({ error: `Cannot delete core property: ${key}` }),
           { status: 403, headers: corsHeaders }
         );
       }
 
-      // Remove column from servers table
-      const alterRes = await supabaseAdmin.rpc('execute_sql', {
-        sql: `ALTER TABLE public.servers DROP COLUMN IF EXISTS "${key}";`
-      });
+      // First delete from property_definitions
+      const { error: deleteError } = await supabaseAdmin
+        .from('property_definitions')
+        .delete()
+        .eq('key', key);
 
-      if (alterRes.error) {
-        return new Response(
-          JSON.stringify({ 
-            error: `Failed to remove column from servers table: ${alterRes.error.message}` 
-          }), 
-          { status: 500, headers: corsHeaders }
-        );
+      if (deleteError) {
+        console.error('Error deleting property definition:', deleteError);
+        throw new Error(`Failed to delete property definition: ${deleteError.message}`);
+      }
+
+      // Then drop the column from the servers table
+      const { data: dropColumnResult, error: dropColumnError } = await supabaseAdmin
+        .rpc('drop_server_column', { p_column_name: key });
+
+      if (dropColumnError) {
+        console.error('Error dropping column:', dropColumnError);
+        throw new Error(`Failed to drop column: ${dropColumnError.message}`);
+      }
+
+      if (!dropColumnResult || !dropColumnResult.success) {
+        const errorMsg = dropColumnResult?.error || 'Unknown error';
+        console.error('Failed to drop column:', errorMsg);
+        throw new Error(`Failed to drop column: ${errorMsg}`);
       }
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: `Successfully removed column '${key}' from servers table`
-        }), 
-        { headers: corsHeaders }
+        JSON.stringify({ success: true, message: `Property '${key}' deleted successfully` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Handle unsupported methods
     return new Response(
-      JSON.stringify({ error: 'Method not allowed' }), 
+      JSON.stringify({ error: 'Method not allowed' }),
       { status: 405, headers: corsHeaders }
     );
   } catch (error) {
-    console.error('Error in property manager function:', error);
+    console.error('Error in property manager:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
-        details: error.message 
-      }), 
-      { status: 500, headers: corsHeaders }
+        error: error instanceof Error ? error.message : 'Internal server error',
+        details: error instanceof Error ? error.stack : undefined
+      }),
+      { 
+        status: error instanceof Error && error.message.includes('Unauthorized') ? 401 : 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
     );
   }
-}
+};
+
+// Export the handler for Supabase Edge Functions
+export const handler = propertyManagerHandler;
+
+export default handler;
