@@ -1,4 +1,3 @@
-
 import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Upload, Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useEnums } from "@/hooks/useEnums";
 
 // Define valid enum values for validation matching the database schema
 type ValidEnumKey = 'brand' | 'model' | 'operating_system' | 'dc_site' | 'dc_building' | 'allocation' | 'environment' | 'status' | 'device_type';
@@ -72,6 +72,20 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { enums, loading: enumsLoading } = useEnums();
+
+  // Map enums to match validEnums structure
+  const mappedValidEnums: ValidEnums = {
+    brand: enums.brands,
+    model: enums.models,
+    operating_system: enums.osTypes,
+    dc_site: enums.sites,
+    dc_building: enums.buildings,
+    allocation: enums.allocationTypes,
+    environment: enums.environmentTypes,
+    status: enums.status,
+    device_type: enums.deviceTypes
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -108,7 +122,7 @@ const BulkImport = ({ onImportComplete }: BulkImportProps) => {
     });
 
     // Validate enum values with case sensitivity
-    (Object.entries(validEnums) as [ValidEnumKey, readonly string[]][]).forEach(([field, validValues]) => {
+    (Object.entries(mappedValidEnums) as [ValidEnumKey, readonly string[]][]).forEach(([field, validValues]) => {
       const value = row[field];
       if (value && !validValues.includes(value)) {
         errors.push(`Invalid ${field}: "${value}". Must be one of: ${validValues.join(', ')}`);

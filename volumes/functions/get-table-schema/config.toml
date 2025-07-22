@@ -1,0 +1,7 @@
+# Enable CORS
+[functions.get-table-schema]
+  cors = true
+  verify_jwt = true
+  allowed_origins = ["*"]
+  allowed_headers = ["Authorization", "Content-Type"]
+  allowed_methods = ["GET", "OPTIONS"]

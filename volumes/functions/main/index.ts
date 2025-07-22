@@ -27,6 +27,18 @@ serve(async (req) => {
       const { handler } = await import('../admin-reset-password/index.ts')
       return await handler(req)
     }
+
+    // Property manager endpoint
+    if (url.pathname === '/property-manager' && ["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
+      const { handler } = await import('../property-manager/index.ts')
+      return await handler(req)
+    }
+
+    // Get table schema endpoint
+    if (url.pathname === '/get-table-schema' && req.method === 'GET') {
+      const { handler } = await import('../get-table-schema/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,

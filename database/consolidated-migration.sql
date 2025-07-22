@@ -412,6 +412,25 @@ BEGIN
 END;
 $$;
 
+-- RPC function to execute arbitrary SQL (for dynamic schema changes)
+CREATE OR REPLACE FUNCTION public.execute_sql(sql text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  EXECUTE sql;
+  result := jsonb_build_object('success', true);
+  RETURN result;
+EXCEPTION
+  WHEN OTHERS THEN
+    result := jsonb_build_object('success', false, 'error', SQLERRM);
+    RETURN result;
+END;
+$$;
+
 -- ============================================================================
 -- 5. TRIGGERS
 -- ============================================================================
@@ -600,6 +619,70 @@ GRANT EXECUTE ON FUNCTION public.get_enum_values() TO authenticated;
 
 -- Comment for documentation
 COMMENT ON FUNCTION public.get_enum_values() IS 'Returns all enum values used in the application as a JSON object';
+
+-- Function to get table schema information
+CREATE OR REPLACE FUNCTION public.get_table_schema(
+    p_table_name text DEFAULT 'servers'
+)
+RETURNS TABLE (
+    column_name text,
+    data_type text,
+    is_nullable text,
+    column_default text,
+    is_enum boolean,
+    enum_values text[]
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH enum_types AS (
+        SELECT 
+            t.typname,
+            array_agg(e.enumlabel::text ORDER BY e.enumsortorder) AS enum_values
+        FROM 
+            pg_type t
+            JOIN pg_enum e ON t.oid = e.enumtypid
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+        GROUP BY 
+            t.typname
+    )
+    SELECT 
+        c.column_name::text,
+        c.udt_name::text AS data_type,
+        c.is_nullable::text,
+        c.column_default::text,
+        EXISTS (
+            SELECT 1 
+            FROM pg_type t 
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace 
+            WHERE t.typname = c.udt_name 
+            AND n.nspname = 'public'
+            AND t.typtype = 'e'
+        ) AS is_enum,
+        COALESCE((
+            SELECT e.enum_values
+            FROM enum_types e
+            JOIN pg_catalog.pg_type pt ON e.typname = pt.typname
+            WHERE pt.typname = c.udt_name
+        ), ARRAY[]::text[]) AS enum_values
+    FROM 
+        information_schema.columns c
+    WHERE 
+        c.table_schema = 'public' 
+        AND c.table_name = p_table_name
+    ORDER BY 
+        c.ordinal_position;
+END;
+$$;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION public.get_table_schema(text) TO authenticated;
+
+-- Comment for documentation
+COMMENT ON FUNCTION public.get_table_schema(text) 
+IS 'Returns schema information for a specified table, including enum values for enum columns';
 
 -- ============================================================================
 -- END OF MIGRATION

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,116 +10,324 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, Plus, Trash2, Edit, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTableSchema } from "@/hooks/useTableSchema";
 import PropertyManager from "./property-management/PropertyManager";
 import BulkImport from "./property-management/BulkImport";
+import { supabase } from "@/integrations/supabase/client";
 
-interface ServerProperty {
-  id: string;
+export interface ServerProperty {
+  id?: string;
   name: string;
   key: string;
   type: "text" | "number" | "date" | "boolean" | "select";
   required: boolean;
   visible: boolean;
   options?: string[];
+  is_enum?: boolean;
+  isSystem?: boolean; // Indicates if this is a system property that can't be deleted
+  column_default?: string | null;
+  category?: string;
+  default_value?: string;
+  description?: string;
 }
 
+// Default properties as fallback - these cannot be deleted
 const defaultProperties: ServerProperty[] = [
-  { id: "1", name: "Hostname", key: "hostname", type: "text", required: true, visible: true },
-  { id: "2", name: "Device Type", key: "device_type", type: "select", required: true, visible: true, options: ["Server", "Storage", "Network"] },
-  { id: "3", name: "DC Site", key: "dc_site", type: "text", required: true, visible: true },
-  { id: "4", name: "DC Building", key: "dc_building", type: "text", required: false, visible: true },
-  { id: "5", name: "DC Floor", key: "dc_floor", type: "text", required: false, visible: true },
-  { id: "6", name: "DC Room", key: "dc_room", type: "text", required: false, visible: true },
-  { id: "7", name: "Allocation", key: "allocation", type: "select", required: false, visible: true, options: ["IAAS/PAAS", "SAAS", "Load Balancer", "Database"] },
-  { id: "8", name: "Environment", key: "environment", type: "select", required: false, visible: true, options: ["Production", "Testing", "Pre-Production", "Development"] },
-  { id: "9", name: "IP Address", key: "ip_address", type: "text", required: false, visible: true },
-  { id: "10", name: "Serial Number", key: "serial_number", type: "text", required: false, visible: true },
-  { id: "11", name: "Manufacturer", key: "manufacturer", type: "text", required: false, visible: true },
-  { id: "12", name: "Model", key: "model", type: "text", required: false, visible: true },
-  { id: "13", name: "Status", key: "status", type: "select", required: false, visible: true, options: ["Active", "Inactive", "Maintenance", "Retired"] },
-  { id: "14", name: "Notes", key: "notes", type: "text", required: false, visible: true }
+  { id: "1", name: "Hostname", key: "hostname", type: "text", required: true, visible: true, isSystem: true },
+  { id: "2", name: "Device Type", key: "device_type", type: "select", required: true, visible: true, options: ["Server", "Storage", "Network"], isSystem: true },
+  { id: "3", name: "DC Site", key: "dc_site", type: "text", required: true, visible: true, isSystem: true },
+  { id: "4", name: "DC Building", key: "dc_building", type: "text", required: true, visible: true, isSystem: true },
+  { id: "5", name: "DC Floor", key: "dc_floor", type: "text", required: true, visible: true, isSystem: true },
+  { id: "6", name: "DC Room", key: "dc_room", type: "text", required: true, visible: true, isSystem: true },
+  { id: "7", name: "Allocation", key: "allocation", type: "select", required: true, visible: true, options: ["IAAS/PAAS", "SAAS", "Load Balancer", "Database"], isSystem: true },
+  { id: "8", name: "Environment", key: "environment", type: "select", required: true, visible: true, options: ["Production", "Testing", "Pre-Production", "Development"], isSystem: true },
+  { id: "9", name: "IP Address", key: "ip_address", type: "text", required: true, visible: true, isSystem: true },
+  { id: "10", name: "Serial Number", key: "serial_number", type: "text", required: true, visible: true, isSystem: true },
+  { id: "11", name: "Brand", key: "brand", type: "select", required: true, visible: true, is_enum: true, options: ["Dell", "HPE", "Cisco", "Juniper", "NetApp", "Huawei", "Inspur", "Kaytus", "ZTE", "Meta Brain"], isSystem: true },
+  { id: "12", name: "Model", key: "model", type: "text", required: true, visible: true, isSystem: true },
+  { id: "13", name: "Status", key: "status", type: "select", required: true, visible: true, options: ["Active", "Inactive", "Maintenance", "Retired"], isSystem: true },
+  { id: "14", name: "Notes", key: "notes", type: "text", required: true, visible: true, isSystem: true },
+  { id: "15", name: "Operating System", key: "operating_system", type: "text", required: true, visible: true, isSystem: true },
+  { id: "16", name: "Rack", key: "rack", type: "text", required: true, visible: true, isSystem: true },
+  { id: "17", name: "Unit", key: "unit", type: "text", required: true, visible: true, isSystem: true }
+];
+
+// Columns to exclude from the dynamic schema
+export const EXCLUDED_COLUMNS = [
+  'id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at',
+  'ip_oob', 'hostname', 'ip_address', 'serial_number'
 ];
 
 const ServerProperties = () => {
-  const [properties, setProperties] = useState<ServerProperty[]>(defaultProperties);
+  const { columns: tableColumns, error } = useTableSchema('servers');
+  const [properties, setProperties] = useState<ServerProperty[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [editingProperty, setEditingProperty] = useState<ServerProperty | null>(null);
-  const { toast } = useToast();
-
-  const [newProperty, setNewProperty] = useState<Partial<ServerProperty>>({
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [propertyToDelete, setPropertyToDelete] = useState<ServerProperty | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newColumn, setNewColumn] = useState<Partial<ServerProperty>>({
     name: "",
     key: "",
     type: "text",
-    required: false,
+    required: true,
     visible: true,
     options: []
   });
+  const { toast } = useToast();
 
-  const handleToggleVisibility = (id: string) => {
-    setProperties(properties.map(prop =>
-      prop.id === id ? { ...prop, visible: !prop.visible } : prop
-    ));
-  };
+  // Merge dynamic columns with default properties
+  useEffect(() => {
+    if (tableColumns.length > 0) {
+      // Create a map of existing properties by key for quick lookup
+      const propertiesMap = new Map<string, ServerProperty>();
+      
+      // First add all default properties
+      defaultProperties.forEach(prop => {
+        propertiesMap.set(prop.key, { ...prop });
+      });
+      
+      // Then add or update with dynamic columns
+      tableColumns.forEach(column => {
+        if (!EXCLUDED_COLUMNS.includes(column.column_name)) {
+          const existingProp = propertiesMap.get(column.column_name);
+          if (existingProp) {
+            // Update existing property with dynamic data
+            existingProp.type = column.data_type;
+            existingProp.required = column.is_nullable === 'NO';
+            if (column.enum_values?.length) {
+              existingProp.options = column.enum_values;
+              existingProp.is_enum = true;
+            }
+          } else {
+            // Add new property from dynamic columns
+            propertiesMap.set(column.column_name, {
+              id: `dynamic_${column.column_name}`,
+              name: column.column_name
+                .split('_')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' '),
+              key: column.column_name,
+              type: column.data_type,
+              required: column.is_nullable === 'NO',
+              visible: true,
+              options: column.enum_values || [],
+              is_enum: column.is_enum || false,
+              column_default: column.column_default
+            });
+          }
+        }
+      });
+      
+      // Update properties state with merged data
+      setProperties(Array.from(propertiesMap.values()));
+    }
+  }, [tableColumns]);
 
-  const handleToggleRequired = (id: string) => {
-    setProperties(properties.map(prop =>
-      prop.id === id ? { ...prop, required: !prop.required } : prop
-    ));
-  };
-
-  const handleAddProperty = () => {
-    if (!newProperty.name || !newProperty.key) {
+  // Show error toast if schema loading fails
+  useEffect(() => {
+    if (error) {
       toast({
-        title: "Error",
-        description: "Property name and key are required",
+        title: "Error loading schema",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
+
+  const validateColumn = (column: Partial<ServerProperty>) => {
+    const errors: Record<string, string> = {};
+    
+    if (!column.name?.trim()) {
+      errors.name = 'Name is required';
+    }
+    
+    if (!column.key?.trim()) {
+      errors.key = 'Key is required';
+    } else if (!/^[a-z0-9_]+$/.test(column.key)) {
+      errors.key = 'Key must be lowercase with underscores (a-z, 0-9, _)';
+    }
+    
+    if (!column.type) {
+      errors.type = 'Type is required';
+      errors.key = 'This is a reserved SQL keyword and cannot be used as a column key';
+    }
+    
+    return errors;
+  };
+
+  const handleAddProperty = async (e?: React.FormEvent) => {
+    // Prevent default form submission if called from form
+    e?.preventDefault();
+    
+    const errors = validateColumn(newColumn);
+    
+    if (Object.keys(errors).length > 0) {
+      // Show first error to user
+      const firstError = Object.values(errors)[0];
+      toast({
+        title: "Validation Error",
+        description: firstError,
         variant: "destructive"
       });
       return;
     }
-
-    const property: ServerProperty = {
-      id: Date.now().toString(),
-      name: newProperty.name || "",
-      key: newProperty.key || "",
-      type: newProperty.type || "text",
-      required: newProperty.required || false,
-      visible: newProperty.visible || true,
-      options: newProperty.options || []
-    };
-
-    setProperties([...properties, property]);
-    setNewProperty({ name: "", key: "", type: "text", required: false, visible: true, options: [] });
-    setIsAddDialogOpen(false);
     
-    toast({
-      title: "Success",
-      description: "Property added successfully"
-    });
-  };
+    setIsSubmitting(true);
+    
+    try {
+      // Call the property-manager Edge Function to add the new column
+      const { data, error } = await supabase.functions.invoke('property-manager', {
+        method: 'POST',
+        body: {
+          name: newColumn.name,
+          key: newColumn.key,
+          type: newColumn.type || 'text',
+          required: newColumn.required || false,
+          description: newColumn.description,
+          options: newColumn.type === 'select' ? newColumn.options : undefined
+        }
+      });
 
-  const handleDeleteProperty = (id: string) => {
-    const property = properties.find(p => p.id === id);
-    if (property?.required) {
+      if (error) throw error;
+
+      if (data?.success) {
+        // Add the new column to the local state
+        const column: ServerProperty = {
+          id: `dynamic_${newColumn.key}`,
+          name: newColumn.name || "",
+          key: newColumn.key || "",
+          type: (newColumn.type as ServerProperty['type']) || "text",
+          required: true,
+          visible: true,
+          options: newColumn.options || [],
+          is_enum: newColumn.type === 'select',
+          description: newColumn.description
+        };
+
+        setProperties(prev => [...prev, column]);
+        setNewColumn({ name: "", key: "", type: "text", required: true, options: [] });
+        setIsAddDialogOpen(false);
+        
+        toast({
+          title: "Column Added",
+          description: `Successfully added column '${column.name}' to the servers table`
+        });
+      } else {
+        throw new Error(data?.error || "Failed to add column to the database");
+      }
+    } catch (err: any) {
+      console.error('Error adding column:', err);
+      
+      let errorMessage = err.message || "Failed to add column";
+      
+      // Handle specific error cases
+      if (errorMessage.includes('already exists')) {
+        errorMessage = `A column with this key already exists. Please choose a different key.`;
+      } else if (errorMessage.includes('reserved SQL keyword')) {
+        errorMessage = `Invalid column name: ${errorMessage}`;
+      } else if (errorMessage.includes('invalid input syntax')) {
+        errorMessage = `Invalid column name. Please use only letters, numbers, and underscores.`;
+      }
+      
       toast({
-        title: "Error",
-        description: "Cannot delete required properties",
+        title: "Error Adding Column",
+        description: errorMessage,
         variant: "destructive"
       });
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setProperties(properties.filter(prop => prop.id !== id));
-    toast({
-      title: "Success",
-      description: "Property deleted successfully"
+  };
+
+
+
+
+
+  // Removed unused handleRemoveOption function
+
+  const handleTypeChange = (value: string) => {
+    setNewColumn((prev: Partial<ServerProperty>) => {
+      const updated = {
+        ...prev,
+        type: value as ServerProperty['type']
+      };
+      
+      // Reset options when type changes to/from select
+      if (value === 'select' && !prev.options) {
+        updated.options = [];
+      } else if (value !== 'select' && prev.options) {
+        delete updated.options;
+      }
+      
+      return updated;
     });
   };
 
-  const handleBulkImportComplete = (count: number) => {
-    toast({
-      title: "Import Complete",
-      description: `Successfully imported ${count} servers`
-    });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { id, value } = e.target;
+    setNewColumn((prev: Partial<ServerProperty>) => ({
+      ...prev,
+      [id]: value
+    }));
+  };
+
+  const handleDeleteProperty = async () => {
+    if (!propertyToDelete) return;
+
+    setIsSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('property-manager', {
+        method: 'DELETE',
+        body: { key: propertyToDelete.key }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        // Remove the property from the local state
+        setProperties(properties.filter(prop => prop.key !== propertyToDelete.key));
+        toast({
+          title: "Success",
+          description: data.message || "Column deleted successfully"
+        });
+      } else {
+        throw new Error(data?.error || "Failed to delete column");
+      }
+    } catch (err: any) {
+      console.error('Error deleting column:', err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete column. Please check console for details.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+      setIsDeleteDialogOpen(false);
+      setPropertyToDelete(null);
+    }
+  };
+
+  const handleBulkImportComplete = async (count: number) => {
+    try {
+      // Refresh the schema after bulk import
+      const { error } = await supabase.functions.invoke('get-table-schema', {
+        method: 'GET',
+        body: { table: 'servers' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Import Complete",
+        description: `Successfully imported ${count} servers and refreshed schema`
+      });
+    } catch (err: any) {
+      console.error('Error refreshing schema after import:', err);
+      toast({
+        title: "Import Complete",
+        description: `Successfully imported ${count} servers (schema refresh failed)`
+      });
+    }
   };
 
   return (
@@ -154,32 +362,31 @@ const ServerProperties = () => {
                     Create a new server property to track additional information
                   </DialogDescription>
                 </DialogHeader>
+                <form onSubmit={handleAddProperty}>
                 <div className="space-y-4 mt-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Property Name</Label>
                     <Input
                       id="name"
-                      value={newProperty.name || ""}
-                      onChange={(e) => setNewProperty({...newProperty, name: e.target.value})}
-                      placeholder="e.g., CPU Count"
+                      value={newColumn.name || ""}
+                      onChange={handleChange}
+                      placeholder="e.g., Networks"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="key">Property Key</Label>
                     <Input
                       id="key"
-                      value={newProperty.key || ""}
-                      onChange={(e) => setNewProperty({...newProperty, key: e.target.value})}
-                      placeholder="e.g., cpuCount"
+                      value={newColumn.key || ""}
+                      onChange={handleChange}
+                      placeholder="e.g., Networks"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="type">Property Type</Label>
                     <Select 
-                      value={newProperty.type || "text"} 
-                      onValueChange={(value: "text" | "number" | "date" | "boolean" | "select") => 
-                        setNewProperty({...newProperty, type: value})
-                      }
+                      value={newColumn.type || "text"} 
+                      onValueChange={handleTypeChange}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select property type" />
@@ -196,20 +403,32 @@ const ServerProperties = () => {
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="required"
-                      checked={newProperty.required || false}
-                      onCheckedChange={(checked) => setNewProperty({...newProperty, required: checked})}
+                      checked={newColumn.required || false}
+                      onCheckedChange={(checked) => setNewColumn(prev => ({
+                        ...prev,
+                        required: checked
+                      }))}
                     />
                     <Label htmlFor="required">Required field</Label>
                   </div>
                 </div>
                 <div className="flex justify-end space-x-2 mt-6">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => setIsAddDialogOpen(false)}
+                    disabled={isSubmitting}
+                  >
                     Cancel
                   </Button>
-                  <Button onClick={handleAddProperty}>
-                    Add Property
+                  <Button 
+                    type="submit"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Adding...' : 'Add Property'}
                   </Button>
                 </div>
+                </form>
               </DialogContent>
             </Dialog>
           </div>
@@ -239,27 +458,20 @@ const ServerProperties = () => {
                     </div>
                     <div className="flex items-center space-x-4">
                       <div className="flex items-center space-x-2">
-                        <Label htmlFor={`visible-${property.id}`} className="text-sm">Visible</Label>
-                        <Switch
-                          id={`visible-${property.id}`}
-                          checked={property.visible}
-                          onCheckedChange={() => handleToggleVisibility(property.id)}
-                        />
+                        <Badge variant="secondary" className="text-xs">Required</Badge>
+                        {property.isSystem && (
+                          <Badge variant="outline" className="text-xs">System</Badge>
+                        )}
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Label htmlFor={`required-${property.id}`} className="text-sm">Required</Label>
-                        <Switch
-                          id={`required-${property.id}`}
-                          checked={property.required}
-                          onCheckedChange={() => handleToggleRequired(property.id)}
-                        />
-                      </div>
-                      {!property.required && (
+                      {!property.isSystem && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteProperty(property.id)}
-                          className="text-red-600 hover:text-red-700"
+                          onClick={() => {
+                            setPropertyToDelete(property);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          className="text-gray-500 hover:text-gray-700"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -270,10 +482,55 @@ const ServerProperties = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Delete Confirmation Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Column</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete the column "{propertyToDelete?.name}"? 
+                  This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end space-x-2 mt-6">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeleteProperty}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Deleting...' : 'Delete Column'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="manage" className="space-y-6">
-          <PropertyManager properties={properties} setProperties={setProperties} />
+          <PropertyManager 
+            properties={properties.map(p => ({
+              ...p,
+              id: p.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            }))} 
+            setProperties={(updatedProps) => {
+              // Map back to the original properties, preserving original IDs
+              const merged = updatedProps.map(up => {
+                const original = properties.find(p => p.key === up.key);
+                return {
+                  ...up,
+                  id: original?.id || up.id
+                };
+              });
+              setProperties(merged);
+            }} 
+          />
         </TabsContent>
 
         <TabsContent value="import" className="space-y-6">

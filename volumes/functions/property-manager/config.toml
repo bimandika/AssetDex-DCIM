@@ -1,0 +1,8 @@
+
+# Enable CORS and JWT verification for property-manager function
+[functions.property-manager]
+cors = true
+verify_jwt = true
+allowed_origins = ["*"]
+allowed_headers = ["Authorization", "Content-Type"]
+allowed_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
