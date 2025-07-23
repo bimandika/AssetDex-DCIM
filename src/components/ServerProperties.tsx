@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, Plus, Trash2, Edit, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSchema } from "@/hooks/useTableSchema";
-import PropertyManager from "./property-management/PropertyManager";
+import EnumManager from "./property-management/EnumManager";
 import BulkImport from "./property-management/BulkImport";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -549,7 +549,7 @@ const ServerProperties = () => {
         </TabsContent>
 
         <TabsContent value="manage" className="space-y-6">
-          <PropertyManager 
+          <EnumManager 
             properties={properties.map(p => ({
               ...p,
               id: p.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`

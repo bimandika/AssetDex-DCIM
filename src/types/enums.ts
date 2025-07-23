@@ -6,9 +6,9 @@ export type AllocationType = 'IAAS' | 'PAAS' | 'SAAS' | 'Load Balancer' | 'Datab
 
 export interface ServerEnums {
   status: ServerStatus[];
-  deviceTypes: string[];
-  allocationTypes: string[];
-  environmentTypes: string[];
+  deviceTypes: DeviceType[];
+  allocationTypes: AllocationType[];
+  environmentTypes: EnvironmentType[];
   racks: string[];
   units: string[];
   brands: string[];
