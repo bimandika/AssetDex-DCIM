@@ -176,41 +176,62 @@ export const useServerEnums = () => {
 
   // Function to fetch enums (extracted for reuse)
   const fetchEnums = async (accessToken: string) => {
-    const response = await fetch('/functions/v1/get-enums', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+    try {
+      // Use the same URL construction as in addEnumValue
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-enums` : 
+        'http://localhost:8000/functions/v1/get-enums';
+      
+      console.log('Fetching enums from:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      
+      if (!data) {
+        throw new Error('No data returned from get-enums');
+      }
+      
+      console.log('Fetched enums:', data);
+      
+      // Map the response to the ServerEnums type
+      const mappedEnums: ServerEnums = {
+        status: data.status || [],
+        deviceTypes: data.deviceTypes || [],
+        allocationTypes: data.allocationTypes || [],
+        environmentTypes: data.environmentTypes || [],
+        brands: data.brands || [],
+        models: data.models || [],
+        osTypes: data.osTypes || [],
+        sites: data.sites || [],
+        buildings: data.buildings || [],
+        racks: data.racks || [],
+        units: data.units || []
+      };
+      
+      setEnums(mappedEnums);
+      return mappedEnums;
+    } catch (error) {
+      console.error('Error in fetchEnums:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    
-    if (!data) {
-      throw new Error('No data returned from get-enums');
-    }
-    
-    // Map the response to the ServerEnums type
-    const mappedEnums: ServerEnums = {
-      status: data.status || [],
-      deviceTypes: data.deviceTypes || [],
-      allocationTypes: data.allocationTypes || [],
-      environmentTypes: data.environmentTypes || [],
-      brands: data.brands || [],
-      models: data.models || [],
-      osTypes: data.osTypes || [],
-      sites: data.sites || [],
-      buildings: data.buildings || [],
-      racks: data.racks || [],
-      units: data.units || []
-    };
-    
-    setEnums(mappedEnums);
-    return mappedEnums;
   };
 
   return { 
