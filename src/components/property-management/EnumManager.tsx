@@ -44,12 +44,7 @@ interface EnumManagerProps {
 const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<TableColumn | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    status: true,
-    type: true,
-    environment: true,
-    other: true
-  });
+
   
   const { columns, loading: schemaLoading } = useTableSchema("servers");
   const { enums, loading: enumsLoading } = useServerEnums();
@@ -76,57 +71,10 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
     unit: 'units'
   };
   
-  // Group properties by category
-  const groupedProperties = useMemo(() => {
-    const groups: Record<string, TableColumn[]> = {
-      status: [],
-      type: [],
-      location: [],
-      hardware: [],
-      configuration: [],
-      other: []
-    };
-
-    columns?.forEach(column => {
-      if (!column.is_enum) return;
-      
-      const colName = column.column_name.toLowerCase();
-      
-      if (colName.includes('status')) {
-        groups.status.push(column);
-      } 
-      else if (colName.includes('type') || colName === 'device_type') {
-        groups.type.push(column);
-      }
-      else if (colName.includes('environment') || colName.includes('site') || 
-               colName.includes('building') || colName.includes('rack') || 
-               colName.includes('unit')) {
-        groups.location.push(column);
-      }
-      else if (colName.includes('brand') || colName.includes('model') || 
-               colName.includes('operating_system')) {
-        groups.hardware.push(column);
-      }
-      else if (colName.includes('allocation') || colName.includes('configuration')) {
-        groups.configuration.push(column);
-      }
-      else {
-        groups.other.push(column);
-      }
-    });
-
-    // Filter out empty groups
-    return Object.fromEntries(
-      Object.entries(groups).filter(([_, items]) => items.length > 0)
-    );
+  // Get all enum columns
+  const enumColumns = useMemo(() => {
+    return columns?.filter(column => column.is_enum) || [];
   }, [columns]);
-
-  const toggleSection = useCallback((section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  }, []);
 
   const openAddOptionDialog = useCallback((property: TableColumn) => {
     setSelectedProperty(property);
@@ -196,7 +144,7 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
     const currentValues = enumKey ? (enums[enumKey as keyof typeof enums] || []) : [];
     
     return (
-      <div key={property.column_name} className="space-y-2">
+      <div key={property.column_name} className="space-y-2 p-4 border rounded-lg bg-card">
         <div className="flex items-center justify-between">
           <Label className="font-medium">
             {property.column_name.replace(/_/g, ' ')}
@@ -206,9 +154,9 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
           </Label>
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-8 px-2 text-xs"
+            className="h-8 text-xs"
             onClick={() => openAddOptionDialog(property)}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
@@ -216,25 +164,25 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
           </Button>
         </div>
         
-        <div className="flex flex-wrap gap-2">
-          {currentValues.map((value) => (
-            <Badge key={value} variant="outline" className="flex items-center gap-1">
-              {value}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRemoveOption(property.column_name, value);
-                }}
-                className="ml-1 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-          
-          {currentValues.length === 0 && (
-            <span className="text-sm text-muted-foreground">No options defined</span>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {currentValues.length > 0 ? (
+            currentValues.map((value) => (
+              <Badge key={value} variant="secondary" className="flex items-center gap-1">
+                {value}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveOption(property.column_name, value);
+                  }}
+                  className="ml-1 rounded-full hover:bg-muted p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))
+          ) : (
+            <div className="text-sm text-muted-foreground py-1">No options defined</div>
           )}
         </div>
       </div>
@@ -243,51 +191,22 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight">Enum Manager</h2>
         <p className="text-sm text-muted-foreground">
           Manage enum values for server properties
         </p>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-6">
           {schemaLoading || enumsLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
-            <div className="space-y-8">
-              {Object.entries(groupedProperties).map(([section, properties]) => (
-                <div key={section} className="space-y-4">
-                  <div 
-                    className="flex items-center cursor-pointer"
-                    onClick={() => toggleSection(section)}
-                  >
-                    <h3 className="text-lg font-medium">
-                      {section.charAt(0).toUpperCase() + section.slice(1)}
-                    </h3>
-                    <svg 
-                      className={`h-5 w-5 ml-2 transition-transform ${expandedSections[section] ? 'rotate-0' : '-rotate-90'}`}
-                      xmlns="http://www.w3.org/2000/svg" 
-                      viewBox="0 0 24 24" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      strokeWidth="2" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round"
-                    >
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
-                  </div>
-                  
-                  {expandedSections[section] && (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                      {(properties as TableColumn[]).map(renderPropertyField)}
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {enumColumns.map(renderPropertyField)}
             </div>
           )}
         </CardContent>
