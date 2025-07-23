@@ -16,7 +16,7 @@ import { Plus, Edit, Trash2, Search, Filter, CalendarIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useEnums } from "@/hooks/useEnums";
+import { useServerEnums } from "@/hooks/useServerEnums";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -94,7 +94,7 @@ const ServerInventory = () => {
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   
   // Get dynamic enums and auth
-  const { enums } = useEnums();
+  const { enums, refreshEnums } = useServerEnums();
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -1201,16 +1201,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Brands</SelectItem>
-                  <SelectItem value="Dell">Dell</SelectItem>
-                  <SelectItem value="HPE">HPE</SelectItem>
-                  <SelectItem value="Cisco">Cisco</SelectItem>
-                  <SelectItem value="Juniper">Juniper</SelectItem>
-                  <SelectItem value="NetApp">NetApp</SelectItem>
-                  <SelectItem value="Huawei">Huawei</SelectItem>
-                  <SelectItem value="Inspur">Inspur</SelectItem>
-                  <SelectItem value="Kaytus">Kaytus</SelectItem>
-                  <SelectItem value="ZTE">ZTE</SelectItem>
-                  <SelectItem value="Meta Brain">Meta Brain</SelectItem>
+                  {enums.brands.map((brand) => (
+                    <SelectItem key={brand} value={brand}>
+                      {brand}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1220,18 +1215,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Models</SelectItem>
-                  <SelectItem value="PowerEdge R740">PowerEdge R740</SelectItem>
-                  <SelectItem value="PowerEdge R750">PowerEdge R750</SelectItem>
-                  <SelectItem value="PowerEdge R750xd">PowerEdge R750xd</SelectItem>
-                  <SelectItem value="PowerVault ME4">PowerVault ME4</SelectItem>
-                  <SelectItem value="ProLiant DL380">ProLiant DL380</SelectItem>
-                  <SelectItem value="ProLiant DL360">ProLiant DL360</SelectItem>
-                  <SelectItem value="Apollo 4510">Apollo 4510</SelectItem>
-                  <SelectItem value="ASA 5525-X">ASA 5525-X</SelectItem>
-                  <SelectItem value="Nexus 93180YC-EX">Nexus 93180YC-EX</SelectItem>
-                  <SelectItem value="MX204">MX204</SelectItem>
-                  <SelectItem value="AFF A400">AFF A400</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {enums.models.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1241,11 +1229,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Allocations</SelectItem>
-                  <SelectItem value="IAAS">IaaS</SelectItem>
-                  <SelectItem value="PAAS">PaaS</SelectItem>
-                  <SelectItem value="SAAS">SaaS</SelectItem>
-                  <SelectItem value="Load Balancer">Load Balancer</SelectItem>
-                  <SelectItem value="Database">Database</SelectItem>
+                  {enums.allocationTypes.map((allocation) => (
+                    <SelectItem key={allocation} value={allocation}>
+                      {allocation}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1255,19 +1243,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All OS</SelectItem>
-                  <SelectItem value="Ubuntu 22.04 LTS">Ubuntu 22.04 LTS</SelectItem>
-                  <SelectItem value="Ubuntu 20.04 LTS">Ubuntu 20.04 LTS</SelectItem>
-                  <SelectItem value="RHEL 8">RHEL 8</SelectItem>
-                  <SelectItem value="CentOS 7">CentOS 7</SelectItem>
-                  <SelectItem value="Oracle Linux 8">Oracle Linux 8</SelectItem>
-                  <SelectItem value="Windows Server 2022">Windows Server 2022</SelectItem>
-                  <SelectItem value="Windows Server 2019">Windows Server 2019</SelectItem>
-                  <SelectItem value="Storage OS 2.1">Storage OS 2.1</SelectItem>
-                  <SelectItem value="Cisco ASA 9.16">Cisco ASA 9.16</SelectItem>
-                  <SelectItem value="NX-OS 9.3">NX-OS 9.3</SelectItem>
-                  <SelectItem value="JunOS 21.2">JunOS 21.2</SelectItem>
-                  <SelectItem value="ONTAP 9.10">ONTAP 9.10</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {enums.osTypes.map((os) => (
+                    <SelectItem key={os} value={os}>
+                      {os}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1277,16 +1257,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Sites</SelectItem>
-                  <SelectItem value="DC-East">DC-East</SelectItem>
-                  <SelectItem value="DC-West">DC-West</SelectItem>
-                  <SelectItem value="DC-North">DC-North</SelectItem>
-                  <SelectItem value="DC-South">DC-South</SelectItem>
-                  <SelectItem value="DC-Central">DC-Central</SelectItem>
-                  <SelectItem value="DC1">DC1</SelectItem>
-                  <SelectItem value="DC2">DC2</SelectItem>
-                  <SelectItem value="DC3">DC3</SelectItem>
-                  <SelectItem value="DC4">DC4</SelectItem>
-                  <SelectItem value="DC5">DC5</SelectItem>
+                  {enums.sites.map((site) => (
+                    <SelectItem key={site} value={site}>
+                      {site}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1296,12 +1271,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Buildings</SelectItem>
-                  <SelectItem value="Building-A">Building A</SelectItem>
-                  <SelectItem value="Building-B">Building B</SelectItem>
-                  <SelectItem value="Building-C">Building C</SelectItem>
-                  <SelectItem value="Building-D">Building D</SelectItem>
-                  <SelectItem value="Building-E">Building E</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {enums.buildings.map((building) => (
+                    <SelectItem key={building} value={building}>
+                      {building}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -1326,11 +1300,11 @@ const ServerInventory = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
-                  <SelectItem value="Maintenance">Maintenance</SelectItem>
-                  <SelectItem value="Decommissioned">Decommissioned</SelectItem>
-                  <SelectItem value="Retired">Retired</SelectItem>
+                  {enums.status.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

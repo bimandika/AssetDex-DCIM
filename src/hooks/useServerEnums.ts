@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 /**
  * Custom hook to fetch and manage server enums from the backend
  * Uses direct fetch to the get-enums endpoint
- * @returns Object containing enums, loading state, and error if any
+ * @returns Object containing enums, loading state, error, and refresh function
  */
 export const useServerEnums = () => {
   const [enums, setEnums] = useState<ServerEnums>(defaultServerEnums);
@@ -234,10 +234,26 @@ export const useServerEnums = () => {
     }
   };
 
+  // Function to refresh enums
+  const refreshEnums = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
+      const enumsData = await fetchEnums(session.access_token);
+      setEnums(enumsData);
+      return enumsData;
+    } catch (error) {
+      console.error('Error refreshing enums:', error);
+      throw error;
+    }
+  }, [fetchEnums]);
+
   return { 
     enums, 
     loading, 
     error, 
-    addEnumValue 
+    addEnumValue,
+    refreshEnums 
   };
 };
