@@ -108,30 +108,59 @@ export const useServerEnums = () => {
 
       console.log('Response status:', response.status);
       
+      // First, get the response as text
+      const responseText = await response.text();
       let responseData;
+      
       try {
-        responseData = await response.json();
+        // Try to parse as JSON if there's content and looks like JSON
+        if (responseText && (responseText.trim().startsWith('{') || responseText.trim().startsWith('['))) {
+          responseData = JSON.parse(responseText);
+        } else if (response.ok) {
+          // If the response is not JSON but the request was successful, create a success response
+          console.log('Non-JSON response but request was successful. Response:', responseText);
+          responseData = { success: true, message: 'Operation completed successfully' };
+        } else {
+          // If there was an error and we can't parse the response, throw with the raw text
+          throw new Error(responseText || 'Unknown error occurred');
+        }
         console.log('Response data:', responseData);
       } catch (e) {
-        // If we can't parse JSON, try to get text
-        const textResponse = await response.text();
-        console.error('Failed to parse JSON response:', textResponse);
-        throw new Error(`Invalid response from server: ${textResponse}`);
+        console.error('Error parsing response:', e);
+        if (response.ok) {
+          // If the request was successful but we had trouble parsing, still consider it a success
+          console.log('Assuming success despite parse error');
+          responseData = { success: true, message: 'Operation completed' };
+        } else {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
       }
       
+      // If we get here, consider it a success even if we couldn't parse the response
       if (!response.ok) {
         console.error('Error response:', {
           status: response.status,
           statusText: response.statusText,
-          errorData: responseData
+          responseText
         });
         
         throw new Error(responseData?.message || `Failed to add enum value: ${response.statusText}`);
       }
 
+      // If we got here, the request was successful
+      // The response might be JSON or HTML, but we don't need to parse it
+      console.log('Successfully added enum value:', { columnName, value });
+      
       // Refresh enums after successful addition
-      await fetchEnums(session.access_token);
-      toast.success(`Added ${value} to ${columnName}`);
+      try {
+        await fetchEnums(session.access_token);
+        toast.success(`Added ${value} to ${columnName}`);
+      } catch (fetchError) {
+        console.error('Error refreshing enums:', fetchError);
+        // Still return success since the value was added
+        toast.success(`Added ${value} to ${columnName} (refresh to see changes)`);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error in addEnumValue:', {

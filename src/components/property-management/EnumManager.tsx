@@ -87,9 +87,11 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
     if (!selectedProperty) return;
     
     try {
-      await addEnumValue(selectedProperty.column_name, data.newOption);
-      setIsDialogOpen(false);
-      reset();
+      const success = await addEnumValue(selectedProperty.column_name, data.newOption);
+      if (success) {
+        setIsDialogOpen(false);
+        reset();
+      }
     } catch (error) {
       // Error is already handled in addEnumValue
       console.error('Error in handleAddOption:', error);
