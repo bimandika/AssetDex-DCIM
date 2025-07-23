@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ServerEnums, defaultServerEnums } from '@/types/enums';
+import { toast } from 'sonner';
 
 /**
  * Custom hook to fetch and manage server enums from the backend
@@ -26,42 +27,7 @@ export const useServerEnums = () => {
         }
         
         // Fetch enums using the get-enums endpoint
-        const response = await fetch('/functions/v1/get-enums', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data) {
-          throw new Error('No data returned from get-enums');
-        }
-        
-        console.log('Received server enums:', data);
-        
-        // Map the response to the ServerEnums type
-        const mappedEnums: ServerEnums = {
-          status: data.status || [],
-          deviceTypes: data.deviceTypes || [],
-          allocationTypes: data.allocationTypes || [],
-          environmentTypes: data.environmentTypes || [],
-          brands: data.brands || [],
-          models: data.models || [],
-          osTypes: data.osTypes || [],
-          sites: data.sites || [],
-          buildings: data.buildings || [],
-          racks: data.racks || [],
-          units: data.units || []
-        };
-        
-        setEnums(mappedEnums);
+        await fetchEnums(session.access_token);
         setError(null);
       } catch (err) {
         console.error('Error fetching server enums:', err);
@@ -77,5 +43,151 @@ export const useServerEnums = () => {
     fetchServerEnums();
   }, []);
 
-  return { enums, loading, error };
+  // Map of column names to their corresponding enum types in the database
+  const columnToEnumType: Record<string, string> = {
+    status: 'server_status',
+    device_type: 'device_type',
+    allocation: 'allocation_type',
+    environment: 'environment_type',
+    brand: 'brand_type',
+    model: 'model_type',
+    operating_system: 'os_type',
+    dc_site: 'site_type',
+    dc_building: 'building_type',
+    rack: 'rack_type',
+    unit: 'unit_type'
+  };
+
+  // Function to get the database enum type for a column
+  const getEnumTypeForColumn = (columnName: string): string | null => {
+    const key = Object.keys(columnToEnumType).find(key => 
+      columnName.toLowerCase().includes(key)
+    );
+    return key ? columnToEnumType[key] : null;
+  };
+
+  // Function to add an enum value
+  const addEnumValue = useCallback(async (columnName: string, value: string) => {
+    try {
+      const enumType = getEnumTypeForColumn(columnName);
+      if (!enumType) {
+        throw new Error(`No enum type mapping found for column: ${columnName}`);
+      }
+
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Session error:', sessionError);
+        throw new Error('Not authenticated or session error');
+      }
+
+      console.log('Adding enum value:', { enumType, value });
+      console.log('Using access token:', session.access_token ? 'Token exists' : 'No token');
+      
+      const requestBody = {
+        type: enumType,
+        value: value.trim(),
+        action: 'add'
+      };
+      
+      console.log('Request body:', requestBody);
+
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/enum-manager` : 
+        'http://localhost:8000/functions/v1/enum-manager';
+      
+      console.log('Making request to:', apiUrl);
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('Response status:', response.status);
+      
+      let responseData;
+      try {
+        responseData = await response.json();
+        console.log('Response data:', responseData);
+      } catch (e) {
+        // If we can't parse JSON, try to get text
+        const textResponse = await response.text();
+        console.error('Failed to parse JSON response:', textResponse);
+        throw new Error(`Invalid response from server: ${textResponse}`);
+      }
+      
+      if (!response.ok) {
+        console.error('Error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData: responseData
+        });
+        
+        throw new Error(responseData?.message || `Failed to add enum value: ${response.statusText}`);
+      }
+
+      // Refresh enums after successful addition
+      await fetchEnums(session.access_token);
+      toast.success(`Added ${value} to ${columnName}`);
+      return true;
+    } catch (error) {
+      console.error('Error in addEnumValue:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to add enum value: ${errorMessage}`);
+      throw error;
+    }
+  }, []);
+
+  // Function to fetch enums (extracted for reuse)
+  const fetchEnums = async (accessToken: string) => {
+    const response = await fetch('/functions/v1/get-enums', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data) {
+      throw new Error('No data returned from get-enums');
+    }
+    
+    // Map the response to the ServerEnums type
+    const mappedEnums: ServerEnums = {
+      status: data.status || [],
+      deviceTypes: data.deviceTypes || [],
+      allocationTypes: data.allocationTypes || [],
+      environmentTypes: data.environmentTypes || [],
+      brands: data.brands || [],
+      models: data.models || [],
+      osTypes: data.osTypes || [],
+      sites: data.sites || [],
+      buildings: data.buildings || [],
+      racks: data.racks || [],
+      units: data.units || []
+    };
+    
+    setEnums(mappedEnums);
+    return mappedEnums;
+  };
+
+  return { 
+    enums, 
+    loading, 
+    error, 
+    addEnumValue 
+  };
 };

@@ -47,7 +47,7 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
 
   
   const { columns, loading: schemaLoading } = useTableSchema("servers");
-  const { enums, loading: enumsLoading } = useServerEnums();
+  const { enums, loading: enumsLoading, addEnumValue } = useServerEnums();
   
   const { handleSubmit, reset, setValue, register, formState: { errors } } = useForm<PropertyFormValues>({
     defaultValues: {
@@ -87,28 +87,14 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
     if (!selectedProperty) return;
     
     try {
-      // Get the enum key from the column name
-      const enumKey = columnToEnumMap[selectedProperty.column_name] || 
-                     Object.keys(columnToEnumMap).find(key => 
-                       selectedProperty.column_name.toLowerCase().includes(key)
-                     );
-      
-      if (!enumKey) {
-        throw new Error(`No enum mapping found for column: ${selectedProperty.column_name}`);
-      }
-      
-      // In a real implementation, you would call your API here
-      // For now, we'll just show a success message
-      // await api.addEnumValue(enumKey, data.newOption);
-      
-      toast.success(`Added new option "${data.newOption}" to ${selectedProperty.column_name}`);
+      await addEnumValue(selectedProperty.column_name, data.newOption);
       setIsDialogOpen(false);
       reset();
     } catch (error) {
-      console.error('Error adding enum value:', error);
-      toast.error(`Failed to add option: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Error is already handled in addEnumValue
+      console.error('Error in handleAddOption:', error);
     }
-  }, [selectedProperty, reset]);
+  }, [selectedProperty, addEnumValue, reset]);
 
   const handleRemoveOption = useCallback(async (columnName: string, value: string) => {
     try {

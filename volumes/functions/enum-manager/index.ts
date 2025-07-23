@@ -32,7 +32,11 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     )
 
-    const { action, type, value } = await req.json()
+    // Debug log request headers and body
+    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
+    const requestBody = await req.json();
+    console.log('Request body:', requestBody);
+    const { action, type, value } = requestBody;
     
     // Handle get-enums action
     if (action === 'get-enums') {
