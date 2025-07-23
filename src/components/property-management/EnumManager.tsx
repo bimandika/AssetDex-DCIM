@@ -198,7 +198,7 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Options Manager</h2>
+        <h2 className="text-lg font-semibold">Options Managers</h2>
         <p className="text-sm text-muted-foreground">
           Manage Options values for server properties
         </p>
