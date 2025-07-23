@@ -34,6 +34,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Enum manager endpoint
+    if (url.pathname === '/enum-manager' && ["POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../enum-manager/index.ts')
+      return await handler(req)
+    }
+
     // Get table schema endpoint
     if (url.pathname === '/get-table-schema' && req.method === 'GET') {
       const { handler } = await import('../get-table-schema/index.ts')
