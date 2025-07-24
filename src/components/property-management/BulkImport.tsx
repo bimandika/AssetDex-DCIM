@@ -123,6 +123,19 @@ const BulkImport = () => {
       });
       return;
     }
+
+    // Check if we have all required enums loaded
+    const requiredEnums = ['status', 'deviceTypes', 'allocationTypes', 'environmentTypes', 'racks', 'units'];
+    const missingEnums = requiredEnums.filter(type => !serverEnums[type as keyof ServerEnums] || serverEnums[type as keyof ServerEnums]?.length === 0);
+    
+    if (missingEnums.length > 0) {
+      toast({
+        title: 'Missing enum data',
+        description: `The following enum types are missing or empty: ${missingEnums.join(', ')}. Please make sure they are configured in the system.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     
     setIsImporting(true);
     setImportResults(null);
@@ -178,24 +191,50 @@ const BulkImport = () => {
           description: `Found ${invalidRows.length} rows with errors. Please fix them before importing.`,
           variant: 'destructive',
         });
+        setIsImporting(false);
         return;
       }
 
       // If we get here, all rows are valid - proceed with import
       for (const { row } of validation) {
         try {
-          // Prepare the data for upsert
+          // Prepare the data for insert/update
           const { id, ...rowData } = row;
-          const { error } = await supabase
+          
+          // First, check if a server with this hostname already exists
+          const { data: existingServer, error: fetchError } = await supabase
             .from('servers')
-            .upsert(rowData, { onConflict: 'hostname' });
-
+            .select('id')
+            .eq('hostname', row.hostname)
+            .maybeSingle();
+            
+          if (fetchError) throw fetchError;
+          
+          let error;
+          
+          if (existingServer) {
+            // Update existing server
+            const { error: updateError } = await supabase
+              .from('servers')
+              .update(rowData)
+              .eq('hostname', row.hostname);
+              
+            error = updateError;
+          } else {
+            // Insert new server
+            const { error: insertError } = await supabase
+              .from('servers')
+              .insert([rowData]);
+              
+            error = insertError;
+          }
+          
           if (error) throw error;
           results.success++;
         } catch (error) {
           results.failed++;
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          results.errors.push(`Row ${row.id}: ${errorMessage}`);
+          results.errors.push(`Row ${row.id} (${row.hostname}): ${errorMessage}`);
         }
       }
 
@@ -225,62 +264,136 @@ const BulkImport = () => {
     }
   }, [file, serverEnums]);
 
-  const downloadTemplate = useCallback(() => {
-    // Create CSV header row with required fields and common optional fields
-    const headers = [
-      ...REQUIRED_FIELDS,
-      'brand',
-      'model',
-      'ip_address',
-      'ip_oob',
-      'operating_system',
-      'dc_building',
-      'dc_floor',
-      'dc_room',
-      'allocation',
-      'environment',
-      'rack',
-      'unit',
-      'warranty',
-      'notes'
-    ];
+  const downloadTemplate = useCallback(async () => {
+    if (!serverEnums) {
+      toast({
+        title: 'Data not loaded',
+        description: 'Please wait while we load the required data',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // Fetch the server table schema using direct query since RPC might not be available
+      const { data, error } = await supabase
+        .from('servers')
+        .select('*')
+        .limit(1);
+      
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        // If no data, use a default set of columns
+        const defaultColumns = [
+          'hostname', 'dc_site', 'device_type', 'status', 'serial_number',
+          'brand', 'model', 'ip_address', 'ip_oob', 'operating_system',
+          'dc_building', 'dc_floor', 'dc_room', 'allocation', 'environment',
+          'rack', 'unit', 'warranty', 'notes'
+        ];
+        
+        // Get the first available value from each enum for the template
+        const getFirstEnumValue = (type: keyof ServerEnums): string => {
+          const values = serverEnums[type];
+          return Array.isArray(values) && values.length > 0 ? values[0] : '';
+        };
+
+        // Define column mappings and default values
+        const columnDefaults: Record<string, string> = {
+          hostname: 'server-01',
+          dc_site: 'DC1',
+          serial_number: 'SER12345',
+          ip_address: '192.168.1.10',
+          ip_oob: '10.0.0.1',
+          dc_building: 'Building A',
+          dc_floor: '1',
+          dc_room: 'Server Room 101',
+          brand: 'Dell',
+          model: 'PowerEdge R740',
+          operating_system: 'Ubuntu 22.04 LTS',
+          warranty: '2025-12-31',
+          notes: 'Example note'
+        };
+
+        // Map enum types to server columns
+        const enumMappings: Record<string, keyof ServerEnums> = {
+          status: 'status',
+          device_type: 'deviceTypes',
+          allocation: 'allocationTypes',
+          environment: 'environmentTypes',
+          rack: 'racks',
+          unit: 'units'
+        };
+
+        // Create example data for the template with valid enum values
+        const exampleData = defaultColumns.map((header: string) => {
+          // Handle enum fields
+          const enumType = enumMappings[header];
+          if (enumType) {
+            const value = getFirstEnumValue(enumType);
+            if (value) return value;
+            
+            // Fallback values if enum is empty
+            const fallbacks: Record<string, string> = {
+              status: 'Active',
+              device_type: 'Server',
+              allocation: 'IAAS',
+              environment: 'Production',
+              rack: 'RACK-01',
+              unit: 'U42'
+            };
+            return fallbacks[header] || '';
+          }
+          
+          // Use default value if defined
+          if (header in columnDefaults) {
+            return columnDefaults[header];
+          }
+          
+          // Empty for other optional fields
+          return '';
+      });
     
-    // Create example data for the template
-    const exampleData = headers.map(header => {
-      if (header === 'hostname') return 'server-01';
-      if (header === 'dc_site') return 'DC1';
-      if (header === 'device_type') return 'Server';
-      if (header === 'serial_number') return 'SER12345';
-      if (header === 'status') return 'Active';
-      if (header === 'ip_address') return '192.168.1.10';
-      if (header === 'ip_oob') return '10.0.0.1';
-      if (header === 'allocation') return 'IAAS';
-      if (header === 'environment') return 'Production';
-      if (header === 'rack') return 'RACK-01';
-      if (header === 'unit') return 'U42';
-      return ''; // Empty for other fields
-    });
-    
-    const csvContent = [
-      headers.join(','),
-      exampleData.join(',')
-    ].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'server_import_template.csv');
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({
-      title: 'Template downloaded',
-      description: 'CSV template has been downloaded successfully',
-    });
+      // Get headers from the first row of data if available, otherwise use default columns
+      const headers = data && data.length > 0 
+        ? Object.keys(data[0])
+            .filter(key => !['id', 'created_at', 'updated_at'].includes(key))
+        : defaultColumns;
+      
+      // Create CSV content with proper escaping
+      const csvContent = [
+        headers.join(','),
+        exampleData.map((value: string) => {
+          // Escape quotes and wrap in quotes if the value contains commas or quotes
+          const escaped = String(value).replace(/"/g, '""');
+          return escaped.includes(',') || escaped.includes('"') 
+            ? `"${escaped}"` 
+            : escaped;
+        }).join(',')
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'server_import_template.csv');
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: 'Template downloaded',
+        description: 'CSV template has been downloaded successfully',
+      });
+    } catch (error) {
+      console.error('Error generating template:', error);
+      toast({
+        title: 'Error generating template',
+        description: 'Failed to generate the CSV template. Please try again.',
+        variant: 'destructive',
+      });
+    }
   }, [toast]);
 
   return (
