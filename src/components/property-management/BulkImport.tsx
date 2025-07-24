@@ -275,102 +275,92 @@ const BulkImport = () => {
     }
 
     try {
-      // Fetch the server table schema using direct query since RPC might not be available
-      const { data, error } = await supabase
-        .from('servers')
-        .select('*')
-        .limit(1);
+      // Default columns that we know should be included
+      const defaultColumns = [
+        'hostname', 'dc_site', 'device_type', 'status', 'serial_number',
+        'brand', 'model', 'ip_address', 'ip_oob', 'operating_system',
+        'dc_building', 'dc_floor', 'dc_room', 'allocation', 'environment',
+        'rack', 'unit', 'warranty', 'notes'
+      ];
       
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        // If no data, use a default set of columns
-        const defaultColumns = [
-          'hostname', 'dc_site', 'device_type', 'status', 'serial_number',
-          'brand', 'model', 'ip_address', 'ip_oob', 'operating_system',
-          'dc_building', 'dc_floor', 'dc_room', 'allocation', 'environment',
-          'rack', 'unit', 'warranty', 'notes'
-        ];
+      // Get the first available value from each enum for the template
+      const getFirstEnumValue = (type: keyof ServerEnums): string => {
+        const values = serverEnums[type];
+        return Array.isArray(values) && values.length > 0 ? values[0] : '';
+      };
+
+      // Define column mappings and default values
+      const columnDefaults: Record<string, string> = {
+        hostname: 'server-01',
+        dc_site: 'DC1',
+        serial_number: 'SER12345',
+        ip_address: '192.168.1.10',
+        ip_oob: '10.0.0.1',
+        dc_building: 'Building A',
+        dc_floor: '1',
+        dc_room: 'Server Room 101',
+        brand: 'Dell',
+        model: 'PowerEdge R740',
+        operating_system: 'Ubuntu 22.04 LTS',
+        warranty: '2025-12-31',
+        notes: 'Example note'
+      };
+
+      // Map enum types to server columns
+      const enumMappings: Record<string, keyof ServerEnums> = {
+        status: 'status',
+        device_type: 'deviceTypes',
+        allocation: 'allocationTypes',
+        environment: 'environmentTypes',
+        rack: 'racks',
+        unit: 'units'
+      };
+
+      // Create example data for the template with valid enum values
+      const exampleData = defaultColumns.map((header: string) => {
+        // Handle enum fields
+        const enumType = enumMappings[header];
+        if (enumType) {
+          const value = getFirstEnumValue(enumType);
+          if (value) return value;
+          
+          // Fallback values if enum is empty
+          const fallbacks: Record<string, string> = {
+            status: 'Active',
+            device_type: 'Server',
+            allocation: 'IAAS',
+            environment: 'Production',
+            rack: 'RACK-01',
+            unit: 'U42'
+          };
+          return fallbacks[header] || '';
+        }
         
-        // Get the first available value from each enum for the template
-        const getFirstEnumValue = (type: keyof ServerEnums): string => {
-          const values = serverEnums[type];
-          return Array.isArray(values) && values.length > 0 ? values[0] : '';
-        };
-
-        // Define column mappings and default values
-        const columnDefaults: Record<string, string> = {
-          hostname: 'server-01',
-          dc_site: 'DC1',
-          serial_number: 'SER12345',
-          ip_address: '192.168.1.10',
-          ip_oob: '10.0.0.1',
-          dc_building: 'Building A',
-          dc_floor: '1',
-          dc_room: 'Server Room 101',
-          brand: 'Dell',
-          model: 'PowerEdge R740',
-          operating_system: 'Ubuntu 22.04 LTS',
-          warranty: '2025-12-31',
-          notes: 'Example note'
-        };
-
-        // Map enum types to server columns
-        const enumMappings: Record<string, keyof ServerEnums> = {
-          status: 'status',
-          device_type: 'deviceTypes',
-          allocation: 'allocationTypes',
-          environment: 'environmentTypes',
-          rack: 'racks',
-          unit: 'units'
-        };
-
-        // Create example data for the template with valid enum values
-        const exampleData = defaultColumns.map((header: string) => {
-          // Handle enum fields
-          const enumType = enumMappings[header];
-          if (enumType) {
-            const value = getFirstEnumValue(enumType);
-            if (value) return value;
-            
-            // Fallback values if enum is empty
-            const fallbacks: Record<string, string> = {
-              status: 'Active',
-              device_type: 'Server',
-              allocation: 'IAAS',
-              environment: 'Production',
-              rack: 'RACK-01',
-              unit: 'U42'
-            };
-            return fallbacks[header] || '';
-          }
-          
-          // Use default value if defined
-          if (header in columnDefaults) {
-            return columnDefaults[header];
-          }
-          
-          // Empty for other optional fields
-          return '';
+        // Use default value if defined
+        if (header in columnDefaults) {
+          return columnDefaults[header];
+        }
+        
+        // Empty for other optional fields
+        return '';
       });
-    
-      // Get headers from the first row of data if available, otherwise use default columns
-      const headers = data && data.length > 0 
-        ? Object.keys(data[0])
-            .filter(key => !['id', 'created_at', 'updated_at'].includes(key))
-        : defaultColumns;
       
-      // Create CSV content with proper escaping
-      const csvContent = [
-        headers.join(','),
-        exampleData.map((value: string) => {
-          // Escape quotes and wrap in quotes if the value contains commas or quotes
-          const escaped = String(value).replace(/"/g, '""');
-          return escaped.includes(',') || escaped.includes('"') 
-            ? `"${escaped}"` 
-            : escaped;
-        }).join(',')
-      ].join('\n');
+      // Create CSV header row
+      const headerRow = defaultColumns.join(',');
       
+      // Create CSV data row with proper escaping
+      const dataRow = exampleData.map((value: string) => {
+        // Escape quotes and wrap in quotes if the value contains commas or quotes
+        const escaped = String(value).replace(/"/g, '""');
+        return escaped.includes(',') || escaped.includes('"') 
+          ? `"${escaped}"` 
+          : escaped;
+      }).join(',');
+      
+      // Combine header and data rows
+      const csvContent = [headerRow, dataRow].join('\n');
+      
+      // Create and trigger download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
