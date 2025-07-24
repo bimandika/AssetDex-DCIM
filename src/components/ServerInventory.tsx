@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -88,13 +88,15 @@ const ServerInventory = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   // State for form and UI
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [warrantyDate, setWarrantyDate] = useState<Date | undefined>(undefined);
   const [editingServer, setEditingServer] = useState<Server | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   
   // Get dynamic enums and auth
-  const { enums, refreshEnums } = useServerEnums();
+  const { enums } = useServerEnums();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -205,8 +207,8 @@ const ServerInventory = () => {
     defaultValues: getInitialFormData(enums),
   });
   
-  // Watch form values for real-time validation
-  const formValues = form.watch();
+  // Watch form values for real-time validation (commented out as it's not currently used)
+  // const formValues = form.watch();
 
   // Update available units when rack or height changes
   useEffect(() => {
@@ -244,15 +246,44 @@ const ServerInventory = () => {
     if (enums) {
       const formData = getInitialFormData(enums);
       if (editingServer) {
-        // If editing, merge with server data
-        form.reset({
+        // If editing, create a new object with all required fields
+        const serverData: ServerFormData = {
           ...formData,
-          ...editingServer,
-        });
+          // Only include fields that are part of ServerFormData
+          hostname: editingServer.hostname || '',
+          serial_number: editingServer.serial_number || '',
+          brand: editingServer.brand || null,
+          model: editingServer.model || null,
+          ip_address: editingServer.ip_address || '',
+          ip_oob: editingServer.ip_oob || '',
+          operating_system: editingServer.operating_system || null,
+          dc_site: editingServer.dc_site || '',
+          dc_building: editingServer.dc_building || null,
+          dc_floor: editingServer.dc_floor || '',
+          dc_room: editingServer.dc_room || '',
+          rack: editingServer.rack || null,
+          unit: editingServer.unit || null,
+          unit_height: editingServer.unit_height || 1,
+          allocation: editingServer.allocation || null,
+          status: editingServer.status || 'Active',
+          device_type: editingServer.device_type || 'Server',
+          warranty: editingServer.warranty || '',
+          notes: editingServer.notes || '',
+          environment: editingServer.environment || null,
+        };
+        
+        form.reset(serverData);
         
         // Set warranty date if exists
         if (editingServer.warranty) {
-          setWarrantyDate(new Date(editingServer.warranty));
+          try {
+            setWarrantyDate(new Date(editingServer.warranty));
+          } catch (e) {
+            console.error('Invalid warranty date:', editingServer.warranty);
+            setWarrantyDate(undefined);
+          }
+        } else {
+          setWarrantyDate(undefined);
         }
       } else {
         // Otherwise use default values
@@ -269,23 +300,45 @@ const ServerInventory = () => {
   // Update form when editing a server
   useEffect(() => {
     if (editingServer) {
-      const serverData: Partial<ServerFormData> = {
-        ...editingServer,
+      // Ensure all required fields have values, even if they're null in the server data
+      const serverData: ServerFormData = {
+        hostname: editingServer.hostname || '',
+        serial_number: editingServer.serial_number || '',
+        brand: editingServer.brand || null,
+        model: editingServer.model || null,
         ip_address: editingServer.ip_address || '',
         ip_oob: editingServer.ip_oob || '',
+        operating_system: editingServer.operating_system || null,
+        dc_site: editingServer.dc_site || '',
+        dc_building: editingServer.dc_building || null,
         dc_floor: editingServer.dc_floor || '',
         dc_room: editingServer.dc_room || '',
+        rack: editingServer.rack || null,
+        unit: editingServer.unit || null,
+        unit_height: editingServer.unit_height || 1,
+        allocation: editingServer.allocation || null,
+        status: editingServer.status || 'Active',
+        device_type: editingServer.device_type || 'Server',
         warranty: editingServer.warranty || '',
-        notes: editingServer.notes || ''
+        notes: editingServer.notes || '',
+        environment: editingServer.environment || null,
       };
       
-      form.reset(serverData as ServerFormData);
+      form.reset(serverData);
+      
+      // Set warranty date if it exists
       if (editingServer.warranty) {
-        setWarrantyDate(new Date(editingServer.warranty));
+        try {
+          setWarrantyDate(new Date(editingServer.warranty));
+        } catch (e) {
+          console.error('Invalid warranty date:', editingServer.warranty);
+          setWarrantyDate(undefined);
+        }
       } else {
         setWarrantyDate(undefined);
       }
     } else {
+      // Reset to default values when not editing
       form.reset(getInitialFormData(enums));
       setWarrantyDate(undefined);
     }
@@ -443,7 +496,7 @@ const ServerInventory = () => {
 
   const handleEdit = (server: Server) => {
     setEditingServer(server);
-    form.reset(server);
+    // Don't reset form here - let the useEffect handle it
     setIsAddDialogOpen(true);
   };
 
@@ -477,11 +530,11 @@ const ServerInventory = () => {
         unit: values.unit,
         unit_height: values.unit_height,
         allocation: values.allocation,
-        status: values.status as ServerStatusType,
+        status: values.status as ServerStatus,
         device_type: values.device_type,
         warranty: values.warranty,
         notes: values.notes,
-        environment: values.environment,
+        environment: values.environment || null,
         created_by: user?.id || null,
       };
 
@@ -520,9 +573,10 @@ const ServerInventory = () => {
       resetForm();
     } catch (error) {
       console.error('Error saving server:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while saving the server.';
       toast({
         title: 'Error',
-        description: error.message || 'An error occurred while saving the server.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -1376,13 +1430,13 @@ const ServerInventory = () => {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{getAllocationBadge(server.allocation)}</TableCell>
+                  <TableCell>      {server.allocation && getAllocationBadge(server.allocation)}</TableCell>
                   <TableCell>
                     <Badge variant={server.status === 'Active' ? 'default' : 'secondary'}>
                       {server.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
+                  <TableCell>{server.environment && getEnvironmentBadge(server.environment)}</TableCell>
                   <TableCell className="whitespace-nowrap">
                     {server.warranty || '-'}
                   </TableCell>
