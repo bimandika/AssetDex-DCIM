@@ -82,9 +82,13 @@ const serverFormSchema = z.object({
   environment: z.string().optional().nullable(),
 });
 
-// New Zod schema for the "Add Rack" dialog input
+// Zod schema for the "Add Rack" dialog input with enhanced validation
 const addRackSchema = z.object({
-  rack_name: z.string().min(1, 'Rack name is required'),
+  rack_name: z.string()
+    .min(1, 'Rack name is required')
+    .max(50, 'Rack name must be 50 characters or less')
+    .regex(/^[A-Za-z0-9\-_]+$/, 'Rack name can only contain letters, numbers, hyphens, and underscores')
+    .transform(val => val.trim()),
 });
 
 const ServerInventory = () => {
@@ -99,10 +103,11 @@ const ServerInventory = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   // NEW: State to control the visibility of the "Add Rack" dialog
   const [isAddRackDialogOpen, setIsAddRackDialogOpen] = useState(false);
+  const [isAddingRack, setIsAddingRack] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
 
   // Get dynamic enums and auth
-  const { enums } = useServerEnums();
+  const { enums, addEnumValue } = useServerEnums();
   const { user, hasRole } = useAuth(); // Destructure hasRole directly
   const { toast } = useToast();
 
@@ -625,8 +630,8 @@ const ServerInventory = () => {
     return <Badge variant="outline">{allocation}</Badge>;
   };
 
-  // NEW: Function to handle "Add Rack" form submission
-  const onAddRackSubmit = (values: { rack_name: string }) => {
+  // Function to handle "Add Rack" form submission
+  const onAddRackSubmit = async (values: { rack_name: string }) => {
     // Permission check: Assuming engineer role can add racks
     if (!hasRole('engineer')) {
       toast({
@@ -637,15 +642,30 @@ const ServerInventory = () => {
       return;
     }
 
-    // For now, just log the rack name.
-    // In a real application, you would save this to your database (e.g., a 'racks' table)
-    console.log("New Rack Name to add:", values.rack_name);
-    toast({
-      title: "Rack name submitted",
-      description: `Rack name "${values.rack_name}" received. (Functionality to add to DB pending)`,
-    });
-    setIsAddRackDialogOpen(false); // Close the dialog
-    resetRackForm(); // Reset the rack form for next use
+    setIsAddingRack(true);
+    try {
+      // Use the addEnumValue function to add the new rack to the database
+      const success = await addEnumValue('rack', values.rack_name.trim());
+      
+      if (success) {
+        toast({
+          title: "Rack added successfully",
+          description: `Rack "${values.rack_name}" has been added to the system.`,
+        });
+        setIsAddRackDialogOpen(false); // Close the dialog
+        resetRackForm(); // Reset the rack form for next use
+      }
+    } catch (error) {
+      console.error('Error adding rack:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast({
+        title: 'Error adding rack',
+        description: `Failed to add rack: ${errorMessage}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAddingRack(false);
+    }
   };
 
   // Display loading state
@@ -701,6 +721,7 @@ const ServerInventory = () => {
                       <Input
                         id="rack_name"
                         placeholder="e.g., RACK-01"
+                        disabled={isAddingRack}
                         {...registerRack('rack_name')} // Use registerRack for this form
                         className={rackErrors.rack_name ? 'border-red-500' : ''}
                       />
@@ -712,6 +733,7 @@ const ServerInventory = () => {
                       <Button
                         type="button"
                         variant="outline"
+                        disabled={isAddingRack}
                         onClick={() => {
                           setIsAddRackDialogOpen(false);
                           resetRackForm(); // Reset on cancel
@@ -719,8 +741,8 @@ const ServerInventory = () => {
                       >
                         Cancel
                       </Button>
-                      <Button type="submit">
-                        OK
+                      <Button type="submit" disabled={isAddingRack}>
+                        {isAddingRack ? 'Adding...' : 'OK'}
                       </Button>
                     </DialogFooter>
                   </form>
