@@ -1,528 +1,427 @@
-import { useState, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Upload, Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { useEnums } from "@/hooks/useEnums";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useServerEnums } from "@/hooks/useServerEnums";
+import { Upload, Download } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
-// Define valid enum values for validation matching the database schema
-type ValidEnumKey = 'brand' | 'model' | 'operating_system' | 'dc_site' | 'dc_building' | 'allocation' | 'environment' | 'status' | 'device_type';
-type ValidEnums = Record<ValidEnumKey, readonly string[]>;
+// Import the ServerEnums type from the enums file
+import type { ServerEnums } from "@/types/enums";
 
-const validEnums: ValidEnums = {
-  brand: ['Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE', 'Meta Brain'],
-  model: [
-    'PowerEdge R740', 'PowerEdge R750', 'PowerEdge R750xd', 'PowerVault ME4',
-    'ProLiant DL380', 'ProLiant DL360', 'Apollo 4510', 'ASA 5525-X',
-    'Nexus 93180YC-EX', 'MX204', 'AFF A400', 'Other'
-  ],
-  operating_system: [
-    'Ubuntu 22.04 LTS', 'Ubuntu 20.04 LTS', 'RHEL 8', 'CentOS 7',
-    'Oracle Linux 8', 'Windows Server 2022', 'Windows Server 2019',
-    'Storage OS 2.1', 'Cisco ASA 9.16', 'NX-OS 9.3', 'JunOS 21.2',
-    'ONTAP 9.10', 'Other'
-  ],
-  dc_site: ['DC-East', 'DC-West', 'DC-North', 'DC-South', 'DC-Central', 'DC1', 'DC2', 'DC3', 'DC4', 'DC5'],
-  dc_building: ['Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other'],
-  allocation: ['IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database'],
-  environment: ['Production', 'Testing', 'Pre-Production', 'Development'],
-  status: ['Active', 'Ready', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
-  device_type: ['Server', 'Storage', 'Network']
-} as const;
+// ServerImportRow represents a row of server data being imported
 
-interface ServerImportRow {
-  serial_number?: string;
-  hostname: string;
-  brand?: string;
-  model?: string;
-  ip_address?: string;
-  ip_oob?: string;
-  operating_system?: string;
-  dc_site: string;
-  dc_building?: string;
-  dc_floor?: string;
-  dc_room?: string;
-  allocation?: string;
-  environment?: string;
-  status: string;
-  device_type: string;
-  rack?: string;
-  unit?: string;
-  warranty?: string;
-  notes?: string;
-  [key: string]: string | undefined;
+// ServerImportRow represents a row of server data being imported
+type ServerImportRow = Omit<Database['public']['Tables']['servers']['Insert'], 'id' | 'created_at' | 'updated_at'> & {
+  id?: number;
+  rack?: string | null;
+  unit?: string | null;
+  allocation?: string | null;
+  environment?: string | null;
+  [key: string]: unknown; // Allow additional properties for dynamic fields
+};
+
+// Required fields for validation
+const REQUIRED_FIELDS = [
+  'hostname',
+  'dc_site',
+  'device_type',
+  'status',
+  'serial_number',
+] as const;
+
+// Type for import results
+interface ImportResults {
+  success: number;
+  failed: number;
+  errors: string[];
 }
 
-interface BulkImportProps {
-  onImportComplete: (count: number) => void;
+// Type for validation results
+interface ValidationResult {
+  row: ServerImportRow;
+  errors: string[];
 }
 
-const BulkImport = ({ onImportComplete }: BulkImportProps) => {
+
+
+const BulkImport = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{
-    success: number;
-    failed: number;
-    errors: string[];
-  } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importResults, setImportResults] = useState<ImportResults | null>(null);
+  const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  
   const { toast } = useToast();
-  const { enums, loading: enumsLoading } = useEnums();
-
-  // Map enums to match validEnums structure
-  const mappedValidEnums: ValidEnums = {
-    brand: enums.brands,
-    model: enums.models,
-    operating_system: enums.osTypes,
-    dc_site: enums.sites,
-    dc_building: enums.buildings,
-    allocation: enums.allocationTypes,
-    environment: enums.environmentTypes,
-    status: enums.status,
-    device_type: enums.deviceTypes
-  };
+  const { enums: serverEnums } = useServerEnums();
+  
+  // Function to validate enum values
+  const validateEnum = useCallback((value: unknown, enumType: keyof ServerEnums): boolean => {
+    if (!serverEnums || !serverEnums[enumType]) return false;
+    const enumValues = serverEnums[enumType];
+    return Array.isArray(enumValues) && enumValues.some(v => String(v) === String(value));
+  }, [serverEnums]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      const validTypes = [
-        'text/csv',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      ];
+      setFile(selectedFile);
+      setImportResults(null);
+      setValidationResults([]);
+    }
+  };
+
+  const parseCSV = useCallback(async (file: File): Promise<ServerImportRow[]> => {
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      if (lines.length < 2) return [];
       
-      if (validTypes.includes(selectedFile.type) || selectedFile.name.endsWith('.csv')) {
-        setFile(selectedFile);
-        setImportResults(null);
-      } else {
-        toast({
-          title: "Invalid File Type",
-          description: "Please select a CSV or Excel file",
-          variant: "destructive"
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      return lines.slice(1).map((line, index) => {
+        const values = line.split(',').map(v => v.trim());
+        const row: Partial<ServerImportRow> = { id: index + 1 };
+        
+        // Map headers to row data
+        headers.forEach((header, i) => {
+          if (values[i] !== undefined) {
+            // Convert empty strings to null for database compatibility
+            row[header as keyof ServerImportRow] = values[i] || null;
+          }
         });
-      }
-    }
-  };
-
-  const validateRow = (row: ServerImportRow): string[] => {
-    const errors: string[] = [];
-    
-    // Check required fields based on NOT NULL constraints
-    const requiredFields: (keyof ServerImportRow)[] = ['hostname', 'dc_site', 'device_type'];
-    
-    requiredFields.forEach(field => {
-      if (!row[field]?.trim()) {
-        errors.push(`Missing required field: ${field}`);
-      }
-    });
-
-    // Validate enum values with case sensitivity
-    (Object.entries(mappedValidEnums) as [ValidEnumKey, readonly string[]][]).forEach(([field, validValues]) => {
-      const value = row[field];
-      if (value && !validValues.includes(value)) {
-        errors.push(`Invalid ${field}: "${value}". Must be one of: ${validValues.join(', ')}`);
-      }
-    });
-
-    // Validate IP addresses (both ip_address and ip_oob are optional but must be valid if provided)
-    const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
-    if (row.ip_address && !ipRegex.test(row.ip_address)) {
-      errors.push(`Invalid IP address: ${row.ip_address}`);
-    }
-    if (row.ip_oob && !ipRegex.test(row.ip_oob)) {
-      errors.push(`Invalid OOB IP address: ${row.ip_oob}`);
-    }
-
-    // Validate warranty date format (YYYY-MM-DD) - optional but must be valid if provided
-    if (row.warranty) {
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(row.warranty)) {
-        errors.push(`Invalid warranty date format: ${row.warranty}. Use YYYY-MM-DD format.`);
-      } else {
-        const date = new Date(row.warranty);
-        if (isNaN(date.getTime())) {
-          errors.push(`Invalid warranty date: ${row.warranty}`);
-        } else if (date < new Date()) {
-          // Warn but don't block import for past warranty dates
-          console.warn(`Warning: Warranty date ${row.warranty} is in the past`);
-        }
-      }
-    }
-
-    return errors;
-  };
-
-  const parseCSV = (content: string): ServerImportRow[] => {
-    const lines = content.split('\n').filter(line => line.trim());
-    
-    if (lines.length < 2) {
-      throw new Error("File must contain at least a header and one data row");
-    }
-
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[\s-]/g, '_'));
-    const requiredHeaders = ['hostname', 'dc_site', 'device_type'];
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    
-    if (missingHeaders.length > 0) {
-      throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
-    }
-
-    return lines.slice(1).map((line, index) => {
-      const values = line.split(',').map(v => v.trim());
-      const row: Partial<ServerImportRow> = {};
-      
-      headers.forEach((header, i) => {
-        if (values[i] !== undefined) {
-          row[header as keyof ServerImportRow] = values[i] || undefined;
-        }
+        
+        // Ensure required fields are present
+        REQUIRED_FIELDS.forEach(field => {
+          if (row[field as keyof ServerImportRow] === undefined) {
+            row[field as keyof ServerImportRow] = '';
+          }
+        });
+        
+        return row as ServerImportRow;
       });
-      
-      return row as ServerImportRow;
-    });
-  };
+    } catch (error) {
+      console.error('Error parsing CSV:', error);
+      throw error;
+    }
+  }, []);
 
-  const handleImport = async () => {
-    if (!file) return;
+  const handleImport = useCallback(async () => {
+    if (!file) {
+      toast({
+        title: 'No file selected',
+        description: 'Please select a file to import',
+        variant: 'destructive',
+      });
+      return;
+    }
 
+    if (!serverEnums) {
+      toast({
+        title: 'Server data not loaded',
+        description: 'Please wait while we load the required data',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setIsImporting(true);
-    setImportProgress(0);
     setImportResults(null);
+    setValidationResults([]);
 
     try {
-      const content = await file.text();
-      const rows = parseCSV(content);
-      let successCount = 0;
-      const errors: string[] = [];
+      // Read and parse the CSV file
+      const rows = await parseCSV(file);
+      const validation: ValidationResult[] = [];
+      const results: ImportResults = { success: 0, failed: 0, errors: [] };
 
-      // Process each row with progress updates
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const rowErrors = validateRow(row);
+      // Validate each row
+      for (const row of rows) {
+        const errors: string[] = [];
 
-        if (rowErrors.length > 0) {
-          errors.push(`Row ${i + 2}: ${rowErrors.join('; ')}`);
-        } else {
-          try {
-            // TODO: Replace with actual API call to save the server
-            // await saveServer(row);
-            successCount++;
-          } catch (error) {
-            errors.push(`Row ${i + 2}: Failed to save - ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Check required fields
+        for (const field of REQUIRED_FIELDS) {
+          const value = row[field as keyof ServerImportRow];
+          if (value === undefined || value === null || value === '') {
+            errors.push(`Missing required field: ${field}`);
           }
         }
 
-        // Update progress
-        setImportProgress(((i + 1) / rows.length) * 100);
+        // Check enum values
+        if (row.rack && !validateEnum(row.rack, 'racks')) {
+          errors.push(`Invalid rack value: ${row.rack}`);
+        }
+        if (row.unit && !validateEnum(row.unit, 'units')) {
+          errors.push(`Invalid unit value: ${row.unit}`);
+        }
+        if (row.allocation && !validateEnum(row.allocation, 'allocationTypes')) {
+          errors.push(`Invalid allocation value: ${row.allocation}`);
+        }
+        if (row.environment && !validateEnum(row.environment, 'environmentTypes')) {
+          errors.push(`Invalid environment value: ${row.environment}`);
+        }
+        if (row.device_type && !validateEnum(row.device_type, 'deviceTypes')) {
+          errors.push(`Invalid device type: ${row.device_type}`);
+        }
+        if (row.status && !validateEnum(row.status, 'status')) {
+          errors.push(`Invalid status: ${row.status}`);
+        }
+
+        validation.push({ row, errors });
       }
 
-      const failedCount = rows.length - successCount;
-      const results = {
-        success: successCount,
-        failed: failedCount,
-        errors
-      };
+      const invalidRows = validation.filter(v => v.errors.length > 0);
+      setValidationResults(validation);
+      
+      if (invalidRows.length > 0) {
+        toast({
+          title: 'Validation failed',
+          description: `Found ${invalidRows.length} rows with errors. Please fix them before importing.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // If we get here, all rows are valid - proceed with import
+      for (const { row } of validation) {
+        try {
+          // Prepare the data for upsert
+          const { id, ...rowData } = row;
+          const { error } = await supabase
+            .from('servers')
+            .upsert(rowData, { onConflict: 'hostname' });
+
+          if (error) throw error;
+          results.success++;
+        } catch (error) {
+          results.failed++;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          results.errors.push(`Row ${row.id}: ${errorMessage}`);
+        }
+      }
 
       setImportResults(results);
-      onImportComplete(successCount);
-
-      // Show success/error toast
-      if (errors.length === 0) {
+      
+      if (results.failed === 0) {
         toast({
-          title: "Import Successful",
-          description: `Successfully imported ${successCount} servers`,
-          variant: "default"
+          title: 'Import successful',
+          description: `Successfully imported ${results.success} servers.`,
         });
       } else {
         toast({
-          title: "Import Completed with Errors",
-          description: `Imported ${successCount} servers, ${failedCount} failed`,
-          variant: "destructive"
+          title: 'Import completed with errors',
+          description: `Imported ${results.success} servers, ${results.failed} failed.`,
+          variant: 'destructive',
         });
       }
     } catch (error) {
-      console.error("Import failed:", error);
+      console.error('Import error:', error);
       toast({
-        title: "Import Failed",
-        description: error instanceof Error ? error.message : "An error occurred during import",
-        variant: "destructive"
-      });
-      
-      setImportResults({
-        success: 0,
-        failed: 0,
-        errors: [error instanceof Error ? error.message : "Unknown error during import"]
+        title: 'Import failed',
+        description: 'An error occurred while processing the file.',
+        variant: 'destructive',
       });
     } finally {
       setIsImporting(false);
     }
-  };
+  }, [file, serverEnums]);
 
-  const downloadTemplate = () => {
+  const downloadTemplate = useCallback(() => {
+    // Create CSV header row with required fields and common optional fields
     const headers = [
-      'hostname',           // Required
-      'dc_site',            // Required
-      'device_type',        // Required
-      'serial_number',      // Optional
-      'brand',              // Optional
-      'model',              // Optional
-      'ip_address',         // Optional
-      'ip_oob',             // Optional
-      'operating_system',   // Optional
-      'dc_building',        // Optional
-      'dc_floor',           // Optional
-      'dc_room',            // Optional
-      'allocation',         // Optional
-      'environment',        // Optional
-      'status',             // Optional
-      'rack',               // Optional
-      'unit',               // Optional
-      'warranty',           // Optional (YYYY-MM-DD format)
-      'notes'               // Optional
-    ].join(',');
-    
-    const exampleData = [
-      [
-        'server-01',            // hostname
-        'DC-East',              // dc_site
-        'Server',               // device_type
-        'SER12345',             // serial_number
-        'Dell',                 // brand
-        'PowerEdge R740',       // model
-        '192.168.1.100',        // ip_address
-        '10.0.0.1',            // ip_oob
-        'Ubuntu 22.04 LTS',     // operating_system
-        'Building-A',           // dc_building
-        '1',                    // dc_floor
-        '101',                  // dc_room
-        'IAAS',                 // allocation
-        'Production',           // environment
-        'Active',               // status
-        'RACK-01',             // rack
-        'U42',                 // unit
-        '2025-12-31',          // warranty
-        'Primary production server' // notes
-      ],
-      [
-        'db-primary-01',
-        'DC-West',
-        'Server',
-        'SN2345678',
-        'HPE',
-        'ProLiant DL380',
-        '192.168.1.101',
-        '10.0.0.2',
-        'Oracle Linux 8',
-        'Building-B',
-        '2',
-        '205',
-        'Database',
-        'Production',
-        'Active',
-        'RACK-02',
-        'U12',
-        '2027-06-30',
-        'Primary database server'
-      ],
-      [
-        'storage-01',
-        'DC-North',
-        'Storage',
-        'SN3456789',
-        'Dell',
-        'PowerVault ME4',
-        '192.168.1.102',
-        '10.0.0.3',
-        'Storage OS 2.1',
-        'Building-C',
-        '1',
-        '110',
-        'PAAS',
-        'Production',
-        'Active',
-        'RACK-03',
-        'U1-U4',
-        '2026-09-30',
-        'Primary storage array'
-      ],
-      [
-        'fw-01',
-        'DC-South',
-        'Network',
-        'SN4567890',
-        'Cisco',
-        'ASA 5525-X',
-        '192.168.1.103',
-        '10.0.0.4',
-        'Cisco ASA 9.16',
-        'Building-A',
-        '1',
-        '103',
-        'Load Balancer',
-        'Production',
-        'Active',
-        'RACK-01',
-        'U1',
-        '2025-03-31',
-        'Main firewall'
-      ],
-      [
-        'switch-core-01',
-        'DC-Central',
-        'Network',
-        'SN5678901',
-        'Cisco',
-        'Nexus 93180YC-EX',
-        '192.168.2.100',
-        '10.0.1.1',
-        'NX-OS 9.3',
-        'Building-D',
-        '1',
-        'MDF',
-        'Load Balancer',
-        'Production',
-        'Active',
-        'RACK-04',
-        'U42-U44',
-        '2026-12-31',
-        'Core network switch'
-      ],
-      [
-        'dev-app-01',
-        'DC-East',
-        'Server',
-        'SN6789012',
-        'Dell',
-        'PowerEdge R750',
-        '192.168.2.101',
-        '10.0.1.2',
-        'CentOS 7',
-        'Building-A',
-        '2',
-        '210',
-        'IAAS',
-        'Development',
-        'Active',
-        'RACK-05',
-        'U15',
-        '2024-12-31',
-        'Development application server'
-      ],
-      [
-        'test-web-01',
-        'DC-West',
-        'Server',
-        'SN7890123',
-        'HPE',
-        'ProLiant DL360',
-        '192.168.3.100',
-        '10.0.2.1',
-        'Ubuntu 20.04 LTS',
-        'Building-B',
-        '3',
-        '315',
-        'PAAS',
-        'Testing',
-        'Active',
-        'RACK-06',
-        'U22',
-        '2025-06-30',
-        'Test web server'
-      ]
+      ...REQUIRED_FIELDS,
+      'brand',
+      'model',
+      'ip_address',
+      'ip_oob',
+      'operating_system',
+      'dc_building',
+      'dc_floor',
+      'dc_room',
+      'allocation',
+      'environment',
+      'rack',
+      'unit',
+      'warranty',
+      'notes'
     ];
     
-    const csvContent = [headers, ...exampleData.map(row => row.join(','))].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'server_import_template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast({
-      title: "Template Downloaded",
-      description: "CSV template downloaded successfully"
+    // Create example data for the template
+    const exampleData = headers.map(header => {
+      if (header === 'hostname') return 'server-01';
+      if (header === 'dc_site') return 'DC1';
+      if (header === 'device_type') return 'Server';
+      if (header === 'serial_number') return 'SER12345';
+      if (header === 'status') return 'Active';
+      if (header === 'ip_address') return '192.168.1.10';
+      if (header === 'ip_oob') return '10.0.0.1';
+      if (header === 'allocation') return 'IAAS';
+      if (header === 'environment') return 'Production';
+      if (header === 'rack') return 'RACK-01';
+      if (header === 'unit') return 'U42';
+      return ''; // Empty for other fields
     });
-  };
+    
+    const csvContent = [
+      headers.join(','),
+      exampleData.join(',')
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'server_import_template.csv');
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: 'Template downloaded',
+      description: 'CSV template has been downloaded successfully',
+    });
+  }, [toast]);
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
         <CardTitle>Bulk Import Servers</CardTitle>
-        <CardDescription>
-          Import multiple servers at once using a CSV file. Download the template below for the correct format.
-        </CardDescription>
+        <p className="text-sm text-muted-foreground">
+          Upload a CSV file to import multiple servers at once. The first row should contain column headers.
+        </p>
       </CardHeader>
+      
       <CardContent className="space-y-6">
-        <div className="grid gap-4">
-          <div className="grid w-full items-center gap-1.5">
-            <Label htmlFor="csv-file">CSV File</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="csv-file"
+        <div className="grid w-full items-center gap-4">
+          {/* File Input */}
+          <div className="grid w-full max-w-sm items-center gap-1.5">
+            <label
+              htmlFor="csv-upload"
+              className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-background hover:bg-accent/50 transition-colors"
+            >
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
+                <p className="mb-1 text-sm text-muted-foreground">
+                  <span className="font-semibold">Click to upload</span> or drag and drop
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {file ? file.name : 'CSV file (max 10MB)'}
+                </p>
+              </div>
+              <input
+                id="csv-upload"
                 type="file"
                 accept=".csv"
+                className="hidden"
                 onChange={handleFileSelect}
-                ref={fileInputRef}
-                className="cursor-pointer"
+                disabled={isImporting}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Browse
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {file ? file.name : 'No file selected'}
-            </p>
+            </label>
           </div>
-
-          <div className="flex justify-between items-center">
-            <Button
-              onClick={downloadTemplate}
-              variant="outline"
-              disabled={isImporting}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download Template
-            </Button>
+          
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2">
             <Button
               onClick={handleImport}
               disabled={!file || isImporting}
+              className="min-w-[120px]"
             >
-              {isImporting ? (
-                <>
-                  <span className="mr-2 h-4 w-4 animate-spin" />
-                  Importing...
-                </>
-              ) : (
-                'Import Servers'
-              )}
+              {isImporting ? 'Importing...' : 'Import'}
             </Button>
+            
+            <Button
+              variant="outline"
+              onClick={downloadTemplate}
+              disabled={isImporting}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download Template
+            </Button>
+            
+            {file && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFile(null)}
+                disabled={isImporting}
+                className="ml-auto"
+              >
+                Clear
+              </Button>
+            )}
           </div>
 
-          <div className="mt-6">
-            <h3 className="text-base font-medium mb-2">Import Instructions</h3>
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p><strong>Required columns:</strong> hostname, dc_site, device_type</p>
-              <p><strong>Optional columns:</strong> serial_number, brand, model, ip_address, ip_oob, operating_system, dc_building, dc_floor, dc_room, allocation, environment, status, rack, unit, warranty, notes</p>
-              <p><strong>Status values:</strong> {validEnums.status.join(', ')}</p>
-              <p><strong>Device types:</strong> {validEnums.device_type.join(', ')}</p>
-              <p><strong>File format:</strong> CSV (comma-separated values)</p>
-              <p><strong>Note:</strong> First row must contain column headers</p>
-            </div>
+          {/* Instructions */}
+          <div className="mt-6 text-sm text-muted-foreground">
+            <h3 className="font-medium mb-2">Instructions:</h3>
+            <p><strong>Required columns:</strong> hostname, dc_site, device_type, status, serial_number</p>
+            <p><strong>Optional columns:</strong> brand, model, ip_address, ip_oob, operating_system, dc_building, dc_floor, dc_room, allocation, environment, rack, unit, warranty, notes</p>
+            <p className="mt-2"><strong>Status values:</strong> {Array.isArray(serverEnums?.status) ? serverEnums.status.join(', ') : 'Loading...'}</p>
+            <p><strong>Device types:</strong> {Array.isArray(serverEnums?.deviceTypes) ? serverEnums.deviceTypes.join(', ') : 'Loading...'}</p>
+            <p><strong>Allocation types:</strong> {Array.isArray(serverEnums?.allocationTypes) ? serverEnums.allocationTypes.join(', ') : 'Loading...'}</p>
+            <p><strong>Environment types:</strong> {Array.isArray(serverEnums?.environmentTypes) ? serverEnums.environmentTypes.join(', ') : 'Loading...'}</p>
+            <p><strong>Racks:</strong> {Array.isArray(serverEnums?.racks) ? serverEnums.racks.slice(0, 5).join(', ') + (serverEnums.racks.length > 5 ? '...' : '') : 'Loading...'}</p>
+            <p><strong>Units:</strong> {Array.isArray(serverEnums?.units) ? serverEnums.units.slice(0, 5).join(', ') + (serverEnums.units.length > 5 ? '...' : '') : 'Loading...'}</p>
           </div>
+
+          {/* Validation Results */}
+          {validationResults.length > 0 && (
+            <div className="mt-6 space-y-4">
+              <h3 className="text-sm font-medium">
+                Validation Results ({validationResults.filter(v => v.errors.length > 0).length} issues found)
+              </h3>
+              <div className="rounded-md border border-border overflow-hidden">
+                <div className="max-h-60 overflow-y-auto">
+                  {validationResults
+                    .filter(v => v.errors.length > 0)
+                    .map((result, i) => (
+                      <div key={i} className="border-b border-border last:border-b-0 p-3 text-sm">
+                        <div className="font-medium mb-1">Row {result.row.id}:</div>
+                        <ul className="list-disc pl-5 space-y-1">
+                          {result.errors.map((error, j) => (
+                            <li key={j} className="text-destructive">{error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Import Results */}
+          {importResults && (
+            <div className="mt-6 space-y-2">
+              <h3 className="text-sm font-medium">
+                Import Results
+              </h3>
+              <div className="rounded-md bg-muted/50 p-4">
+                <p className="text-sm">
+                  Successfully imported: <span className="font-medium">{importResults.success}</span>
+                </p>
+                {importResults.failed > 0 && (
+                  <p className="text-sm text-destructive mt-1">
+                    Failed: {importResults.failed}
+                  </p>
+                )}
+                {importResults.errors.length > 0 && (
+                  <div className="mt-2 text-sm">
+                    <p className="font-medium mb-1">Errors:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {importResults.errors.slice(0, 5).map((error, i) => (
+                        <li key={i} className="text-destructive">{error}</li>
+                      ))}
+                      {importResults.errors.length > 5 && (
+                        <li className="text-muted-foreground">...and {importResults.errors.length - 5} more errors</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
