@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -55,6 +55,21 @@ const EnumManager = ({ properties, setProperties }: EnumManagerProps) => {
       newOption: ""
     }
   });
+
+  // Listen for enum updates to refresh the component
+  useEffect(() => {
+    const handleEnumsUpdated = (event: CustomEvent) => {
+      console.log('EnumManager: Received enum update event', event.detail);
+      // The enums are already updated in the global context
+      // This ensures the UI reflects the changes immediately
+    };
+
+    window.addEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
+    };
+  }, []);
   
   // Map column names to their corresponding enum values
   const columnToEnumMap: Record<string, string> = {

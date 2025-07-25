@@ -107,7 +107,7 @@ const ServerInventory = () => {
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
 
   // Get dynamic enums and auth
-  const { enums, addEnumValue } = useServerEnums();
+  const { enums, addEnumValue, refreshEnums } = useServerEnums();
   const { user, hasRole } = useAuth(); // Destructure hasRole directly
   const { toast } = useToast();
 
@@ -320,6 +320,21 @@ const ServerInventory = () => {
   // Fetch servers on component mount
   useEffect(() => {
     fetchServers();
+  }, []);
+
+  // Listen for enum updates from other components
+  useEffect(() => {
+    const handleEnumsUpdated = (event: CustomEvent) => {
+      console.log('ServerInventory: Received enum update event', event.detail);
+      // The enums are already updated in the global context, 
+      // this effect ensures any local state dependent on enums is refreshed
+    };
+
+    window.addEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
+    };
   }, []);
 
   // Filter servers whenever main server data or filter states change
