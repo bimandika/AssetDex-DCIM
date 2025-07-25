@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Edit, Trash2, Search, Filter, CalendarIcon } from "lucide-react";
+import { Plus, Edit, Trash2, Search, Filter, CalendarIcon, RotateCcw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -516,6 +516,22 @@ const ServerInventory = () => {
     }
 
     setFilteredServers(filtered);
+  };
+
+  // Function to clear all filters and reset to default state
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFilterType("all");
+    setFilterEnvironment("all");
+    setFilterBrand("all");
+    setFilterModel("all");
+    setFilterAllocation("all");
+    setFilterOS("all");
+    setFilterSite("all");
+    setFilterBuilding("all");
+    setFilterRack("all");
+    setFilterStatus("all");
+    setCurrentPage(1);
   };
 
   // Handler for editing an existing server
@@ -1314,6 +1330,17 @@ const ServerInventory = () => {
                 </DialogContent>
               </Dialog>
             )}
+
+            {/* Clear Filters Button */}
+            <Button
+              variant="outline"
+              onClick={clearFilters}
+              className="flex items-center gap-2"
+              aria-label="Clear all filters and search"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Clear Filters
+            </Button>
           </div>
         </div>
       </CardHeader>
