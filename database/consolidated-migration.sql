@@ -535,6 +535,120 @@ CREATE POLICY "Super admins can do all servers" ON public.servers
 SELECT public.create_default_admin();
 
 -- ============================================================================
+-- 8. PROPERTY MANAGEMENT FUNCTIONS
+-- ============================================================================
+
+-- Function to safely drop server columns
+CREATE OR REPLACE FUNCTION public.drop_server_column(p_column_name TEXT)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  result jsonb;
+BEGIN
+  -- Check if column exists
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'servers' 
+    AND column_name = p_column_name
+  ) THEN
+    result := jsonb_build_object('success', false, 'error', 'Column does not exist');
+    RETURN result;
+  END IF;
+  
+  -- Drop the column
+  EXECUTE format('ALTER TABLE public.servers DROP COLUMN IF EXISTS %I', p_column_name);
+  
+  result := jsonb_build_object('success', true, 'message', 'Column dropped successfully');
+  RETURN result;
+EXCEPTION
+  WHEN OTHERS THEN
+    result := jsonb_build_object('success', false, 'error', SQLERRM);
+    RETURN result;
+END;
+$$;
+
+-- Function to get property definitions with server schema information
+CREATE OR REPLACE FUNCTION public.get_property_definitions_with_schema()
+RETURNS TABLE (
+  id UUID,
+  key TEXT,
+  name TEXT,
+  display_name TEXT,
+  property_type TEXT,
+  description TEXT,
+  category TEXT,
+  required BOOLEAN,
+  default_value TEXT,
+  options JSONB,
+  active BOOLEAN,
+  sort_order INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE,
+  column_exists BOOLEAN,
+  column_type TEXT,
+  is_nullable TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    pd.id,
+    pd.key,
+    pd.name,
+    pd.display_name,
+    pd.property_type,
+    pd.description,
+    pd.category,
+    pd.required,
+    pd.default_value,
+    pd.options,
+    pd.active,
+    pd.sort_order,
+    pd.created_at,
+    pd.updated_at,
+    EXISTS (
+      SELECT 1 FROM information_schema.columns 
+      WHERE table_schema = 'public' 
+      AND table_name = 'servers' 
+      AND column_name = pd.key
+    ) AS column_exists,
+    COALESCE(
+      (SELECT data_type FROM information_schema.columns 
+       WHERE table_schema = 'public' 
+       AND table_name = 'servers' 
+       AND column_name = pd.key), 
+      ''
+    ) AS column_type,
+    COALESCE(
+      (SELECT is_nullable FROM information_schema.columns 
+       WHERE table_schema = 'public' 
+       AND table_name = 'servers' 
+       AND column_name = pd.key), 
+      'YES'
+    ) AS is_nullable
+  FROM public.property_definitions pd
+  WHERE pd.active = true
+  ORDER BY pd.sort_order, pd.name;
+END;
+$$;
+
+-- Grant execute permissions to authenticated users
+GRANT EXECUTE ON FUNCTION public.drop_server_column(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_property_definitions_with_schema() TO authenticated;
+
+-- Comments for documentation
+COMMENT ON FUNCTION public.drop_server_column(TEXT) 
+IS 'Safely drops a column from the servers table with error handling';
+
+COMMENT ON FUNCTION public.get_property_definitions_with_schema() 
+IS 'Returns property definitions with server table schema information for dynamic form generation';
+
+-- ============================================================================
 -- 8. GRANT PERMISSIONS
 -- ============================================================================
 

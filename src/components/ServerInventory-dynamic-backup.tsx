@@ -1321,144 +1321,85 @@ const ServerInventory = () => {
       {/* Rest of the component remains the same - filters, table, pagination */}
       <CardContent>
         {/* Search and Filter Controls */}
-        <div className="mb-6 space-y-4">
-          <div className="space-y-4">
-            {/* Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search all fields..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
+        <div className="flex flex-col space-y-4 mb-6">
+          <div className="flex items-center space-x-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search servers..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-sm"
+            />
+            <Filter className="h-4 w-4 text-muted-foreground ml-4" />
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Device Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {enums?.deviceTypes?.map((type) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                {enums?.status?.map((status) => (
+                  <SelectItem key={status} value={status}>{status}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            {/* Filter Dropdowns */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger>
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Device Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Device Types</SelectItem>
-                  {enums?.deviceTypes?.map((type) => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterEnvironment} onValueChange={setFilterEnvironment}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Environments</SelectItem>
-                  {enums?.environmentTypes?.map((env) => (
-                    <SelectItem key={env} value={env}>{env}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterBrand} onValueChange={setFilterBrand}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Brand" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Brands</SelectItem>
-                  {enums?.brands?.map((brand) => (
-                    <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterModel} onValueChange={setFilterModel}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Models</SelectItem>
-                  {enums?.models?.map((model) => (
-                    <SelectItem key={model} value={model}>{model}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterAllocation} onValueChange={setFilterAllocation}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Allocation" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Allocations</SelectItem>
-                  {enums?.allocationTypes?.map((allocation) => (
-                    <SelectItem key={allocation} value={allocation}>{allocation}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterOS} onValueChange={setFilterOS}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Operating System" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All OS</SelectItem>
-                  {enums?.osTypes?.map((os) => (
-                    <SelectItem key={os} value={os}>{os}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterSite} onValueChange={setFilterSite}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Site" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sites</SelectItem>
-                  {enums?.sites?.map((site) => (
-                    <SelectItem key={site} value={site}>{site}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterBuilding} onValueChange={setFilterBuilding}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Building" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Buildings</SelectItem>
-                  {enums?.buildings?.map((building) => (
-                    <SelectItem key={building} value={building}>{building}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterRack} onValueChange={setFilterRack}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Rack" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Racks</SelectItem>
-                  {enums?.racks?.map((rack) => (
-                    <SelectItem key={rack} value={rack}>{rack}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  {enums?.status?.map((status) => (
-                    <SelectItem key={status} value={status}>{status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex items-center space-x-2">
+            <Select value={filterEnvironment} onValueChange={setFilterEnvironment}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Environment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Environments</SelectItem>
+                {enums?.environmentTypes?.map((env) => (
+                  <SelectItem key={env} value={env}>{env}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterBrand} onValueChange={setFilterBrand}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Brand" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                {enums?.brands?.map((brand) => (
+                  <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterSite} onValueChange={setFilterSite}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Site" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sites</SelectItem>
+                {enums?.sites?.map((site) => (
+                  <SelectItem key={site} value={site}>{site}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterRack} onValueChange={setFilterRack}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Rack" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Racks</SelectItem>
+                {enums?.racks?.map((rack) => (
+                  <SelectItem key={rack} value={rack}>{rack}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -1468,7 +1409,6 @@ const ServerInventory = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Hostname</TableHead>
-                <TableHead>Serial Number</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Brand/Model</TableHead>
@@ -1476,7 +1416,6 @@ const ServerInventory = () => {
                 <TableHead>IP Address</TableHead>
                 <TableHead>Environment</TableHead>
                 <TableHead>Allocation</TableHead>
-                <TableHead>Warranty</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -1484,7 +1423,6 @@ const ServerInventory = () => {
               {currentServers.map((server) => (
                 <TableRow key={server.id}>
                   <TableCell className="font-medium">{server.hostname}</TableCell>
-                  <TableCell>{server.serial_number || '-'}</TableCell>
                   <TableCell>{getDeviceTypeBadge(server.device_type)}</TableCell>
                   <TableCell>
                     <Badge variant={server.status === 'Active' ? 'default' : 'secondary'}>
@@ -1502,23 +1440,9 @@ const ServerInventory = () => {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{server.ip_address || '-'}</span>
-                      {server.ip_oob && (
-                        <span className="text-xs text-muted-foreground">OOB: {server.ip_oob}</span>
-                      )}
-                    </div>
-                  </TableCell>
+                  <TableCell>{server.ip_address || '-'}</TableCell>
                   <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
                   <TableCell>{getAllocationBadge(server.allocation)}</TableCell>
-                  <TableCell>
-                    {server.warranty ? (
-                      <div className="text-sm">
-                        {format(new Date(server.warranty), 'MMM dd, yyyy')}
-                      </div>
-                    ) : '-'}
-                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end space-x-2">
                       {canEdit && (
@@ -1553,65 +1477,25 @@ const ServerInventory = () => {
             Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredServers.length)} of {filteredServers.length} entries
           </div>
           <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">Rows per page:</span>
-              <Select
-                value={itemsPerPage.toString()}
-                onValueChange={(value) => {
-                  setItemsPerPage(Number(value));
-                  setCurrentPage(1); // Reset to first page when changing items per page
-                }}
-              >
-                <SelectTrigger className="h-8 w-[70px]">
-                  <SelectValue placeholder={itemsPerPage} />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100].map((size) => (
-                    <SelectItem key={size} value={size.toString()}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <div className="text-sm">
+              Page {currentPage} of {totalPages}
             </div>
-
-            <div className="flex items-center space-x-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
-              >
-                First
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <div className="text-sm px-2">
-                Page {currentPage} of {totalPages}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
-              >
-                Last
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
           </div>
         </div>
       </CardContent>
