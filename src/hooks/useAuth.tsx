@@ -21,8 +21,9 @@ interface AuthContextType {
   userRole: UserRole['role'] | null;
   loading: boolean;
   error: string | null;
+  isSigningUp: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, username: string, fullName?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string, fullName?: string) => Promise<{ error: any; success?: boolean }>;
   signOut: () => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<{ error: any }>;
   hasRole: (role: 'super_admin' | 'engineer' | 'viewer') => boolean;
@@ -49,6 +50,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [userRole, setUserRole] = useState<UserRole['role'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const { toast } = useToast();
 
   // Refs to prevent race conditions
@@ -153,6 +155,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Prevent race conditions
     if (initializingRef.current) {
       console.log('Auth state change ignored - already initializing');
+      return;
+    }
+
+    // Skip auth state changes during signup process
+    if (isSigningUp) {
+      console.log('Auth state change ignored - signing up');
       return;
     }
 
@@ -381,73 +389,46 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signUp = async (email: string, password: string, username: string, fullName?: string) => {
     try {
       setError(null);
-      // First, sign out any existing session to prevent auto-login
-      await supabase.auth.signOut();
+      setIsSigningUp(true);
       
-      // Create the auth user without auto-login
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          // Don't auto confirm the user
-          emailRedirectTo: `${window.location.origin}/auth?registered=true`,
-          data: {
-            username,
-            full_name: fullName || ''
-          }
-        }
+      // Get the current session for admin operations
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      // Get the base URL from the Supabase client configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
+      
+      // Call the admin-create-user Edge Function to create inactive user
+      const response = await fetch(`${supabaseUrl}/functions/v1/admin-create-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName: fullName || username,
+          role: 'viewer',
+          status: false
+        })
       });
       
-      if (signUpError) {
-        toast({
-          title: "Sign Up Failed",
-          description: signUpError.message,
-          variant: "destructive",
-        });
-        return { error: signUpError };
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Failed to create account');
       }
       
-      // If user is created, update their profile to set status to false
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({ 
-            status: false,
-            username,
-            full_name: fullName || ''
-          })
-          .eq('id', data.user.id);
-          
-        if (profileError) {
-          console.error('Error updating profile status:', profileError);
-          toast({
-            title: "Account Created",
-            description: "Your account has been created but there was an error updating your status. Please contact support.",
-            variant: "destructive"
-          });
-          return { error: profileError };
-        }
-      }
-      
-      // Ensure we're signed out after registration
-      await supabase.auth.signOut();
-      
-      // Clear any existing session data
-      setSession(null);
-      setUser(null);
-      setProfile(null);
-      setUserRole(null);
-      
-      return { error: null };
+      return { error: null, success: true };
       
     } catch (error) {
       console.error('Sign up error:', error);
-      toast({
-        title: "Sign Up Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
-      return { error };
+      return { 
+        error: error instanceof Error ? error : new Error('An unexpected error occurred during sign up'),
+        success: false 
+      };
+    } finally {
+      setIsSigningUp(false);
     }
   };
 
@@ -516,6 +497,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     userRole,
     loading,
     error,
+    isSigningUp,
     signIn,
     signUp,
     signOut,

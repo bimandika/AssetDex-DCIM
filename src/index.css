@@ -103,3 +103,24 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Progress bar animation for signup success dialog */
+@keyframes progress-fill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.animate-progress-fill {
+  animation: progress-fill 10s linear forwards;
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .animate-progress-fill {
+    animation: progress-fill 1s linear forwards;
+  }
+}

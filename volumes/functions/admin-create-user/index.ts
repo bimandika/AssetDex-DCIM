@@ -33,7 +33,7 @@ export const handler = async (req: Request): Promise<Response> => {
     }
 
     // Parse the request body
-    const { email, password, fullName, role } = await req.json()
+    const { email, password, fullName, role, status = true } = await req.json()
 
     // Validate input
     if (!email || !password || !fullName || !role) {
@@ -107,7 +107,8 @@ export const handler = async (req: Request): Promise<Response> => {
         { 
           id: userId,
           username: username,
-          full_name: fullName
+          full_name: fullName,
+          status: status
         },
         { onConflict: 'id' }
       )

@@ -6,14 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { CheckCircle, X, AlertCircle } from "lucide-react";
 import { Database, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [signUpSuccess, setSignUpSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState("signin");
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [signUpState, setSignUpState] = useState({
+    loading: false,
+    success: false,
+    error: null as string | null
+  });
   const [signInData, setSignInData] = useState({
     email: "",
     password: "",
@@ -27,6 +34,13 @@ const Auth = () => {
 
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+  
+  // Handle animation end for auto-close
+  const handleAnimationEnd = () => {
+    setShowSuccessDialog(false);
+    setActiveTab("signin");
+    setSignUpState({ loading: false, success: false, error: null });
+  };
   
   // Handle redirect for authenticated users
   useEffect(() => {
@@ -50,10 +64,10 @@ const Auth = () => {
 
   const handleSignUp = async (e: any) => {
     e.preventDefault();
-    setIsLoading(true);
+    setSignUpState({ loading: true, success: false, error: null });
     
     try {
-      const { error } = await signUp(
+      const { error, success } = await signUp(
         signUpData.email, 
         signUpData.password,
         signUpData.username,
@@ -61,22 +75,35 @@ const Auth = () => {
       );
       
       if (error) {
-        throw error;
+        setSignUpState({ 
+          loading: false, 
+          success: false, 
+          error: error.message || 'Failed to create account' 
+        });
+      } else {
+        setSignUpState({ 
+          loading: false, 
+          success: true, 
+          error: null 
+        });
+        
+        // Reset form
+        setSignUpData({
+          email: "",
+          password: "",
+          username: "",
+          fullName: ""
+        });
+        
+        // Show success dialog instead of inline alert
+        setShowSuccessDialog(true);
       }
-      
-      // Show success message
-      setSignUpSuccess(true);
-      // Reset form
-      setSignUpData({
-        email: "",
-        password: "",
-        username: "",
-        fullName: ""
-      });
     } catch (error) {
-      console.error("Sign up error:", error);
-    } finally {
-      setIsLoading(false);
+      setSignUpState({ 
+        loading: false, 
+        success: false, 
+        error: 'An unexpected error occurred' 
+      });
     }
   };
 
@@ -101,7 +128,7 @@ const Auth = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="signin" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -231,17 +258,16 @@ const Auth = () => {
                     <Button 
                       type="submit" 
                       className="w-full" 
-                      disabled={isLoading}
+                      disabled={signUpState.loading}
                     >
-                      {isLoading ? "Creating account..." : "Create account"}
+                      {signUpState.loading ? "Creating account..." : "Create account"}
                     </Button>
-                    {signUpSuccess && (
-                      <Alert className="mt-4">
-                        <CheckCircle className="h-4 w-4" />
-                        <AlertTitle>Account Created</AlertTitle>
-                        <AlertDescription>
-                          Your account has been created and is pending admin approval. You will receive an email once your account is activated.
-                        </AlertDescription>
+                    
+                    {signUpState.error && (
+                      <Alert className="mt-4 border-red-200 bg-red-50" variant="destructive">
+                        <X className="h-4 w-4" />
+                        <AlertTitle>Sign Up Failed</AlertTitle>
+                        <AlertDescription>{signUpState.error}</AlertDescription>
                       </Alert>
                     )}
                   </div>
@@ -251,6 +277,29 @@ const Auth = () => {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Success Dialog */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-800">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              Account Created Successfully!
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-center">
+            Your account has been created and is pending admin approval.
+            <br />
+            You will be redirected to sign in when the progress completes.
+          </DialogDescription>
+          <div className="w-full bg-gray-200 rounded-full h-2 mt-4">
+            <div 
+              className="bg-green-600 h-2 rounded-full animate-progress-fill"
+              onAnimationEnd={handleAnimationEnd}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
