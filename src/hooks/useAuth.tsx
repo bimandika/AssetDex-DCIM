@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +20,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   userRole: UserRole['role'] | null;
   loading: boolean;
+  error: string | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, username: string, fullName?: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -47,129 +48,281 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userRole, setUserRole] = useState<UserRole['role'] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const fetchUserProfile = async (userId: string) => {
+  // Refs to prevent race conditions
+  const initializingRef = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
+
+  const fetchUserProfile = async (userId: string): Promise<boolean> => {
     try {
       console.log('Fetching profile for user:', userId);
-      const { data: profileData, error: profileError } = await supabase
+      
+      // Add timeout for profile fetching
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000);
+      });
+
+      const { data: profileData, error: profileError } = await Promise.race([
+        profilePromise,
+        timeoutPromise
+      ]) as any;
+
       if (profileError) {
         console.error('Error fetching profile:', profileError);
-        return;
+        setError('Failed to load user profile');
+        return false;
       }
+
+      if (!mountedRef.current) return false;
 
       console.log('Profile data:', profileData);
       setProfile(profileData);
 
-      const { data: roleData, error: roleError } = await supabase
+      // Fetch role with timeout
+      const rolePromise = supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
         .single();
 
+      const { data: roleData, error: roleError } = await Promise.race([
+        rolePromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Role fetch timeout')), 10000))
+      ]) as any;
+
       if (roleError) {
         console.error('Error fetching role:', roleError);
-        setUserRole('viewer');
-        return;
+        if (mountedRef.current) {
+          setUserRole('viewer');
+        }
+        return true; // Continue with default role
       }
 
-      console.log('Role data:', roleData);
-      setUserRole(roleData.role);
+      if (mountedRef.current) {
+        console.log('Role data:', roleData);
+        setUserRole(roleData.role);
+      }
+      return true;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
+      if (mountedRef.current) {
+        setError('Failed to load user data');
+      }
+      return false;
     }
   };
 
-  useEffect(() => {
-    const checkUserStatus = async (user: User) => {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('status')
-        .eq('id', user.id)
-        .single();
+  const checkUserStatus = async (user: User): Promise<boolean> => {
+    try {
+      const { data: profileData, error } = await Promise.race([
+        supabase.from('profiles').select('status').eq('id', user.id).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Status check timeout')), 5000))
+      ]) as any;
 
-      if (!profileData?.status) {
-        await supabase.auth.signOut();
-        toast({
-          title: "Account Pending Approval",
-          description: "Your account is pending admin approval. Please contact your administrator.",
-          variant: "destructive",
-        });
+      if (error || !profileData?.status) {
+        if (mountedRef.current) {
+          await supabase.auth.signOut();
+          toast({
+            title: "Account Pending Approval",
+            description: "Your account is pending admin approval. Please contact your administrator.",
+            variant: "destructive",
+          });
+        }
         return false;
       }
       return true;
-    };
+    } catch (error) {
+      console.error('Error checking user status:', error);
+      if (mountedRef.current) {
+        setError('Failed to verify account status');
+      }
+      return false;
+    }
+  };
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state change:', event, session);
-        
-        if (session?.user) {
-          const isActive = await checkUserStatus(session.user);
-          if (!isActive) {
+  const handleAuthStateChange = async (event: string, session: Session | null) => {
+    // Prevent race conditions
+    if (initializingRef.current) {
+      console.log('Auth state change ignored - already initializing');
+      return;
+    }
+
+    console.log('Auth state change:', event, session);
+    
+    try {
+      if (session?.user) {
+        const isActive = await checkUserStatus(session.user);
+        if (!isActive || !mountedRef.current) {
+          if (mountedRef.current) {
             setSession(null);
             setUser(null);
             setProfile(null);
             setUserRole(null);
-            setLoading(false);
-            return;
+            setError('Account verification failed');
           }
-          
-          setSession(session);
-          setUser(session.user);
-          await fetchUserProfile(session.user.id);
-        } else {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          setUserRole(null);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Initial session:', session);
-      
-      if (session?.user) {
-        const isActive = await checkUserStatus(session.user);
-        if (!isActive) {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          setUserRole(null);
-          setLoading(false);
           return;
         }
         
-        setSession(session);
-        setUser(session.user);
-        await fetchUserProfile(session.user.id);
+        if (mountedRef.current) {
+          setSession(session);
+          setUser(session.user);
+          setError(null);
+        }
+        
+        const profileSuccess = await fetchUserProfile(session.user.id);
+        if (!profileSuccess && mountedRef.current) {
+          setError('Failed to load user profile');
+        }
       } else {
-        setSession(null);
-        setUser(null);
+        if (mountedRef.current) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setUserRole(null);
+          setError(null);
+        }
       }
-      
-      setLoading(false);
-    };
-    
-    initializeAuth();
+    } catch (error) {
+      console.error('Error in auth state change handler:', error);
+      if (mountedRef.current) {
+        setError('Authentication error occurred');
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
 
-    return () => subscription.unsubscribe();
+  useEffect(() => {
+    let subscription: any = null;
+
+    const initializeAuth = async () => {
+      if (initializingRef.current) return;
+      initializingRef.current = true;
+
+      try {
+        // Set loading timeout
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        
+        timeoutRef.current = setTimeout(() => {
+          if (mountedRef.current && loading) {
+            console.error('Auth initialization timeout');
+            setError('Authentication timeout - please refresh the page');
+            setLoading(false);
+          }
+        }, 15000); // 15 second timeout
+
+        console.log('Initializing auth...');
+        
+        // Get initial session
+        const { data: { session }, error } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Session fetch timeout')), 10000))
+        ]) as any;
+
+        if (error) {
+          console.error('Error getting initial session:', error);
+          if (mountedRef.current) {
+            setError('Failed to restore session');
+            setLoading(false);
+          }
+          return;
+        }
+
+        console.log('Initial session:', session);
+        
+        if (session?.user && mountedRef.current) {
+          const isActive = await checkUserStatus(session.user);
+          if (!isActive || !mountedRef.current) {
+            if (mountedRef.current) {
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+              setUserRole(null);
+              setLoading(false);
+            }
+            return;
+          }
+          
+          if (mountedRef.current) {
+            setSession(session);
+            setUser(session.user);
+            setError(null);
+          }
+          
+          const profileSuccess = await fetchUserProfile(session.user.id);
+          if (!profileSuccess && mountedRef.current) {
+            setError('Failed to load user profile');
+          }
+        } else if (mountedRef.current) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setUserRole(null);
+        }
+        
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+
+        // Clear timeout on successful initialization
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        if (mountedRef.current) {
+          setError('Failed to initialize authentication');
+          setLoading(false);
+        }
+      } finally {
+        initializingRef.current = false;
+      }
+    };
+
+    // Set up auth state listener
+    const setupAuthListener = () => {
+      const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange);
+      subscription = authSubscription;
+    };
+
+    // Initialize auth and set up listener
+    initializeAuth().then(() => {
+      if (mountedRef.current) {
+        setupAuthListener();
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      mountedRef.current = false;
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
       console.log('Attempting sign in with:', email);
+      setError(null);
       
       // First, sign in the user
       const { error, data } = await supabase.auth.signInWithPassword({
@@ -227,6 +380,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signUp = async (email: string, password: string, username: string, fullName?: string) => {
     try {
+      setError(null);
       // First, sign out any existing session to prevent auto-login
       await supabase.auth.signOut();
       
@@ -311,6 +465,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const updatePassword = async (currentPassword: string, newPassword: string) => {
     try {
+      setError(null);
       // First, reauthenticate the user
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: user?.email || '',
@@ -360,6 +515,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     profile,
     userRole,
     loading,
+    error,
     signIn,
     signUp,
     signOut,
