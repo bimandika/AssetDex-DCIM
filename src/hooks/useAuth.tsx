@@ -124,31 +124,38 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const checkUserStatus = async (user: User): Promise<boolean> => {
-    try {
-      const { data: profileData, error } = await Promise.race([
-        supabase.from('profiles').select('status').eq('id', user.id).single(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Status check timeout')), 5000))
-      ]) as any;
-
-      if (error || !profileData?.status) {
-        if (mountedRef.current) {
-          await supabase.auth.signOut();
-          toast({
-            title: "Account Pending Approval",
-            description: "Your account is pending admin approval. Please contact your administrator.",
-            variant: "destructive",
-          });
+    // Retry logic: try up to 3 times with increasing timeout
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: any = null;
+    while (attempt < maxRetries) {
+      try {
+        const timeoutMs = 5000 + attempt * 5000; // 5s, 10s, 15s
+        const { data: profileData, error } = await Promise.race([
+          supabase.from('profiles').select('status').eq('id', user.id).single(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Status check timeout')), timeoutMs))
+        ]) as any;
+        if (error) throw error;
+        if (!profileData?.status) throw new Error('Inactive or missing status');
+        return true;
+      } catch (error) {
+        lastError = error;
+        attempt++;
+        if (attempt < maxRetries) {
+          console.warn(`Status check failed (attempt ${attempt}):`, error);
         }
-        return false;
       }
-      return true;
-    } catch (error) {
-      console.error('Error checking user status:', error);
-      if (mountedRef.current) {
-        setError('Failed to verify account status');
-      }
-      return false;
     }
+    // If all retries fail, sign out and show toast
+    if (mountedRef.current) {
+      await supabase.auth.signOut();
+      toast({
+        title: "Account Pending Approval or Status Check Failed",
+        description: lastError?.message || "Your account is pending admin approval or could not be verified. Please contact your administrator.",
+        variant: "destructive",
+      });
+    }
+    return false;
   };
 
   const handleAuthStateChange = async (event: string, session: Session | null) => {
