@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,10 +19,13 @@ export interface ServerProperty {
   id?: string;
   name: string;
   key: string;
-  type: "text" | "number" | "date" | "boolean" | "select";
+  type: "text" | "number" | "date" | "boolean" | "select" | "enum";
   required: boolean;
   visible: boolean;
   options?: string[];
+  enumType?: string; // For enum type selection
+  enumTypeName?: string; // For new enum type creation
+  enumValues?: string[]; // For new enum values
   is_enum?: boolean;
   isSystem?: boolean; // Indicates if this is a system property that can't be deleted
   column_default?: string | null;
@@ -72,7 +75,10 @@ const ServerProperties = () => {
     type: "text",
     required: true,
     visible: true,
-    options: []
+    options: [],
+    enumType: "",
+    enumTypeName: "",
+    enumValues: []
   });
   const { toast } = useToast();
 
@@ -83,12 +89,12 @@ const ServerProperties = () => {
       const propertiesMap = new Map<string, ServerProperty>();
       
       // First add all default properties
-      defaultProperties.forEach(prop => {
+      defaultProperties.forEach((prop: ServerProperty) => {
         propertiesMap.set(prop.key, { ...prop });
       });
       
       // Then add or update with dynamic columns
-      tableColumns.forEach(column => {
+      tableColumns.forEach((column: any) => {
         if (!EXCLUDED_COLUMNS.includes(column.column_name)) {
           const existingProp = propertiesMap.get(column.column_name);
           if (existingProp) {
@@ -105,7 +111,7 @@ const ServerProperties = () => {
               id: `dynamic_${column.column_name}`,
               name: column.column_name
                 .split('_')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' '),
               key: column.column_name,
               type: column.data_type,
@@ -137,27 +143,116 @@ const ServerProperties = () => {
 
   const validateColumn = (column: Partial<ServerProperty>) => {
     const errors: Record<string, string> = {};
-    
     if (!column.name?.trim()) {
       errors.name = 'Name is required';
     }
-    
     if (!column.key?.trim()) {
       errors.key = 'Key is required';
     } else if (!/^[a-z0-9_]+$/.test(column.key)) {
       errors.key = 'Key must be lowercase with underscores (a-z, 0-9, _)';
     }
-    
     if (!column.type) {
       errors.type = 'Type is required';
     }
-    
+    // Enum type validation
+    if (column.type === 'enum') {
+      if (!column.enumTypeName || !column.enumTypeName.trim()) {
+        errors.enumTypeName = 'Enum type name is required';
+      }
+      if (!column.enumValues || column.enumValues.length < 2 || column.enumValues.some((v: string) => !v.trim())) {
+        errors.enumValues = 'At least two non-empty enum values are required';
+      }
+    }
     return errors;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Dedicated handler for enum type column creation
+  const handleSubmitEnum = async () => {
+    setIsSubmitting(true);
+    try {
+      // 1. Create the new enum type
+      const { data: enumData, error: enumError } = await supabase.functions.invoke('enum-manager', {
+        method: 'POST',
+        body: {
+          action: 'create',
+          type: newColumn.key, // map property key to type
+          value: newColumn.enumValues
+        }
+      });
+      if (enumError) {
+        toast({
+          title: "Error Creating Enum Type",
+          description: enumError.message,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      // Use enumData.name and enumData.values directly
+      const requestBody = {
+        name: newColumn.name,
+        key: newColumn.key,
+        type: newColumn.type,
+        enumType: enumData.name,
+        description: newColumn.description || `${newColumn.name} property`,
+        required: newColumn.required || false,
+        options: enumData.values,
+        default_value: newColumn.default_value || null
+      };
+      const { data, error } = await supabase.functions.invoke('property-manager', {
+        method: 'POST',
+        body: requestBody
+      });
+      if (error) throw error;
+      if (data) {
+        const propertyData = data.data || data;
+        const column: ServerProperty = {
+          id: propertyData.id,
+          name: propertyData.name,
+          key: propertyData.key,
+          type: propertyData.property_type as any,
+          required: propertyData.required || false,
+          visible: true,
+          options: propertyData.options || [],
+          is_enum: propertyData.property_type === 'enum',
+          description: propertyData.description,
+          category: propertyData.category || undefined,
+          default_value: propertyData.default_value || undefined
+        };
+        setProperties((prev: ServerProperty[]) => [...prev, column]);
+        setNewColumn({ name: "", key: "", type: "text", required: true, options: [], enumType: "", enumTypeName: "", enumValues: [] });
+        setIsAddDialogOpen(false);
+        toast({
+          title: "Property Added",
+          description: `Successfully added property '${propertyData.name}'\n\nNote: Please refresh the page to see the new column in the table.`,
+          duration: 5000
+        });
+      } else {
+        throw new Error(data?.error || "Failed to add property");
+      }
+    } catch (err: any) {
+      console.error('Error adding enum column:', err);
+      let errorMessage = err.message || "Failed to add column";
+      if (errorMessage.includes('already exists')) {
+        errorMessage = `A column with this key already exists. Please choose a different key.`;
+      } else if (errorMessage.includes('reserved SQL keyword')) {
+        errorMessage = `Invalid column name: ${errorMessage}`;
+      } else if (errorMessage.includes('invalid input syntax')) {
+        errorMessage = `Invalid column name. Please use only letters, numbers, and underscores.`;
+      }
+      toast({
+        title: "Error Adding Column",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Updated handleSubmit to delegate to handleSubmitEnum for enum type
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
     // Ensure required fields are present
     if (!newColumn.name?.trim() || !newColumn.key?.trim()) {
       toast({
@@ -167,11 +262,9 @@ const ServerProperties = () => {
       });
       return;
     }
-    
     // Validate the form
     const errors = validateColumn(newColumn);
     if (Object.keys(errors).length > 0) {
-      // Show the first error
       toast({
         title: "Validation Error",
         description: Object.values(errors)[0],
@@ -179,12 +272,9 @@ const ServerProperties = () => {
       });
       return;
     }
-    
-    // TypeScript now knows newColumn.key is defined
     const propertyKey = newColumn.key.toLowerCase();
-    
     // Check for duplicate keys
-    const keyExists = properties.some(p => p.key.toLowerCase() === propertyKey);
+    const keyExists = properties.some((p: ServerProperty) => p.key.toLowerCase() === propertyKey);
     if (keyExists) {
       toast({
         title: "Validation Error",
@@ -193,34 +283,30 @@ const ServerProperties = () => {
       });
       return;
     }
-    
     setIsSubmitting(true);
-    
     try {
+      if (newColumn.type === 'enum') {
+        await handleSubmitEnum();
+        return;
+      }
       // Prepare the request body to match the working API call
       const requestBody = {
         name: newColumn.name,
         key: newColumn.key,
         type: newColumn.type,
+        enumType: newColumn.enumType, // Add enumType for enum columns
         description: newColumn.description || `${newColumn.name} property`,
         required: newColumn.required || false,
         options: newColumn.options || [],
         default_value: newColumn.default_value || null
       };
-
-      // Call the property-manager Edge Function to add the column
       const { data, error } = await supabase.functions.invoke('property-manager', {
         method: 'POST',
         body: requestBody
       });
-
       if (error) throw error;
-
       if (data) {
-        // Extract the property data from the response
         const propertyData = data.data || data;
-        
-        // Add the new column to the local state
         const column: ServerProperty = {
           id: propertyData.id,
           name: propertyData.name,
@@ -234,28 +320,20 @@ const ServerProperties = () => {
           category: propertyData.category || undefined,
           default_value: propertyData.default_value || undefined
         };
-
-        setProperties(prev => [...prev, column]);
-        setNewColumn({ name: "", key: "", type: "text", required: true, options: [] });
+        setProperties((prev: ServerProperty[]) => [...prev, column]);
+        setNewColumn({ name: "", key: "", type: "text", required: true, options: [], enumType: "" });
         setIsAddDialogOpen(false);
-        
-        // Show success message with the property name from the response
         toast({
           title: "Property Added",
-          description: `Successfully added property '${data.data.name}'
-          
-          Note: Please refresh the page to see the new column in the table.`,
-          duration: 5000 // Show for 5 seconds
+          description: `Successfully added property '${data.data.name}'\n\nNote: Please refresh the page to see the new column in the table.`,
+          duration: 5000
         });
       } else {
         throw new Error(data?.error || "Failed to add property");
       }
     } catch (err: any) {
       console.error('Error adding column:', err);
-      
       let errorMessage = err.message || "Failed to add column";
-      
-      // Handle specific error cases
       if (errorMessage.includes('already exists')) {
         errorMessage = `A column with this key already exists. Please choose a different key.`;
       } else if (errorMessage.includes('reserved SQL keyword')) {
@@ -263,7 +341,6 @@ const ServerProperties = () => {
       } else if (errorMessage.includes('invalid input syntax')) {
         errorMessage = `Invalid column name. Please use only letters, numbers, and underscores.`;
       }
-      
       toast({
         title: "Error Adding Column",
         description: errorMessage,
@@ -287,18 +364,22 @@ const ServerProperties = () => {
         type: value as ServerProperty['type']
       };
       
-      // Reset options when type changes to/from select
+      // Reset options and enumType when type changes
       if (value === 'select' && !prev.options) {
         updated.options = [];
-      } else if (value !== 'select' && prev.options) {
+      } else if (value === 'enum' && !prev.enumType) {
+        updated.enumType = '';
         delete updated.options;
+      } else if (value !== 'select' && value !== 'enum' && prev.options) {
+        delete updated.options;
+        delete updated.enumType;
       }
       
       return updated;
     });
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value } = e.target;
     setNewColumn((prev: Partial<ServerProperty>) => ({
       ...prev,
@@ -320,7 +401,7 @@ const ServerProperties = () => {
 
       if (data?.success) {
         // Remove the property from the local state
-        setProperties(properties.filter(prop => prop.key !== propertyToDelete.key));
+        setProperties(properties.filter((prop: ServerProperty) => prop.key !== propertyToDelete?.key));
         toast({
           title: "Success",
           description: data.message || "Column deleted successfully"
@@ -431,10 +512,61 @@ const ServerProperties = () => {
                         <SelectItem value="number">Number</SelectItem>
                         <SelectItem value="date">Date</SelectItem>
                         <SelectItem value="boolean">Boolean</SelectItem>
-                        <SelectItem value="select">Select</SelectItem>
+                        <SelectItem value="enum">Enum (Database Type)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  
+                  {/* Enum Type Creation (replaces Enum Type Selection) */}
+                  {newColumn.type === 'enum' && (
+                    <div className="space-y-2">
+                      <Label>Enum Values</Label>
+                      <div className="space-y-2">
+                        {/* Merge enumTypeName as the first value in enumValues */}
+                        <Input
+                          value={newColumn.enumTypeName || ""}
+                          onChange={e => {
+                            setNewColumn(prev => ({
+                              ...prev,
+                              enumTypeName: e.target.value,
+                              enumValues: [e.target.value, ...(prev.enumValues || []).filter((v, i) => i !== 0)]
+                            }));
+                          }}
+                          placeholder="First enum value (e.g., device_status)"
+                        />
+                        {(newColumn.enumValues || []).slice(1).map((value, idx) => (
+                          <div key={idx + 1} className="flex items-center space-x-2">
+                            <Input
+                              value={value}
+                              onChange={e => {
+                                const updated = [...(newColumn.enumValues || [])];
+                                updated[idx + 1] = e.target.value;
+                                setNewColumn(prev => ({ ...prev, enumValues: updated }));
+                              }}
+                              placeholder="Enum value"
+                            />
+                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                              setNewColumn(prev => ({
+                                ...prev,
+                                enumValues: (prev.enumValues || []).filter((_, i) => i !== idx + 1)
+                              }));
+                            }}>
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                          setNewColumn(prev => ({
+                            ...prev,
+                            enumValues: [...(prev.enumValues || []), '']
+                          }));
+                        }}>
+                          Add Value
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="required"
@@ -487,8 +619,23 @@ const ServerProperties = () => {
                             <Badge variant="secondary" className="text-xs">Required</Badge>
                           )}
                           <Badge variant="outline" className="text-xs">{property.type}</Badge>
+                          {property.type === 'enum' && property.enumType && (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                              {property.enumType}
+                            </Badge>
+                          )}
+                          {property.is_enum && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                              ENUM
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-slate-500">Key: {property.key}</p>
+                        {property.options && property.options.length > 0 && (
+                          <p className="text-sm text-slate-500">
+                            Options: {property.options.join(', ')}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center space-x-4">

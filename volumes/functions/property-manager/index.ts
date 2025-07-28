@@ -8,12 +8,13 @@ const corsHeaders = {
 }
 
 // Define the property type
-type PropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
+type PropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect' | 'enum';
 
 interface PropertyDefinition {
   name: string;
   key: string;
   type: PropertyType;
+  enumType?: string; // For enum type selection
   description?: string;
   required?: boolean;
   default_value?: string | number | boolean | null;
@@ -116,6 +117,7 @@ const propertyManagerHandler = async (req: Request): Promise<Response> => {
           case 'boolean': return 'BOOLEAN';
           case 'date': return 'DATE';
           case 'multiselect': return 'TEXT[]';
+          case 'enum': return body.enumType ? `public.${body.enumType}` : 'TEXT';
           default: return 'TEXT'; // text, select, etc.
         }
       })();

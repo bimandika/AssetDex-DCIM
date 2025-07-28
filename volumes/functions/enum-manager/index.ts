@@ -59,31 +59,46 @@ export const handler = async (req: Request): Promise<Response> => {
     if (!type || !value) {
       return errorResponse('Missing type or value for this action')
     }
-    
-    // Only allow safe enum types (hardcoded for security)
-    const allowedTypes = [
-      'brand_type', 'model_type', 'os_type', 'site_type', 'building_type',
-      'rack_type', 'unit_type', 'allocation_type', 'environment_type', 'server_status', 'device_type'
-    ]
-    
-    if (!allowedTypes.includes(type)) {
-      return errorResponse('Invalid enum type')
-    }
 
     // Only allow add (removal is dangerous and not supported by Postgres natively)
     if (action === 'add') {
+      // Sanitize type and value
+      const safeType = String(type).replace(/[^a-zA-Z0-9_]/g, '');
+      const safeValue = String(value).replace(/'/g, "''");
       // ALTER TYPE ... ADD VALUE IF NOT EXISTS ...
-      const sql = `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = '${value}' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = '${type}')) THEN ALTER TYPE public.${type} ADD VALUE '${value}'; END IF; END $$;`;
+      const sql = `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = '${safeValue}' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = '${safeType}')) THEN ALTER TYPE public.${safeType} ADD VALUE '${safeValue}'; END IF; END $$;`;
       const { error } = await supabase.rpc('execute_sql', { sql })
       if (error) {
         return errorResponse('Failed to add enum value: ' + error.message, 500)
       }
-      return new Response(JSON.stringify({ success: true, message: `Added value '${value}' to enum '${type}'` }), {
+      return new Response(JSON.stringify({ success: true, message: `Added value '${safeValue}' to enum '${safeType}'` }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else if (action === 'remove') {
       // Not supported safely, return error
       return errorResponse('Removing enum values is not supported. This can break existing data.')
+    } else if (action === 'create') {
+      if (!type || !Array.isArray(value) || value.length === 0) {
+        return errorResponse('Missing type or values for enum creation');
+      }
+      // Sanitize type and values
+      const safeType = String(type).replace(/[^a-zA-Z0-9_]/g, '');
+      const safeValues = value.map((v: string) => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+      // 1. Create the enum type
+      const createTypeSql = `CREATE TYPE public.${safeType} AS ENUM (${safeValues});`;
+      const { error: createTypeError } = await supabase.rpc('execute_sql', { sql: createTypeSql });
+      if (createTypeError && !createTypeError.message.includes('already exists')) {
+        return errorResponse('Failed to create enum type: ' + createTypeError.message, 500);
+      }
+      // 2. Add the column to the servers table
+      const addColumnSql = `ALTER TABLE servers ADD COLUMN IF NOT EXISTS ${safeType} public.${safeType};`;
+      const { error: addColumnError } = await supabase.rpc('execute_sql', { sql: addColumnSql });
+      if (addColumnError && !addColumnError.message.includes('already exists')) {
+        return errorResponse('Failed to add column: ' + addColumnError.message, 500);
+      }
+      return new Response(JSON.stringify({ success: true, name: safeType, values: value }), {
+        status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     } else {
       return errorResponse('Invalid action')
     }
