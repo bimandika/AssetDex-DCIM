@@ -387,147 +387,148 @@ const BulkImport = () => {
   }, [toast]);
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader>
-        <CardTitle>Bulk Import Servers</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Upload a CSV file to import multiple servers at once. The first row should contain column headers.
-        </p>
-      </CardHeader>
-      
-      <CardContent className="space-y-6">
-        <div className="grid w-full items-center gap-4">
-          {/* File Input */}
-          <div className="grid w-full max-w-sm items-center gap-1.5">
-            <label
-              htmlFor="csv-upload"
-              className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-background hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
-                <p className="mb-1 text-sm text-muted-foreground">
-                  <span className="font-semibold">Click to upload</span> or drag and drop
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {file ? file.name : 'CSV file (max 10MB)'}
-                </p>
-              </div>
-              <input
-                id="csv-upload"
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleFileSelect}
-                disabled={isImporting}
-              />
-            </label>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={handleImport}
-              disabled={!file || isImporting}
-              className="min-w-[120px]"
-            >
-              {isImporting ? 'Importing...' : 'Import'}
-            </Button>
-            
-            <Button
-              variant="outline"
-              onClick={downloadTemplate}
-              disabled={isImporting}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Download Template
-            </Button>
-            
-            {file && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setFile(null)}
-                disabled={isImporting}
-                className="ml-auto"
+    <div className="w-full px-0 md:px-8 py-8">
+      <Card className="w-full max-w-none">
+        <CardHeader>
+          <CardTitle>Bulk Import Servers</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Upload a CSV file to import multiple servers at once. The first row should contain column headers.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid w-full items-center gap-4">
+            {/* File Input */}
+            <div className="grid w-full items-center gap-1.5">
+              <label
+                htmlFor="csv-upload"
+                className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-lg cursor-pointer bg-background hover:bg-accent/50 transition-colors"
               >
-                Clear
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
+                  <p className="mb-1 text-sm text-muted-foreground">
+                    <span className="font-semibold">Click to upload</span> or drag and drop
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {file ? file.name : 'CSV file (max 10MB)'}
+                  </p>
+                </div>
+                <input
+                  id="csv-upload"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  disabled={isImporting}
+                />
+              </label>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={handleImport}
+                disabled={!file || isImporting}
+                className="min-w-[120px]"
+              >
+                {isImporting ? 'Importing...' : 'Import'}
               </Button>
-            )}
-          </div>
+              
+              <Button
+                variant="outline"
+                onClick={downloadTemplate}
+                disabled={isImporting}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download Template
+              </Button>
+              
+              {file && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFile(null)}
+                  disabled={isImporting}
+                  className="ml-auto"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
 
-          {/* Instructions */}
-          <div className="mt-6 text-sm text-muted-foreground">
-            <h3 className="font-medium mb-2">Instructions:</h3>
-            <p><strong>Required columns:</strong> hostname, dc_site, device_type, status, serial_number</p>
-            <p><strong>Optional columns:</strong> brand, model, ip_address, ip_oob, operating_system, dc_building, dc_floor, dc_room, allocation, environment, rack, unit, warranty, notes</p>
-            <p className="mt-2"><strong>Status values:</strong> {Array.isArray(serverEnums?.status) ? serverEnums.status.join(', ') : 'Loading...'}</p>
-            <p><strong>Device types:</strong> {Array.isArray(serverEnums?.deviceTypes) ? serverEnums.deviceTypes.join(', ') : 'Loading...'}</p>
-            <p><strong>Allocation types:</strong> {Array.isArray(serverEnums?.allocationTypes) ? serverEnums.allocationTypes.join(', ') : 'Loading...'}</p>
-            <p><strong>Environment types:</strong> {Array.isArray(serverEnums?.environmentTypes) ? serverEnums.environmentTypes.join(', ') : 'Loading...'}</p>
-            <p><strong>Racks:</strong> {Array.isArray(serverEnums?.racks) ? serverEnums.racks.slice(0, 5).join(', ') + (serverEnums.racks.length > 5 ? '...' : '') : 'Loading...'}</p>
-            <p><strong>Units:</strong> {Array.isArray(serverEnums?.units) ? serverEnums.units.slice(0, 5).join(', ') + (serverEnums.units.length > 5 ? '...' : '') : 'Loading...'}</p>
-          </div>
+            {/* Instructions */}
+            <div className="mt-6 text-sm text-muted-foreground">
+              <h3 className="font-medium mb-2">Instructions:</h3>
+              <p><strong>Required columns:</strong> hostname, dc_site, device_type, status, serial_number</p>
+              <p><strong>Optional columns:</strong> brand, model, ip_address, ip_oob, operating_system, dc_building, dc_floor, dc_room, allocation, environment, rack, unit, warranty, notes</p>
+              <p className="mt-2"><strong>Status values:</strong> {Array.isArray(serverEnums?.status) ? serverEnums.status.join(', ') : 'Loading...'}</p>
+              <p><strong>Device types:</strong> {Array.isArray(serverEnums?.deviceTypes) ? serverEnums.deviceTypes.join(', ') : 'Loading...'}</p>
+              <p><strong>Allocation types:</strong> {Array.isArray(serverEnums?.allocationTypes) ? serverEnums.allocationTypes.join(', ') : 'Loading...'}</p>
+              <p><strong>Environment types:</strong> {Array.isArray(serverEnums?.environmentTypes) ? serverEnums.environmentTypes.join(', ') : 'Loading...'}</p>
+              <p><strong>Racks:</strong> {Array.isArray(serverEnums?.racks) ? serverEnums.racks.slice(0, 5).join(', ') + (serverEnums.racks.length > 5 ? '...' : '') : 'Loading...'}</p>
+              <p><strong>Units:</strong> {Array.isArray(serverEnums?.units) ? serverEnums.units.slice(0, 5).join(', ') + (serverEnums.units.length > 5 ? '...' : '') : 'Loading...'}</p>
+            </div>
 
-          {/* Validation Results */}
-          {validationResults.length > 0 && (
-            <div className="mt-6 space-y-4">
-              <h3 className="text-sm font-medium">
-                Validation Results ({validationResults.filter(v => v.errors.length > 0).length} issues found)
-              </h3>
-              <div className="rounded-md border border-border overflow-hidden">
-                <div className="max-h-60 overflow-y-auto">
-                  {validationResults
-                    .filter(v => v.errors.length > 0)
-                    .map((result, i) => (
-                      <div key={i} className="border-b border-border last:border-b-0 p-3 text-sm">
-                        <div className="font-medium mb-1">Row {result.row.id}:</div>
-                        <ul className="list-disc pl-5 space-y-1">
-                          {result.errors.map((error, j) => (
-                            <li key={j} className="text-destructive">{error}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+            {/* Validation Results */}
+            {validationResults.length > 0 && (
+              <div className="mt-6 space-y-4">
+                <h3 className="text-sm font-medium">
+                  Validation Results ({validationResults.filter(v => v.errors.length > 0).length} issues found)
+                </h3>
+                <div className="rounded-md border border-border overflow-hidden">
+                  <div className="max-h-60 overflow-y-auto">
+                    {validationResults
+                      .filter(v => v.errors.length > 0)
+                      .map((result, i) => (
+                        <div key={i} className="border-b border-border last:border-b-0 p-3 text-sm">
+                          <div className="font-medium mb-1">Row {result.row.id}:</div>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {result.errors.map((error, j) => (
+                              <li key={j} className="text-destructive">{error}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          
-          {/* Import Results */}
-          {importResults && (
-            <div className="mt-6 space-y-2">
-              <h3 className="text-sm font-medium">
-                Import Results
-              </h3>
-              <div className="rounded-md bg-muted/50 p-4">
-                <p className="text-sm">
-                  Successfully imported: <span className="font-medium">{importResults.success}</span>
-                </p>
-                {importResults.failed > 0 && (
-                  <p className="text-sm text-destructive mt-1">
-                    Failed: {importResults.failed}
+            )}
+            
+            {/* Import Results */}
+            {importResults && (
+              <div className="mt-6 space-y-2">
+                <h3 className="text-sm font-medium">
+                  Import Results
+                </h3>
+                <div className="rounded-md bg-muted/50 p-4">
+                  <p className="text-sm">
+                    Successfully imported: <span className="font-medium">{importResults.success}</span>
                   </p>
-                )}
-                {importResults.errors.length > 0 && (
-                  <div className="mt-2 text-sm">
-                    <p className="font-medium mb-1">Errors:</p>
-                    <ul className="list-disc pl-5 space-y-1">
-                      {importResults.errors.slice(0, 5).map((error, i) => (
-                        <li key={i} className="text-destructive">{error}</li>
-                      ))}
-                      {importResults.errors.length > 5 && (
-                        <li className="text-muted-foreground">...and {importResults.errors.length - 5} more errors</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
+                  {importResults.failed > 0 && (
+                    <p className="text-sm text-destructive mt-1">
+                      Failed: {importResults.failed}
+                    </p>
+                  )}
+                  {importResults.errors.length > 0 && (
+                    <div className="mt-2 text-sm">
+                      <p className="font-medium mb-1">Errors:</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {importResults.errors.slice(0, 5).map((error, i) => (
+                          <li key={i} className="text-destructive">{error}</li>
+                        ))}
+                        {importResults.errors.length > 5 && (
+                          <li className="text-muted-foreground">...and {importResults.errors.length - 5} more errors</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

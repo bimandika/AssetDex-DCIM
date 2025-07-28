@@ -11,9 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, Plus, Trash2, Edit, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSchema } from "@/hooks/useTableSchema";
-import EnumManager from "./property-management/EnumManager";
-import BulkImport from "./property-management/BulkImport";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerEnums } from "@/hooks/useServerEnums";
+import BulkImport from "@/components/property-management/BulkImport";
 
 export interface ServerProperty {
   id?: string;
@@ -81,6 +81,7 @@ const ServerProperties = () => {
     enumValues: []
   });
   const { toast } = useToast();
+  const { addEnumValue, refreshEnums } = useServerEnums();
 
   // Merge dynamic columns with default properties
   useEffect(() => {
@@ -351,11 +352,54 @@ const ServerProperties = () => {
     }
   };
 
+  // Handler to remove enum value
+  const handleRemoveEnumValue = async (propertyKey: string, value: string) => {
+    try {
+      await supabase.functions.invoke('enum-manager', {
+        method: 'POST',
+        body: { action: 'remove', type: propertyKey, value }
+      });
+      setProperties((prev) => prev.map((p) =>
+        p.key === propertyKey ? { ...p, options: p.options?.filter((v) => v !== value) } : p
+      ));
+      toast({ title: 'Option Removed', description: `Removed ${value} from ${propertyKey}` });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
 
+  // Handler to open add enum dialog
+  const openAddEnumDialog = (property: ServerProperty) => {
+    setSelectedProperty(property);
+    setNewEnumValue("");
+    setIsAddEnumDialogOpen(true);
+  };
 
+  // Enum value management state
+  const [isAddEnumDialogOpen, setIsAddEnumDialogOpen] = useState(false);
+  const [selectedProperty, setSelectedProperty] = useState<ServerProperty | null>(null);
+  const [newEnumValue, setNewEnumValue] = useState("");
 
-
-  // Removed unused handleRemoveOption function
+  // Handler to add enum value using global context
+  const handleAddEnumValue = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedProperty || !newEnumValue.trim()) return;
+    try {
+      await addEnumValue(selectedProperty.key, newEnumValue);
+      await refreshEnums(); // Ensure enums are refreshed after add
+      // Update local property options after refresh
+      setProperties((prev) => prev.map((p) =>
+        p.key === selectedProperty.key && p.options
+          ? { ...p, options: [...p.options, newEnumValue] }
+          : p
+      ));
+      toast({ title: 'Option Added', description: `Added ${newEnumValue} to ${selectedProperty.key}` });
+      setIsAddEnumDialogOpen(false);
+      setNewEnumValue("");
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
 
   const handleTypeChange = (value: string) => {
     setNewColumn((prev: Partial<ServerProperty>) => {
@@ -456,9 +500,8 @@ const ServerProperties = () => {
       </div>
 
       <Tabs defaultValue="properties" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="properties">Properties</TabsTrigger>
-          <TabsTrigger value="manage">Manage Options</TabsTrigger>
           <TabsTrigger value="import">Bulk Import</TabsTrigger>
         </TabsList>
 
@@ -611,7 +654,7 @@ const ServerProperties = () => {
               <div className="space-y-4">
                 {properties.map((property) => (
                   <div key={property.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-4 w-full">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <h4 className="font-medium">{property.name}</h4>
@@ -631,32 +674,59 @@ const ServerProperties = () => {
                           )}
                         </div>
                         <p className="text-sm text-slate-500">Key: {property.key}</p>
-                        {property.options && property.options.length > 0 && (
-                          <p className="text-sm text-slate-500">
-                            Options: {property.options.join(', ')}
-                          </p>
+                        {/* Enum value management UI */}
+                        {property.is_enum && (
+                          <div className="flex flex-wrap gap-2 mt-2 items-center justify-start">
+                            {property.options?.map((value) => (
+                              <Badge key={value} variant="secondary" className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-normal justify-center items-center">
+                                {value}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEnumValue(property.key, value)}
+                                  className="ml-1 rounded-full bg-gray-200 hover:bg-muted p-1 flex items-center justify-center"
+                                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '9999px' }}
+                                >
+                                  <span className="sr-only">Remove</span>
+                                  <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="secondary" className="text-xs">Required</Badge>
-                        {property.isSystem && (
-                          <Badge variant="outline" className="text-xs">System</Badge>
-                        )}
-                      </div>
-                      {!property.isSystem && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setPropertyToDelete(property);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      {/* Add Option button in top right above Required/System */}
+                      {property.is_enum && (
+                        <div className="flex flex-col items-end justify-start min-w-[100px]">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openAddEnumDialog(property)}
+                            className="flex items-center justify-center h-7 text-xs px-2 mb-2"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Option
+                          </Button>
+                          <div className="flex items-center space-x-2 mt-2">
+                            <Badge variant="secondary" className="text-xs">Required</Badge>
+                            {property.isSystem && (
+                              <Badge variant="outline" className="text-xs">System</Badge>
+                            )}
+                          </div>
+                          {!property.isSystem && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setPropertyToDelete(property);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                              className="text-gray-500 hover:text-gray-700 mt-2"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -695,30 +765,30 @@ const ServerProperties = () => {
           </Dialog>
         </TabsContent>
 
-        <TabsContent value="manage" className="space-y-6">
-          <EnumManager 
-            properties={properties.map(p => ({
-              ...p,
-              id: p.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-            }))} 
-            setProperties={(updatedProps) => {
-              // Map back to the original properties, preserving original IDs
-              const merged = updatedProps.map(up => {
-                const original = properties.find(p => p.key === up.key);
-                return {
-                  ...up,
-                  id: original?.id || up.id
-                };
-              });
-              setProperties(merged);
-            }} 
-          />
-        </TabsContent>
-
         <TabsContent value="import" className="space-y-6">
           <BulkImport onImportComplete={handleBulkImportComplete} />
         </TabsContent>
       </Tabs>
+
+      {/* Add Enum Value Dialog */}
+      <Dialog open={isAddEnumDialogOpen} onOpenChange={setIsAddEnumDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Enum Option</DialogTitle>
+            <DialogDescription>
+              Add a new option to {selectedProperty?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddEnumValue} className="space-y-4">
+            <Input
+              value={newEnumValue}
+              onChange={(e) => setNewEnumValue(e.target.value)}
+              placeholder="Enter new option"
+            />
+            <Button type="submit">Add</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
