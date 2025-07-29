@@ -16,6 +16,8 @@ export interface ServerEnums {
   osTypes: string[];
   sites: string[];
   buildings: string[];
+  // Allow dynamic enum properties
+  [key: string]: string[];
 }
 
 // Default values in case API fails

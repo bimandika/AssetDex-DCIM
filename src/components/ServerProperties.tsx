@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
+import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +63,7 @@ export const EXCLUDED_COLUMNS = [
 ];
 
 const ServerProperties = () => {
-  const { columns: tableColumns, error } = useTableSchema('servers');
+  const { columns: tableColumns, error, refetch: refreshSchema } = useTableSchema('servers');
   const [properties, setProperties] = useState<ServerProperty[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -168,9 +168,19 @@ const ServerProperties = () => {
   };
 
   // Dedicated handler for enum type column creation
-  const handleSubmitEnum = async () => {
+  const handleSubmitEnum = useCallback(async () => {
+    // Prevent multiple submissions
+    if (isSubmitting) {
+      console.log('Already submitting, ignoring duplicate call');
+      return;
+    }
+    
     setIsSubmitting(true);
+    console.log('Starting enum submission');
+    
     try {
+      console.log('Creating enum with values:', newColumn.enumValues);
+      
       // 1. Create the new enum type
       const { data: enumData, error: enumError } = await supabase.functions.invoke('enum-manager', {
         method: 'POST',
@@ -180,16 +190,20 @@ const ServerProperties = () => {
           value: newColumn.enumValues
         }
       });
+      
       if (enumError) {
+        console.error('Enum creation error:', enumError);
         toast({
           title: "Error Creating Enum Type",
           description: enumError.message,
           variant: "destructive"
         });
-        setIsSubmitting(false);
         return;
       }
-      // Use enumData.name and enumData.values directly
+      
+      console.log('Enum created successfully:', enumData);
+      
+      // 2. Create the property using the enum
       const requestBody = {
         name: newColumn.name,
         key: newColumn.key,
@@ -200,14 +214,25 @@ const ServerProperties = () => {
         options: enumData.values,
         default_value: newColumn.default_value || null
       };
+      
+      console.log('Creating property with body:', requestBody);
+      
       const { data, error } = await supabase.functions.invoke('property-manager', {
         method: 'POST',
         body: requestBody
       });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Property creation error:', error);
+        throw error;
+      }
+      
       if (data) {
+        console.log('Property created successfully:', data);
         const propertyData = data.data || data;
-        const column: ServerProperty = {
+        
+        // Create the new column object
+        const newProperty: ServerProperty = {
           id: propertyData.id,
           name: propertyData.name,
           key: propertyData.key,
@@ -220,14 +245,65 @@ const ServerProperties = () => {
           category: propertyData.category || undefined,
           default_value: propertyData.default_value || undefined
         };
-        setProperties((prev: ServerProperty[]) => [...prev, column]);
-        setNewColumn({ name: "", key: "", type: "text", required: true, options: [], enumType: "", enumTypeName: "", enumValues: [] });
+        
+        console.log('Adding column to properties:', newProperty);
+        
+        // Update properties state
+        setProperties((currentProperties: ServerProperty[]) => {
+          console.log('Current properties count:', currentProperties.length);
+          const updatedProperties = [...currentProperties, newProperty];
+          console.log('Updated properties count:', updatedProperties.length);
+          return updatedProperties;
+        });
+        
+        // Reset form state
+        const resetState = {
+          name: "",
+          key: "",
+          type: "text" as const,
+          required: true,
+          visible: true,
+          options: [],
+          enumType: "",
+          enumTypeName: "",
+          enumValues: []
+        };
+        console.log('Resetting form state to:', resetState);
+        setNewColumn(resetState);
+        
+        // Close dialog
+        console.log('Closing dialog');
         setIsAddDialogOpen(false);
+        
+        // Show success message
         toast({
           title: "Property Added",
           description: `Successfully added property '${propertyData.name}'\n\nNote: Please refresh the page to see the new column in the table.`,
           duration: 5000
         });
+        
+        // Refresh the table schema to ensure new column is available
+        try {
+          await refreshSchema();
+          console.log('Table schema refreshed successfully');
+          
+          // Refresh enums to ensure the new enum type is available for future operations
+          await refreshEnums();
+          console.log('Enums refreshed after new column creation');
+          
+          // Emit a global event for other components to refresh their schemas
+          window.dispatchEvent(new CustomEvent('schemaUpdated', { 
+            detail: { 
+              action: 'enum_column_added', 
+              columnKey: newColumn.key,
+              columnName: newColumn.name 
+            } 
+          }));
+        } catch (refreshError) {
+          console.error('Failed to refresh table schema:', refreshError);
+        }
+        
+        console.log('Enum submission completed successfully');
       } else {
         throw new Error(data?.error || "Failed to add property");
       }
@@ -247,9 +323,10 @@ const ServerProperties = () => {
         variant: "destructive"
       });
     } finally {
+      console.log('Setting isSubmitting to false');
       setIsSubmitting(false);
     }
-  };
+  }, [isSubmitting, newColumn, toast, refreshSchema]);
 
   // Updated handleSubmit to delegate to handleSubmitEnum for enum type
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -284,12 +361,15 @@ const ServerProperties = () => {
       });
       return;
     }
+    
+    // For enum types, delegate to specialized handler
+    if (newColumn.type === 'enum') {
+      await handleSubmitEnum();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      if (newColumn.type === 'enum') {
-        await handleSubmitEnum();
-        return;
-      }
       // Prepare the request body to match the working API call
       const requestBody = {
         name: newColumn.name,
@@ -322,7 +402,20 @@ const ServerProperties = () => {
           default_value: propertyData.default_value || undefined
         };
         setProperties((prev: ServerProperty[]) => [...prev, column]);
-        setNewColumn({ name: "", key: "", type: "text", required: true, options: [], enumType: "" });
+        
+        // Reset form state with all required properties
+        setNewColumn({
+          name: "",
+          key: "",
+          type: "text",
+          required: true,
+          visible: true,
+          options: [],
+          enumType: "",
+          enumTypeName: "",
+          enumValues: []
+        });
+        
         setIsAddDialogOpen(false);
         toast({
           title: "Property Added",
@@ -362,6 +455,33 @@ const ServerProperties = () => {
       setProperties((prev) => prev.map((p) =>
         p.key === propertyKey ? { ...p, options: p.options?.filter((v) => v !== value) } : p
       ));
+      
+      // Refresh enums to ensure changes are reflected everywhere
+      try {
+        await refreshEnums();
+        await refreshSchema();
+        console.log('Schema and enums refreshed after enum value removal');
+        
+        // Emit events for other components to refresh their schemas and enums
+        window.dispatchEvent(new CustomEvent('enumsUpdated', { 
+          detail: { 
+            action: 'enum_value_removed', 
+            columnKey: propertyKey,
+            removedValue: value
+          } 
+        }));
+        
+        window.dispatchEvent(new CustomEvent('schemaUpdated', { 
+          detail: { 
+            action: 'enum_value_removed', 
+            columnKey: propertyKey,
+            removedValue: value
+          } 
+        }));
+      } catch (refreshError) {
+        console.error('Failed to refresh after enum value removal:', refreshError);
+      }
+      
       toast({ title: 'Option Removed', description: `Removed ${value} from ${propertyKey}` });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -387,12 +507,41 @@ const ServerProperties = () => {
     try {
       await addEnumValue(selectedProperty.key, newEnumValue);
       await refreshEnums(); // Ensure enums are refreshed after add
+      
       // Update local property options after refresh
       setProperties((prev) => prev.map((p) =>
         p.key === selectedProperty.key && p.options
           ? { ...p, options: [...p.options, newEnumValue] }
           : p
       ));
+      
+      // Refresh the table schema to ensure enum values are updated everywhere
+      try {
+        await refreshSchema();
+        console.log('Table schema refreshed after enum value addition');
+        
+        // Emit events for other components to refresh their schemas and enums
+        window.dispatchEvent(new CustomEvent('enumsUpdated', { 
+          detail: { 
+            action: 'enum_value_added', 
+            columnKey: selectedProperty.key,
+            columnName: selectedProperty.name,
+            newValue: newEnumValue
+          } 
+        }));
+        
+        window.dispatchEvent(new CustomEvent('schemaUpdated', { 
+          detail: { 
+            action: 'enum_value_added', 
+            columnKey: selectedProperty.key,
+            columnName: selectedProperty.name,
+            newValue: newEnumValue
+          } 
+        }));
+      } catch (refreshError) {
+        console.error('Failed to refresh table schema after enum value addition:', refreshError);
+      }
+      
       toast({ title: 'Option Added', description: `Added ${newEnumValue} to ${selectedProperty.key}` });
       setIsAddEnumDialogOpen(false);
       setNewEnumValue("");

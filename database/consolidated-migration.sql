@@ -136,6 +136,7 @@ CREATE TABLE public.servers (
     device_type public.device_type NOT NULL,
     rack public.rack_type,
     unit public.unit_type,
+    unit_height INTEGER DEFAULT 1 CHECK (unit_height >= 1 AND unit_height <= 10),
     warranty DATE,
     notes TEXT,
     environment public.environment_type,
@@ -145,6 +146,384 @@ CREATE TABLE public.servers (
     CONSTRAINT valid_warranty CHECK (warranty IS NULL OR warranty >= CURRENT_DATE)
 );
 
+-- ==================================================
+-- FILTER PREFERENCES SYSTEM
+-- ==================================================
+
+-- User-specific filter preferences table
+CREATE TABLE IF NOT EXISTS public.user_filter_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    filter_key TEXT NOT NULL,
+    is_enabled BOOLEAN NOT NULL DEFAULT false,
+    preference_type TEXT NOT NULL DEFAULT 'user', -- 'user', 'auto', 'admin'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    UNIQUE(user_id, filter_key)
+);
+
+-- Global filter defaults (admin-controlled)
+CREATE TABLE IF NOT EXISTS public.global_filter_defaults (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filter_key TEXT NOT NULL UNIQUE,
+    is_enabled_by_default BOOLEAN NOT NULL DEFAULT false,
+    auto_enable_rule JSONB, -- JSON rules for auto-enabling
+    created_by UUID REFERENCES auth.users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Filter preference audit log
+CREATE TABLE IF NOT EXISTS public.filter_preference_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id),
+    filter_key TEXT NOT NULL,
+    action TEXT NOT NULL, -- 'enabled', 'disabled', 'auto_detected'
+    previous_state BOOLEAN,
+    new_state BOOLEAN,
+    triggered_by TEXT, -- 'user', 'auto_detection', 'admin'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_user_filter_preferences_user_id ON public.user_filter_preferences(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_filter_preferences_filter_key ON public.user_filter_preferences(filter_key);
+CREATE INDEX IF NOT EXISTS idx_filter_preference_history_user_id ON public.filter_preference_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_global_filter_defaults_filter_key ON public.global_filter_defaults(filter_key);
+
+-- Enable RLS (Row Level Security)
+ALTER TABLE public.user_filter_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.global_filter_defaults ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.filter_preference_history ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for user_filter_preferences
+CREATE POLICY "Users can view their own filter preferences" ON public.user_filter_preferences
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own filter preferences" ON public.user_filter_preferences
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own filter preferences" ON public.user_filter_preferences
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own filter preferences" ON public.user_filter_preferences
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- RLS Policies for global_filter_defaults
+CREATE POLICY "Anyone can read global filter defaults" ON public.global_filter_defaults
+    FOR SELECT USING (true);
+
+CREATE POLICY "Only admins can manage global filter defaults" ON public.global_filter_defaults
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.user_roles ur 
+            WHERE ur.user_id = auth.uid() 
+            AND ur.role = 'super_admin'
+        )
+    );
+
+-- RLS Policies for filter_preference_history
+CREATE POLICY "Users can view their own filter history" ON public.filter_preference_history
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "System can insert filter history" ON public.filter_preference_history
+    FOR INSERT WITH CHECK (true);
+
+-- Function to get user filter preferences with global defaults
+CREATE OR REPLACE FUNCTION public.get_user_filter_preferences(p_user_id UUID DEFAULT auth.uid())
+RETURNS TABLE (
+    filter_key TEXT,
+    is_enabled BOOLEAN,
+    preference_type TEXT,
+    is_global_default BOOLEAN,
+    global_default_enabled BOOLEAN
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        COALESCE(ufp.filter_key, gfd.filter_key) as filter_key,
+        COALESCE(ufp.is_enabled, gfd.is_enabled_by_default, false) as is_enabled,
+        COALESCE(ufp.preference_type, 'default') as preference_type,
+        (gfd.filter_key IS NOT NULL) as is_global_default,
+        COALESCE(gfd.is_enabled_by_default, false) as global_default_enabled
+    FROM public.global_filter_defaults gfd
+    FULL OUTER JOIN public.user_filter_preferences ufp 
+        ON gfd.filter_key = ufp.filter_key AND ufp.user_id = p_user_id
+    ORDER BY filter_key;
+END;
+$$;
+
+-- Function to update user filter preference
+CREATE OR REPLACE FUNCTION public.update_user_filter_preference(
+    p_user_id UUID,
+    p_filter_key TEXT,
+    p_is_enabled BOOLEAN,
+    p_preference_type TEXT DEFAULT 'user'
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    previous_state BOOLEAN;
+BEGIN
+    -- Check if user can update (must be own preference)
+    IF p_user_id != auth.uid() THEN
+        RAISE EXCEPTION 'Access denied: Can only update own preferences';
+    END IF;
+
+    -- Get previous state for audit log
+    SELECT is_enabled INTO previous_state 
+    FROM public.user_filter_preferences 
+    WHERE user_id = p_user_id AND filter_key = p_filter_key;
+
+    -- Insert or update preference
+    INSERT INTO public.user_filter_preferences (user_id, filter_key, is_enabled, preference_type)
+    VALUES (p_user_id, p_filter_key, p_is_enabled, p_preference_type)
+    ON CONFLICT (user_id, filter_key) 
+    DO UPDATE SET 
+        is_enabled = p_is_enabled,
+        preference_type = p_preference_type,
+        updated_at = now();
+
+    -- Log the change
+    INSERT INTO public.filter_preference_history (
+        user_id, filter_key, action, previous_state, new_state, triggered_by
+    ) VALUES (
+        p_user_id, 
+        p_filter_key, 
+        CASE WHEN p_is_enabled THEN 'enabled' ELSE 'disabled' END,
+        previous_state,
+        p_is_enabled,
+        'user'
+    );
+
+    RETURN true;
+END;
+$$;
+
+-- Function to auto-enable filters based on smart rules
+CREATE OR REPLACE FUNCTION public.auto_enable_filters_for_user(
+    p_user_id UUID,
+    p_detected_filters JSONB
+)
+RETURNS TABLE (
+    detected_filter_key TEXT,
+    auto_enabled BOOLEAN,
+    reason TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    filter_record RECORD;
+    filter_item TEXT;
+    should_enable BOOLEAN;
+    enable_reason TEXT;
+BEGIN
+    -- Check if user can update (must be own preference)
+    IF p_user_id != auth.uid() THEN
+        RAISE EXCEPTION 'Access denied: Can only update own preferences';
+    END IF;
+
+    -- Validate that p_detected_filters is a valid JSON array
+    IF p_detected_filters IS NULL OR jsonb_typeof(p_detected_filters) != 'array' THEN
+        RAISE EXCEPTION 'p_detected_filters must be a valid JSON array';
+    END IF;
+
+    -- Process each detected filter
+    FOR filter_item IN SELECT jsonb_array_elements_text(p_detected_filters)
+    LOOP
+        should_enable := false;
+        enable_reason := '';
+
+        -- Check if filter already has user preference
+        IF EXISTS (SELECT 1 FROM public.user_filter_preferences ufp
+                  WHERE ufp.user_id = p_user_id AND ufp.filter_key = filter_item) THEN
+            -- User already has preference, don't auto-enable
+            CONTINUE;
+        END IF;
+
+        -- Check global default
+        SELECT gfd.is_enabled_by_default INTO should_enable
+        FROM public.global_filter_defaults gfd
+        WHERE gfd.filter_key = filter_item;
+
+        IF should_enable THEN
+            enable_reason := 'global_default';
+        ELSE
+            -- Apply smart auto-enable rules
+            -- Rule 1: Important keywords
+            IF filter_item ~ '(priority|status|type|category|level|tier)' THEN
+                should_enable := true;
+                enable_reason := 'important_keyword';
+            END IF;
+
+            -- Rule 2: Check if it's a reasonable enum with property definitions
+            IF NOT should_enable THEN
+                SELECT COUNT(*) <= 20 INTO should_enable
+                FROM public.property_definitions pd
+                WHERE pd.key = filter_item 
+                AND pd.property_type IN ('enum', 'select')
+                AND jsonb_array_length(COALESCE(pd.options, '[]'::jsonb)) BETWEEN 2 AND 20;
+                
+                IF should_enable THEN
+                    enable_reason := 'reasonable_enum';
+                END IF;
+            END IF;
+        END IF;
+
+        -- Auto-enable if criteria met
+        IF should_enable THEN
+            INSERT INTO public.user_filter_preferences (user_id, filter_key, is_enabled, preference_type)
+            VALUES (p_user_id, filter_item, true, 'auto')
+            ON CONFLICT (user_id, filter_key) DO NOTHING;
+
+            -- Log the auto-enable
+            INSERT INTO public.filter_preference_history (
+                user_id, filter_key, action, previous_state, new_state, triggered_by
+            ) VALUES (
+                p_user_id, filter_item, 'auto_detected', false, true, 'auto_detection'
+            );
+        END IF;
+
+        -- Return result
+        RETURN QUERY SELECT filter_item, should_enable, enable_reason;
+    END LOOP;
+END;
+$$;
+
+-- Function to get global filter defaults
+CREATE OR REPLACE FUNCTION public.get_global_filter_defaults()
+RETURNS TABLE (
+    filter_key TEXT,
+    is_enabled_by_default BOOLEAN,
+    auto_enable_rule JSONB,
+    created_at TIMESTAMP WITH TIME ZONE
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        gfd.filter_key,
+        gfd.is_enabled_by_default,
+        gfd.auto_enable_rule,
+        gfd.created_at
+    FROM public.global_filter_defaults gfd
+    ORDER BY gfd.filter_key;
+END;
+$$;
+
+-- Function to sync newly detected enum columns with filter preferences
+CREATE OR REPLACE FUNCTION public.sync_enum_columns_to_filter_defaults()
+RETURNS TABLE (
+    filter_key TEXT,
+    action TEXT,
+    reason TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    enum_column RECORD;
+    should_be_default BOOLEAN;
+    default_reason TEXT;
+BEGIN
+    -- Get all enum columns from property definitions
+    FOR enum_column IN 
+        SELECT pd.key, pd.display_name, pd.options, pd.property_type
+        FROM public.property_definitions pd
+        WHERE pd.property_type IN ('enum', 'select') 
+        AND pd.active = true
+    LOOP
+        should_be_default := false;
+        default_reason := '';
+
+        -- Skip if already exists in global defaults
+        IF EXISTS (SELECT 1 FROM public.global_filter_defaults gfd
+                  WHERE gfd.filter_key = enum_column.key) THEN
+            CONTINUE;
+        END IF;
+
+        -- Apply smart rules for global defaults
+        -- Rule 1: Important keywords should be enabled by default
+        IF enum_column.key ~ '(priority|status|type|category|level|tier)' THEN
+            should_be_default := true;
+            default_reason := 'important_keyword';
+        -- Rule 2: Reasonable number of options (2-10 options = auto-enable)
+        ELSIF jsonb_array_length(COALESCE(enum_column.options, '[]'::jsonb)) BETWEEN 2 AND 10 THEN
+            should_be_default := true;
+            default_reason := 'reasonable_options';
+        END IF;
+
+        -- Insert global default
+        INSERT INTO public.global_filter_defaults (
+            filter_key, 
+            is_enabled_by_default, 
+            auto_enable_rule,
+            created_by
+        ) VALUES (
+            enum_column.key,
+            should_be_default,
+            jsonb_build_object(
+                'reason', default_reason,
+                'option_count', jsonb_array_length(COALESCE(enum_column.options, '[]'::jsonb)),
+                'display_name', enum_column.display_name
+            ),
+            auth.uid()
+        );
+
+        RETURN QUERY SELECT 
+            enum_column.key, 
+            CASE WHEN should_be_default THEN 'auto_enabled' ELSE 'available' END,
+            default_reason;
+    END LOOP;
+END;
+$$;
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION public.get_user_filter_preferences(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_user_filter_preference(UUID, TEXT, BOOLEAN, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.auto_enable_filters_for_user(UUID, JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_global_filter_defaults() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sync_enum_columns_to_filter_defaults() TO authenticated;
+
+-- Trigger to automatically sync enum columns when property definitions change
+CREATE OR REPLACE FUNCTION public.trigger_sync_enum_filter_defaults()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Only sync if it's an enum/select type
+    IF (TG_OP = 'INSERT' AND NEW.property_type IN ('enum', 'select')) OR
+       (TG_OP = 'UPDATE' AND NEW.property_type IN ('enum', 'select') AND 
+        (OLD.property_type != NEW.property_type OR OLD.options != NEW.options)) THEN
+        
+        PERFORM public.sync_enum_columns_to_filter_defaults();
+    END IF;
+    
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_property_definitions_sync_filters
+    AFTER INSERT OR UPDATE ON public.property_definitions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.trigger_sync_enum_filter_defaults();
+
+-- Comments for documentation
+COMMENT ON TABLE public.user_filter_preferences IS 'Stores individual user preferences for which filters to show in ServerInventory';
+COMMENT ON TABLE public.global_filter_defaults IS 'Admin-controlled defaults for filter visibility across the organization';
+COMMENT ON TABLE public.filter_preference_history IS 'Audit log of all filter preference changes';
+
+COMMENT ON FUNCTION public.get_user_filter_preferences(UUID) IS 'Gets user filter preferences merged with global defaults';
+COMMENT ON FUNCTION public.update_user_filter_preference(UUID, TEXT, BOOLEAN, TEXT) IS 'Updates a user filter preference with audit logging';
+COMMENT ON FUNCTION public.auto_enable_filters_for_user(UUID, JSONB) IS 'Auto-enables filters based on smart rules for newly detected enum columns';
+COMMENT ON FUNCTION public.sync_enum_columns_to_filter_defaults() IS 'Syncs newly detected enum columns to global filter defaults';
+
 -- ============================================================================
 -- 3. SAMPLE DATA
 -- ============================================================================
@@ -152,139 +531,139 @@ CREATE TABLE public.servers (
 INSERT INTO public.servers (
   id, serial_number, hostname, brand, model, ip_address, ip_oob, operating_system,
   dc_site, dc_building, dc_floor, dc_room,
-  allocation, environment, status, device_type, rack, unit, warranty, notes, created_by, created_at, updated_at
+  allocation, environment, status, device_type, rack, unit, unit_height, warranty, notes, created_by, created_at, updated_at
 ) VALUES
 -- Production Web Servers (1-3)
 (gen_random_uuid(), 'SN2023W001', 'web-prod-01', 'Dell', 'PowerEdge R740', '192.168.1.10', '10.0.0.1', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U42', '2025-12-31', 'Primary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U42', 1, '2025-12-31', 'Primary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023W002', 'web-prod-02', 'Dell', 'PowerEdge R740', '192.168.1.11', '10.0.0.2', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U40', '2025-12-31', 'Secondary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U40', 1, '2025-12-31', 'Secondary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023W003', 'web-prod-03', 'Dell', 'PowerEdge R750', '192.168.1.12', '10.0.0.3', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '1', '101',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U32', '2025-12-31', 'Tertiary web server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-01', 'U32', 2, '2025-12-31', 'Tertiary web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Database Servers (4-6)
 (gen_random_uuid(), 'SN2023D001', 'db-primary-01', 'HPE', 'ProLiant DL380', '192.168.2.10', '10.0.0.4', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U20', '2026-06-30', 'Primary database server',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U20', 2, '2026-06-30', 'Primary database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023D002', 'db-replica-01', 'HPE', 'ProLiant DL380', '192.168.2.11', '10.0.0.5', 'Oracle Linux 8',
  'DC-East', 'Building-A', '1', '102',
- 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U21', '2026-06-30', 'Database replica 1',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-02', 'U21', 2, '2026-06-30', 'Database replica 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023D003', 'db-backup-01', 'Dell', 'PowerEdge R750', '192.168.2.12', '10.0.0.6', 'RHEL 8',
  'DC-West', 'Building-B', '1', '201',
- 'Database', 'Production', 'Active', 'Server', 'RACK-10', 'U15', '2026-06-30', 'Backup database server',
+ 'Database', 'Production', 'Active', 'Server', 'RACK-10', 'U15', 2, '2026-06-30', 'Backup database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Storage (7-9)
 (gen_random_uuid(), 'SN2023S001', 'storage-01', 'Dell', 'PowerVault ME4', '192.168.3.10', '10.0.0.7', 'Storage OS 2.1',
  'DC-West', 'Building-B', '2', '201',
- 'PAAS', 'Production', 'Active', 'Storage', 'RACK-11', 'U10', '2026-09-30', 'Primary storage array',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-11', 'U10', 4, '2026-09-30', 'Primary storage array',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023S002', 'nas-archive-01', 'NetApp', 'AFF A400', '192.168.3.11', '10.0.0.8', 'ONTAP 9.10',
  'DC-North', 'Building-D', '1', '301',
- 'PAAS', 'Production', 'Active', 'Storage', 'RACK-15', 'U15', '2027-03-31', 'High-performance NAS',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-15', 'U15', 3, '2027-03-31', 'High-performance NAS',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023S003', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.3.12', '10.0.0.9', 'Storage OS 2.1',
  'DC-South', 'Building-E', '1', '401',
- 'PAAS', 'Production', 'Active', 'Storage', 'RACK-20', 'U20', '2026-12-31', 'Backup storage array',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-20', 'U20', 4, '2026-12-31', 'Backup storage array',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Network Devices (10-12)
 (gen_random_uuid(), 'SN2023N001', 'core-sw-01', 'Cisco', 'Nexus 93180YC-EX', '192.168.4.10', '10.0.0.10', 'NX-OS 9.3',
  'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U1', '2026-09-30', 'Core switch 1',
+ 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U1', 1, '2026-09-30', 'Core switch 1',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023N002', 'fw-01', 'Cisco', 'ASA 5525-X', '192.168.4.11', '10.0.0.11', 'Cisco ASA 9.16',
  'DC-East', 'Building-A', '1', 'MDF',
- 'Load Balancer', 'Production', 'Active', 'Network', 'RACK-01', 'U2', '2027-01-31', 'Main firewall',
+ 'Load Balancer', 'Production', 'Active', 'Network', 'RACK-01', 'U2', 1, '2027-01-31', 'Main firewall',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023N003', 'edge-rtr-01', 'Juniper', 'MX204', '192.168.4.12', '10.0.0.12', 'JunOS 21.2',
  'DC-East', 'Building-A', '1', 'MDF',
- 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U3', '2027-01-31', 'Edge router',
+ 'IAAS', 'Production', 'Active', 'Network', 'RACK-01', 'U3', 1, '2027-01-31', 'Edge router',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Development Servers (13-15)
 (gen_random_uuid(), 'SN2023D004', 'dev-app-01', 'Dell', 'PowerEdge R750', '192.168.5.10', '10.0.1.1', 'Ubuntu 22.04 LTS',
  'DC-Central', 'Building-C', '3', '301',
- 'IAAS', 'Development', 'Active', 'Server', 'RACK-30', 'U15', '2025-12-31', 'Development app server',
+ 'IAAS', 'Development', 'Active', 'Server', 'RACK-30', 'U15', 2, '2025-12-31', 'Development app server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023D005', 'dev-db-01', 'Dell', 'PowerEdge R740', '192.168.5.11', '10.0.1.2', 'Oracle Linux 8',
  'DC-Central', 'Building-C', '3', '302',
- 'Database', 'Development', 'Active', 'Server', 'RACK-30', 'U16', '2025-12-31', 'Development database',
+ 'Database', 'Development', 'Active', 'Server', 'RACK-30', 'U16', 2, '2025-12-31', 'Development database',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023D006', 'dev-web-01', 'HPE', 'ProLiant DL360', '192.168.5.12', '10.0.1.3', 'Ubuntu 22.04 LTS',
  'DC-Central', 'Building-C', '3', '303',
- 'IAAS', 'Development', 'Active', 'Server', 'RACK-31', 'U10', '2025-12-31', 'Development web server',
+ 'IAAS', 'Development', 'Active', 'Server', 'RACK-31', 'U10', 1, '2025-12-31', 'Development web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Testing Environment (16-18)
 (gen_random_uuid(), 'SN2023T001', 'test-db-01', 'HPE', 'ProLiant DL360', '192.168.6.10', '10.0.2.1', 'Oracle Linux 8',
  'DC-South', 'Building-D', '1', '105',
- 'Database', 'Testing', 'Active', 'Server', 'RACK-25', 'U10', '2026-06-30', 'Test database server',
+ 'Database', 'Testing', 'Active', 'Server', 'RACK-25', 'U10', 1, '2026-06-30', 'Test database server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023T002', 'test-app-01', 'Dell', 'PowerEdge R740', '192.168.6.11', '10.0.2.2', 'Ubuntu 20.04 LTS',
  'DC-South', 'Building-D', '1', '105',
- 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U11', '2026-06-30', 'Test application server',
+ 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U11', 2, '2026-06-30', 'Test application server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023T003', 'test-web-01', 'HPE', 'ProLiant DL380', '192.168.6.12', '10.0.2.3', 'Ubuntu 20.04 LTS',
  'DC-South', 'Building-D', '1', '105',
- 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U12', '2026-06-30', 'Test web server',
+ 'IAAS', 'Testing', 'Active', 'Server', 'RACK-25', 'U12', 2, '2026-06-30', 'Test web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Staging Environment (19-21)
 (gen_random_uuid(), 'SN2023S004', 'stage-web-01', 'Dell', 'PowerEdge R740', '192.168.7.10', '10.0.3.1', 'Ubuntu 20.04 LTS',
  'DC-North', 'Building-E', '2', '205',
- 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U25', '2025-12-31', 'Staging web server',
+ 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U25', 2, '2025-12-31', 'Staging web server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023S005', 'stage-db-01', 'Dell', 'PowerEdge R740', '192.168.7.11', '10.0.3.2', 'RHEL 8',
  'DC-North', 'Building-E', '2', '206',
- 'Database', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U26', '2026-12-31', 'Staging database',
+ 'Database', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U26', 2, '2026-12-31', 'Staging database',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023S006', 'stage-app-01', 'HPE', 'ProLiant DL380', '192.168.7.12', '10.0.3.3', 'RHEL 8',
  'DC-North', 'Building-E', '2', '207',
- 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U27', '2026-12-31', 'Staging application server',
+ 'IAAS', 'Pre-Production', 'Active', 'Server', 'RACK-20', 'U27', 2, '2026-12-31', 'Staging application server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Additional Servers (22-25)
 (gen_random_uuid(), 'SN2023A001', 'monitor-01', 'Dell', 'PowerEdge R750', '192.168.8.10', '10.0.4.1', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '2', '201',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U10', '2026-12-31', 'Monitoring server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U10', 2, '2026-12-31', 'Monitoring server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023A002', 'backup-01', 'HPE', 'ProLiant DL380', '192.168.8.11', '10.0.4.2', 'Ubuntu 22.04 LTS',
  'DC-West', 'Building-B', '1', '202',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U15', '2026-12-31', 'Backup server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U15', 2, '2026-12-31', 'Backup server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023A003', 'auth-01', 'Dell', 'PowerEdge R740', '192.168.8.12', '10.0.4.3', 'Ubuntu 22.04 LTS',
  'DC-East', 'Building-A', '2', '202',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U11', '2026-12-31', 'Authentication server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-05', 'U11', 2, '2026-12-31', 'Authentication server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 (gen_random_uuid(), 'SN2023A004', 'log-01', 'HPE', 'ProLiant DL360', '192.168.8.13', '10.0.4.4', 'Ubuntu 22.04 LTS',
  'DC-West', 'Building-B', '1', '203',
- 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U16', '2026-12-31', 'Logging server',
+ 'IAAS', 'Production', 'Active', 'Server', 'RACK-12', 'U16', 1, '2026-12-31', 'Logging server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now());
 
 -- ============================================================================
@@ -856,5 +1235,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.debug_enum_detection() TO authenticated;
-
--- ...existing code...

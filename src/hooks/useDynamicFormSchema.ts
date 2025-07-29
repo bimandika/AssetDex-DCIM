@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import * as z from 'zod';
 import { usePropertyDefinitions, PropertyDefinition } from './usePropertyDefinitions';
+import { useServerEnums } from './useServerEnums';
 
 export interface DynamicFormField {
   key: string;
@@ -30,7 +31,37 @@ interface UseDynamicFormSchemaReturn {
 }
 
 export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
-  const { properties, isLoading, error, refetch } = usePropertyDefinitions();
+  const { properties, isLoading: propertiesLoading, error, refetch } = usePropertyDefinitions();
+  const { enums, loading: enumsLoading } = useServerEnums();
+
+  // Helper function to get live enum values for a property
+  const getLiveEnumValues = (property: PropertyDefinition): Array<{ value: string; label: string }> => {
+    // Try to get live enum values from the enums context first
+    const enumKey = property.key;
+    
+    // Check if we have live enum values in the enums object
+    if (enums && enums[enumKey] && Array.isArray(enums[enumKey])) {
+      return enums[enumKey].map((value: string) => ({
+        value,
+        label: value
+      }));
+    }
+    
+    // Fallback to property definition options if no live enums found
+    if (property.options && Array.isArray(property.options)) {
+      return property.options.map((option: any) => ({
+        value: typeof option === 'string' ? option : option.value,
+        label: typeof option === 'string' ? option : option.label || option.value,
+      }));
+    } else if (property.options && typeof property.options === 'object' && property.options.options) {
+      return property.options.options.map((option: any) => ({
+        value: typeof option === 'string' ? option : option.value,
+        label: typeof option === 'string' ? option : option.label || option.value,
+      }));
+    }
+    
+    return [];
+  };
 
   const formSchema = useMemo(() => {
     if (!properties.length) {
@@ -60,18 +91,9 @@ export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
       };
 
       // Handle options for select/multiselect/enum fields
-      if (property.options && (property.property_type === 'select' || property.property_type === 'multiselect' || property.property_type === 'enum')) {
-        if (Array.isArray(property.options)) {
-          field.options = property.options.map((option: any) => ({
-            value: typeof option === 'string' ? option : option.value,
-            label: typeof option === 'string' ? option : option.label || option.value,
-          }));
-        } else if (typeof property.options === 'object' && property.options.options) {
-          field.options = property.options.options.map((option: any) => ({
-            value: typeof option === 'string' ? option : option.value,
-            label: typeof option === 'string' ? option : option.label || option.value,
-          }));
-        }
+      if (property.property_type === 'select' || property.property_type === 'multiselect' || property.property_type === 'enum') {
+        // Use live enum values for better synchronization
+        field.options = getLiveEnumValues(property);
       }
 
       fields.push(field);
@@ -204,7 +226,9 @@ export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
       validationSchema: z.object(schemaFields),
       defaultValues,
     };
-  }, [properties]);
+  }, [properties, enums]); // Add enums as dependency so form updates when enums change
+
+  const isLoading = propertiesLoading || enumsLoading;
 
   return {
     formSchema,

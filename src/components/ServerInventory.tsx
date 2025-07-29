@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { useDynamicFormSchema } from "@/hooks/useDynamicFormSchema";
 import { DynamicFormRenderer } from "@/components/forms/DynamicFormRenderer";
 import { generateDynamicValidationSchema, generateDefaultValues, transformFormDataForSubmission } from "@/utils/dynamicValidation";
+import { useFilterableColumns } from "@/hooks/useFilterableColumns";
+import FilterManagerDialog from "@/components/FilterManagerDialog";
 
 // Import types from enums
 import type {
@@ -137,6 +139,13 @@ const ServerInventory = () => {
   const [filterBuilding, setFilterBuilding] = useState<string>("all");
   const [filterRack, setFilterRack] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  // Dynamic filter states
+  const [dynamicFilters, setDynamicFilters] = useState<Record<string, string>>({});
+  const [showFilterManager, setShowFilterManager] = useState(false);
+
+  // Get filterable columns
+  const { enabledFilters, refreshPreferences } = useFilterableColumns();
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredServers.length / itemsPerPage);
@@ -349,6 +358,8 @@ const ServerInventory = () => {
       console.log('ServerInventory: Received enum update event', event.detail);
       // Refresh the form schema when enums are updated
       refetchSchema();
+      // Also refresh filter preferences to update filter options
+      refreshPreferences();
     };
 
     window.addEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
@@ -356,12 +367,39 @@ const ServerInventory = () => {
     return () => {
       window.removeEventListener('enumsUpdated', handleEnumsUpdated as EventListener);
     };
+  }, [refetchSchema, refreshPreferences]);
+
+  // Listen for schema updates (like new enum columns added)
+  useEffect(() => {
+    const handleSchemaUpdated = (event: CustomEvent) => {
+      console.log('ServerInventory: Received schema update event', event.detail);
+      // Refresh the form schema when new columns are added
+      refetchSchema();
+    };
+
+    window.addEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
+    };
   }, [refetchSchema]);
 
   // Filter servers whenever main server data or filter states change
   useEffect(() => {
     filterServers();
-  }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding, filterRack, filterStatus]);
+  }, [servers, searchTerm, filterType, filterEnvironment, filterBrand, filterModel, filterAllocation, filterOS, filterSite, filterBuilding, filterRack, filterStatus, dynamicFilters]);
+
+  // Listen for filter preference updates
+  useEffect(() => {
+    const handleFilterPreferencesUpdated = () => {
+      refreshPreferences();
+    };
+
+    window.addEventListener('filterPreferencesUpdated', handleFilterPreferencesUpdated);
+    return () => {
+      window.removeEventListener('filterPreferencesUpdated', handleFilterPreferencesUpdated);
+    };
+  }, [refreshPreferences]);
 
   // Define the database server type that matches what Supabase returns
   interface DatabaseServer {
@@ -515,6 +553,13 @@ const ServerInventory = () => {
       filtered = filtered.filter(server => server.status === filterStatus);
     }
 
+    // Apply dynamic filters for new enum columns
+    Object.entries(dynamicFilters).forEach(([columnKey, value]) => {
+      if (value !== "all" && value !== "") {
+        filtered = filtered.filter(server => server[columnKey] === value);
+      }
+    });
+
     setFilteredServers(filtered);
   };
 
@@ -531,6 +576,7 @@ const ServerInventory = () => {
     setFilterBuilding("all");
     setFilterRack("all");
     setFilterStatus("all");
+    setDynamicFilters({}); // Clear dynamic filters
     setCurrentPage(1);
   };
 
@@ -1302,6 +1348,7 @@ const ServerInventory = () => {
                       <>
                         <Separator />
                         <DynamicFormRenderer
+                          key={`dynamic-form-${formSchema.fields.map(f => f.key + ':' + (f.options?.length || 0)).join('-')}`} // Force re-render when field options change
                           fields={formSchema.fields}
                           control={form.control}
                           errors={form.formState.errors}
@@ -1341,9 +1388,30 @@ const ServerInventory = () => {
               <RotateCcw className="h-4 w-4" />
               Clear Filters
             </Button>
+
+            {/* Manage Filters Button */}
+            <Button
+              variant="outline"
+              onClick={() => setShowFilterManager(true)}
+              className="flex items-center gap-2"
+              aria-label="Manage filter columns"
+            >
+              <Filter className="h-4 w-4" />
+              Manage Filters
+            </Button>
           </div>
         </div>
       </CardHeader>
+
+      {/* Filter Manager Dialog */}
+      <FilterManagerDialog
+        open={showFilterManager}
+        onOpenChange={setShowFilterManager}
+        onFiltersUpdated={() => {
+          // Refresh the component when filters are updated
+          window.location.reload();
+        }}
+      />
 
       {/* Rest of the component remains the same - filters, table, pagination */}
       <CardContent>
@@ -1485,6 +1553,28 @@ const ServerInventory = () => {
                   ))}
                 </SelectContent>
               </Select>
+
+              {/* Dynamic Filters */}
+              {enabledFilters
+                .filter(filter => !filter.isCore && filter.options.length > 0)
+                .map((filter) => (
+                  <Select 
+                    key={filter.key}
+                    value={dynamicFilters[filter.key] || "all"} 
+                    onValueChange={(value) => setDynamicFilters(prev => ({ ...prev, [filter.key]: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={filter.displayName} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All {filter.displayName}</SelectItem>
+                      {filter.options.map((option) => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ))
+              }
             </div>
           </div>
         </div>
