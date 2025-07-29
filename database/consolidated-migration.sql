@@ -612,24 +612,24 @@ BEGIN
     pd.created_at,
     pd.updated_at,
     EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-      AND table_name = 'servers' 
-      AND column_name = pd.key
+      SELECT 1 FROM information_schema.columns isc1
+      WHERE isc1.table_schema = 'public' 
+      AND isc1.table_name = 'servers' 
+      AND isc1.column_name = pd.key
     ) AS column_exists,
     COALESCE(
-      (SELECT data_type FROM information_schema.columns 
-       WHERE table_schema = 'public' 
-       AND table_name = 'servers' 
-       AND column_name = pd.key), 
-      ''
+      (SELECT isc2.data_type::TEXT FROM information_schema.columns isc2
+       WHERE isc2.table_schema = 'public' 
+       AND isc2.table_name = 'servers' 
+       AND isc2.column_name = pd.key), 
+      ''::TEXT
     ) AS column_type,
     COALESCE(
-      (SELECT is_nullable FROM information_schema.columns 
-       WHERE table_schema = 'public' 
-       AND table_name = 'servers' 
-       AND column_name = pd.key), 
-      'YES'
+      (SELECT isc3.is_nullable::TEXT FROM information_schema.columns isc3
+       WHERE isc3.table_schema = 'public' 
+       AND isc3.table_name = 'servers' 
+       AND isc3.column_name = pd.key), 
+      'YES'::TEXT
     ) AS is_nullable
   FROM public.property_definitions pd
   WHERE pd.active = true
@@ -681,80 +681,60 @@ $$;
 -- 7. UTILITY FUNCTIONS
 -- ============================================================================
 
--- Function to get all enum values for the application
+-- Function to get all enum values for the application (dynamically discovers all enums)
 CREATE OR REPLACE FUNCTION public.get_enum_values()
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  result json;
+  enum_record RECORD;
+  enum_obj jsonb := '{}';
+  enum_values text[];
+  enum_key text;
 BEGIN
-  SELECT json_build_object(
-    'status', ARRAY['Active', 'Ready', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
-    'deviceTypes', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'device_type'
-    ),
-    'allocationTypes', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'allocation_type'
-    ),
-    'environmentTypes', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'environment_type'
-    ),
-    'brands', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'brand_type'
-    ),
-    'models', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'model_type'
-    ),
-    'osTypes', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'os_type'
-    ),
-    'sites', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'site_type'
-    ),
-    'buildings', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'building_type'
-    ),
-    'racks', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'rack_type'
-    ),
-    'units', (
-      SELECT array_agg(enumlabel ORDER BY enumsortorder)
-      FROM pg_enum 
-      JOIN pg_type ON pg_enum.enumtypid = pg_type.oid 
-      WHERE pg_type.typname = 'unit_type'
-    )
-  ) INTO result;
+  -- Build a dynamic JSON object with all enum types
+  FOR enum_record IN 
+    SELECT t.typname
+    FROM pg_type t
+    JOIN pg_namespace n ON t.typnamespace = n.oid
+    WHERE t.typtype = 'e' 
+    AND n.nspname = 'public'
+    ORDER BY t.typname
+  LOOP
+    -- Get all enum values for this type
+    SELECT array_agg(e.enumlabel ORDER BY e.enumsortorder)
+    INTO enum_values
+    FROM pg_enum e
+    JOIN pg_type t ON e.enumtypid = t.oid
+    WHERE t.typname = enum_record.typname;
+    
+    -- Convert type name to frontend key format
+    -- Examples: device_type -> deviceTypes, server_status -> status, brand_type -> brands
+    enum_key := CASE 
+      WHEN enum_record.typname = 'server_status' THEN 'status'
+      WHEN enum_record.typname = 'device_type' THEN 'deviceTypes'
+      WHEN enum_record.typname = 'allocation_type' THEN 'allocationTypes'
+      WHEN enum_record.typname = 'environment_type' THEN 'environmentTypes'
+      WHEN enum_record.typname = 'brand_type' THEN 'brands'
+      WHEN enum_record.typname = 'model_type' THEN 'models'
+      WHEN enum_record.typname = 'os_type' THEN 'osTypes'
+      WHEN enum_record.typname = 'site_type' THEN 'sites'
+      WHEN enum_record.typname = 'building_type' THEN 'buildings'
+      WHEN enum_record.typname = 'rack_type' THEN 'racks'
+      WHEN enum_record.typname = 'unit_type' THEN 'units'
+      WHEN enum_record.typname = 'user_role' THEN 'userRoles'
+      ELSE enum_record.typname  -- For new dynamic enums, use the type name as-is
+    END;
+    
+    -- Add this enum to the result object using jsonb concatenation
+    IF enum_values IS NOT NULL THEN
+      enum_obj := enum_obj || jsonb_build_object(enum_key, enum_values);
+    END IF;
+  END LOOP;
   
-  RETURN result;
+  -- Convert jsonb back to json for return
+  RETURN enum_obj::json;
 END;
 $$;
 
@@ -829,5 +809,52 @@ COMMENT ON FUNCTION public.get_table_schema(text)
 IS 'Returns schema information for a specified table, including enum values for enum columns';
 
 -- ============================================================================
--- END OF MIGRATION
+-- 8. DEBUG AND TESTING FUNCTIONS
 -- ============================================================================
+
+-- Debug function to test enum detection (can be removed after fixing)
+CREATE OR REPLACE FUNCTION public.debug_enum_detection()
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    result json;
+    debug_info json;
+BEGIN
+    -- Get basic info about enum types
+    SELECT json_agg(
+        json_build_object(
+            'typname', t.typname,
+            'typtype', t.typtype,
+            'namespace', n.nspname
+        )
+    ) INTO debug_info
+    FROM pg_type t
+    JOIN pg_namespace n ON t.typnamespace = n.oid
+    WHERE t.typtype = 'e' AND n.nspname = 'public';
+    
+    -- Get column info for servers table
+    SELECT json_build_object(
+        'enum_types', debug_info,
+        'test_enum_values', (SELECT get_enum_values()),
+        'servers_columns', (
+            SELECT json_agg(
+                json_build_object(
+                    'column_name', column_name,
+                    'udt_name', udt_name,
+                    'data_type', data_type
+                )
+            )
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'servers'
+        )
+    ) INTO result;
+    
+    RETURN result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.debug_enum_detection() TO authenticated;
+
+-- ...existing code...

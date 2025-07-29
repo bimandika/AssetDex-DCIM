@@ -7,7 +7,7 @@ export interface PropertyDefinition {
   key: string;
   name: string;
   display_name: string;
-  property_type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
+  property_type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect' | 'enum';
   description: string | null;
   category: string | null;
   required: boolean;

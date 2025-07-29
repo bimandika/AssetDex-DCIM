@@ -6,7 +6,7 @@ export interface DynamicFormField {
   key: string;
   name: string;
   displayName: string;
-  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect';
+  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multiselect' | 'enum';
   required: boolean;
   defaultValue: any;
   options?: Array<{ value: string; label: string }>;
@@ -51,7 +51,7 @@ export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
         key: property.key,
         name: property.name,
         displayName: property.display_name,
-        type: property.property_type,
+        type: property.property_type === 'enum' ? 'select' : property.property_type, // Map enum to select for rendering
         required: property.required,
         defaultValue: property.default_value,
         description: property.description || undefined,
@@ -59,8 +59,8 @@ export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
         placeholder: `Enter ${property.display_name.toLowerCase()}`,
       };
 
-      // Handle options for select/multiselect fields
-      if (property.options && (property.property_type === 'select' || property.property_type === 'multiselect')) {
+      // Handle options for select/multiselect/enum fields
+      if (property.options && (property.property_type === 'select' || property.property_type === 'multiselect' || property.property_type === 'enum')) {
         if (Array.isArray(property.options)) {
           field.options = property.options.map((option: any) => ({
             value: typeof option === 'string' ? option : option.value,
@@ -109,6 +109,7 @@ export const useDynamicFormSchema = (): UseDynamicFormSchemaReturn => {
           break;
 
         case 'select':
+        case 'enum': // Handle enum same as select
           if (field.options && field.options.length > 0) {
             const validValues = field.options.map(opt => opt.value);
             validator = z.enum(validValues as [string, ...string[]], {

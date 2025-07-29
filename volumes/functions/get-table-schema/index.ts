@@ -136,7 +136,7 @@ export const handler = async (req: Request): Promise<Response> => {
       console.log('No enum data returned from get_enum_values()');
     }
 
-    // Map column names to their corresponding enum types
+    // Map column names to their corresponding enum types (for legacy columns)
     const columnToEnumMap: Record<string, string> = {
       'status': 'status',
       'device_type': 'deviceTypes',
@@ -153,10 +153,17 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // Transform the data for the frontend
     const transformedColumns: TransformedColumn[] = columns.map((column: any) => {
-      // Check if this column has enum values based on column name
-      const enumType = columnToEnumMap[column.column_name];
-      const isEnum = !!enumType && enumValues[enumType]?.length > 0;
-      const enumValuesForColumn = isEnum ? enumValues[enumType] : [];
+      // First check if this column has enum values based on legacy mapping
+      let enumType = columnToEnumMap[column.column_name];
+      let isEnum = !!enumType && enumValues[enumType]?.length > 0;
+      let enumValuesForColumn = isEnum ? enumValues[enumType] : [];
+      
+      // If not found in legacy mapping, check if column name directly matches an enum type
+      if (!isEnum && enumValues[column.column_name]?.length > 0) {
+        enumType = column.column_name;
+        isEnum = true;
+        enumValuesForColumn = enumValues[column.column_name];
+      }
       
       // Special case for status which might have a default value in the format 'Active'::server_status
       let defaultValue = column.column_default;
@@ -164,9 +171,17 @@ export const handler = async (req: Request): Promise<Response> => {
         defaultValue = defaultValue.split('::')[0].replace(/'/g, '').trim();
       }
       
+      // Determine the data type - use 'select' for enum columns, otherwise map the DB type
+      let dataType: string;
+      if (isEnum) {
+        dataType = 'select';
+      } else {
+        dataType = mapDbTypeToPropertyType(column.udt_name);
+      }
+      
       return {
         column_name: column.column_name,
-        data_type: mapDbTypeToPropertyType(column.udt_name),
+        data_type: dataType,
         is_nullable: column.is_nullable,
         column_default: defaultValue,
         is_enum: isEnum,
