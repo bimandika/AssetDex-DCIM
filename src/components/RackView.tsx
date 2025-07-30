@@ -311,7 +311,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                     {rackData.name} - Top
                   </div>
                 </div>
-                <div className="bg-slate-50 border-l-4 border-r-4 min-h-[800px]" style={{ borderLeftColor: '#011330', borderRightColor: '#011330' }}>
+                <div className="bg-slate-50 border-l-4 border-r-4 min-h-[800px]" style={{ borderLeftColor: '#ffffff', borderRightColor: '#ffffff' }}>
                   <TooltipProvider>
                     {rackData.units.map((unit) => {
                       // For multi-unit servers, only render the starting unit (not marked as isPartOfMultiUnit)
@@ -324,40 +324,57 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                         return (
                           <div
                             key={unit.unit}
-                            className="flex items-center border-b border-gray-200 px-2 hover:bg-slate-100 transition-colors bg-black border-l-4 border-r-4"
-                            style={{ minHeight: `${unit.server.unitHeight * 2.5}rem`, borderLeftColor: '#b5b6b8', borderRightColor: '#b5b6b8' }}
+                            className="flex items-center border-b border-gray-200 px-1 transition-colors bg-black rounded hover:bg-gray-600"
+                            style={{ 
+                              minHeight: `${unit.server.unitHeight * 2.5}rem`,
+                              paddingTop: '3px',
+                              paddingBottom: '3px'
+                            }}
                           >
-                            <div className="w-8 text-xs font-mono text-gray-300 text-right flex-shrink-0 flex flex-col justify-center">
-                              <div>U{unit.unit}</div>
-                              <div className="text-gray-500">-</div>
-                              <div>U{unit.unit + unit.server.unitHeight - 1}</div>
-                            </div>
-                            <div className="flex-1 ml-3 flex items-center">
+                            <div className="flex-1 flex items-center">
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <div 
-                                    className="flex items-center justify-between bg-white border rounded px-2 py-2 shadow-sm w-full"
+                                    className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
                                     style={{ 
-                                      minHeight: `${unit.server.unitHeight * 2.5 * 0.8}rem`,
-                                      height: `${unit.server.unitHeight * 2.5 * 0.8}rem`
+                                      minHeight: `${unit.server.unitHeight * 2.5 * 0.97}rem`,
+                                      height: `${unit.server.unitHeight * 2.5 * 0.97}rem`,
+                                      border: '2px solid #14213d',
+                                      boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                                      cursor: 'pointer'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.border = '2px solid #14213d';
+                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.border = '2px solid #14213d';
+                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
                                     }}
                                   >
-                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                      <div className="mb-1">
-                                        {renderServerInfo(unit.server)}
+                                    <div className="flex items-center space-x-3 w-full">
+                                      <div className="text-xs font-mono text-gray-600 flex-shrink-0 flex flex-col justify-center text-right">
+                                        <div>U{unit.unit}</div>
+                                        <div className="text-gray-400">-</div>
+                                        <div>U{unit.unit + unit.server.unitHeight - 1}</div>
                                       </div>
-                                      <div className="text-xs text-gray-500">
-                                        {unit.server.unitHeight}U Server (Units U{unit.unit}-U{unit.unit + unit.server.unitHeight - 1})
-                                      </div>
-                                      {unit.server.unitHeight >= 3 && (
-                                        <div className="text-xs text-gray-400 mt-1">
-                                          Height: {unit.server.unitHeight} Units • Model: {unit.server.model}
+                                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                        <div className="mb-1">
+                                          {renderServerInfo(unit.server)}
                                         </div>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
-                                      <div className={`w-4 h-4 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                      <Info className="h-4 w-4 text-gray-400" />
+                                        <div className="text-xs text-gray-500">
+                                          {unit.server.unitHeight}U Server (Units U{unit.unit}-U{unit.unit + unit.server.unitHeight - 1})
+                                        </div>
+                                        {unit.server.unitHeight >= 3 && (
+                                          <div className="text-xs text-gray-400 mt-1">
+                                            Height: {unit.server.unitHeight} Units • Model: {unit.server.model}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center space-x-2 flex-shrink-0">
+                                        <div className={`w-4 h-4 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                        <Info className="h-4 w-4 text-gray-400" />
+                                      </div>
                                     </div>
                                   </div>
                                 </TooltipTrigger>
@@ -388,27 +405,45 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                       return (
                         <div
                           key={unit.unit}
-                          className={`flex items-center min-h-10 border-b border-gray-200 px-2 hover:bg-slate-100 transition-colors ${
-                            unit.server ? 'bg-black border-l-4 border-r-4' : ''
+                          className={`flex items-center min-h-10 border-b border-gray-200 px-1 transition-colors ${
+                            unit.server ? 'bg-black rounded hover:bg-gray-600' : ''
                           }`}
-                          style={unit.server ? { borderLeftColor: '#b5b6b8', borderRightColor: '#b5b6b8' } : {}}
+                          style={unit.server ? {
+                            paddingTop: '3px',
+                            paddingBottom: '3px'
+                          } : {}}
                         >
-                          <div className={`w-8 text-xs font-mono text-right flex-shrink-0 ${
-                            unit.server ? 'text-white' : 'text-gray-400'
-                          }`}>
-                            U{unit.unit}
-                          </div>
-                          <div className="flex-1 ml-3">
-                            {unit.server ? (
+                          {unit.server ? (
+                            <div className="flex-1 flex items-center">
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <div className="flex items-center justify-between bg-white border rounded px-2 py-2 shadow-sm">
-                                    <div className="flex-1 min-w-0">
-                                      {renderServerInfo(unit.server)}
-                                    </div>
-                                    <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
-                                      <div className={`w-3 h-3 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                      <Info className="h-3 w-3 text-gray-400" />
+                                  <div 
+                                    className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
+                                    style={{
+                                      border: '2px solid #14213d',
+                                      boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                                      cursor: 'pointer'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.border = '2px solid #14213d';
+                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.border = '2px solid #14213d';
+                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                    }}
+                                  >
+                                    <div className="flex items-center space-x-3 w-full">
+                                      <div className="text-xs font-mono text-gray-600 flex-shrink-0 text-right">
+                                        U{unit.unit}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        {renderServerInfo(unit.server)}
+                                      </div>
+                                      <div className="flex items-center space-x-2 flex-shrink-0">
+                                        <div className={`w-3 h-3 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                        <Info className="h-3 w-3 text-gray-400" />
+                                      </div>
                                     </div>
                                   </div>
                                 </TooltipTrigger>
@@ -430,10 +465,17 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                                   </div>
                                 </TooltipContent>
                               </Tooltip>
-                            ) : (
-                              <div className="text-xs text-gray-300 italic py-2">Empty</div>
-                            )}
-                          </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="w-8 text-xs font-mono text-right flex-shrink-0 text-gray-400">
+                                U{unit.unit}
+                              </div>
+                              <div className="flex-1 ml-3">
+                                <div className="text-xs text-gray-300 italic py-2">Empty</div>
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     }).filter(Boolean)}
