@@ -1,0 +1,4 @@
+[function]
+name = "get-rack-data"
+description = "Fetches rack data including servers and metadata for RackView component"
+verify_jwt = false

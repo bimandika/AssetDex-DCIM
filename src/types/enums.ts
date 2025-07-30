@@ -16,6 +16,8 @@ export interface ServerEnums {
   osTypes: string[];
   sites: string[];
   buildings: string[];
+  floors: string[];
+  rooms: string[];
   // Allow dynamic enum properties
   [key: string]: string[];
 }
@@ -41,5 +43,7 @@ export const defaultServerEnums: ServerEnums = {
     'ONTAP 9.10', 'Other'
   ],
   sites: ['DC-East', 'DC-West', 'DC-North', 'DC-South', 'DC-Central', 'DC1', 'DC2', 'DC3', 'DC4', 'DC5'],
-  buildings: ['Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other']
+  buildings: ['Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other'],
+  floors: ['Floor-1', 'Floor-2', 'Floor-3', 'Floor-4', 'Floor-5', 'Floor-B1', 'Floor-B2', 'Other'],
+  rooms: ['Room-101', 'Room-102', 'Room-103', 'Room-201', 'Room-202', 'Room-203', 'Room-301', 'Room-302', 'Other']
 };

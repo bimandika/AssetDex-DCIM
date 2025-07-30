@@ -45,6 +45,12 @@ serve(async (req) => {
       const { handler } = await import('../get-table-schema/index.ts')
       return await handler(req)
     }
+
+    // Get rack data endpoint
+    if (url.pathname === '/get-rack-data' && req.method === 'POST') {
+      const { handler } = await import('../get-rack-data/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,

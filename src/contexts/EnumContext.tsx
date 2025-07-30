@@ -110,13 +110,15 @@ export const EnumContextProvider: React.FC<EnumContextProviderProps> = ({ childr
         osTypes: data.osTypes || [],
         sites: data.sites || [],
         buildings: data.buildings || [],
+        floors: data.floors || [],
+        rooms: data.rooms || [],
         racks: data.racks || [],
         units: data.units || [],
         // Include all other dynamic enum types from the response
         ...Object.keys(data).reduce((acc, key) => {
           // Only include keys that aren't already mapped above
           if (!['status', 'deviceTypes', 'allocationTypes', 'environmentTypes', 
-                'brands', 'models', 'osTypes', 'sites', 'buildings', 'racks', 'units'].includes(key)) {
+                'brands', 'models', 'osTypes', 'sites', 'buildings', 'floors', 'rooms', 'racks', 'units'].includes(key)) {
             acc[key] = data[key] || [];
           }
           return acc;
