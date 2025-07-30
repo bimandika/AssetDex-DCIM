@@ -445,49 +445,6 @@ const ServerProperties = () => {
     }
   };
 
-  // Handler to remove enum value
-  const handleRemoveEnumValue = async (propertyKey: string, value: string) => {
-    try {
-      await supabase.functions.invoke('enum-manager', {
-        method: 'POST',
-        body: { action: 'remove', type: propertyKey, value }
-      });
-      setProperties((prev) => prev.map((p) =>
-        p.key === propertyKey ? { ...p, options: p.options?.filter((v) => v !== value) } : p
-      ));
-      
-      // Refresh enums to ensure changes are reflected everywhere
-      try {
-        await refreshEnums();
-        await refreshSchema();
-        console.log('Schema and enums refreshed after enum value removal');
-        
-        // Emit events for other components to refresh their schemas and enums
-        window.dispatchEvent(new CustomEvent('enumsUpdated', { 
-          detail: { 
-            action: 'enum_value_removed', 
-            columnKey: propertyKey,
-            removedValue: value
-          } 
-        }));
-        
-        window.dispatchEvent(new CustomEvent('schemaUpdated', { 
-          detail: { 
-            action: 'enum_value_removed', 
-            columnKey: propertyKey,
-            removedValue: value
-          } 
-        }));
-      } catch (refreshError) {
-        console.error('Failed to refresh after enum value removal:', refreshError);
-      }
-      
-      toast({ title: 'Option Removed', description: `Removed ${value} from ${propertyKey}` });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
   // Handler to open add enum dialog
   const openAddEnumDialog = (property: ServerProperty) => {
     setSelectedProperty(property);
@@ -827,17 +784,8 @@ const ServerProperties = () => {
                         {property.is_enum && (
                           <div className="flex flex-wrap gap-2 mt-2 items-center justify-start">
                             {property.options?.map((value) => (
-                              <Badge key={value} variant="secondary" className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-normal justify-center items-center">
+                              <Badge key={value} variant="secondary" className="px-2 py-1 rounded-full text-xs font-normal">
                                 {value}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveEnumValue(property.key, value)}
-                                  className="ml-1 rounded-full bg-gray-200 hover:bg-muted p-1 flex items-center justify-center"
-                                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '9999px' }}
-                                >
-                                  <span className="sr-only">Remove</span>
-                                  <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                                </button>
                               </Badge>
                             ))}
                           </div>
@@ -926,6 +874,8 @@ const ServerProperties = () => {
             <DialogTitle>Add Enum Option</DialogTitle>
             <DialogDescription>
               Add a new option to {selectedProperty?.name}
+              <br />
+              <span className="text-amber-600 font-medium">⚠️ Warning: Enum values cannot be deleted after being added.</span>
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddEnumValue} className="space-y-4">
