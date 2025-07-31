@@ -1,6 +1,7 @@
 
 import React, { useState } from "react";
 import { useRackData, ViewMode } from "@/hooks/useRackData";
+import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Database, Eye, Monitor, Info, Edit3 } from "lucide-react";
+import { Database, Eye, Monitor, Info, Edit3, RotateCcw } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useServerEnums } from "@/hooks/useServerEnums";
 import { supabase } from "@/integrations/supabase/client";
 
 interface RackViewProps {
@@ -19,19 +19,15 @@ interface RackViewProps {
 }
 
 const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
-  const [selectedDataCenter, setSelectedDataCenter] = useState("DC-East");
-  const [selectedBuilding, setSelectedBuilding] = useState("Building-A");
-  const [selectedFloor, setSelectedFloor] = useState("Floor-1");
-  const [selectedRoom, setSelectedRoom] = useState("Room-101");
-  const [selectedRack, setSelectedRack] = useState("RACK-01");
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
   const [rackDescription, setRackDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [selectedRack, setSelectedRack] = useState<string>("");
 
-  // Get dynamic enums for filtering
-  const { enums } = useServerEnums();
+  // Use hierarchical filter hook
+  const { hierarchyData, filters, loading: filterLoading, defaultRack, updateFilter, resetFilters } = useHierarchicalFilter();
 
   // Map selectedRackId to actual rack names if needed
   const rackMap: Record<string, string> = {
@@ -41,12 +37,18 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
     "4": "RACK-04"
   };
 
-  const currentRack = selectedRackId && rackMap[selectedRackId] 
+  // Determine the current rack - use filter rack if set, otherwise use the default logic
+  const currentRack = filters.rack 
+    ? filters.rack
+    : selectedRackId && rackMap[selectedRackId] 
     ? rackMap[selectedRackId] 
-    : selectedRack;
+    : selectedRack 
+    || (hierarchyData.racks.length > 0 && filters.dc_site && filters.dc_building && filters.dc_floor && filters.dc_room 
+       ? hierarchyData.racks[0] 
+       : defaultRack || "RACK-01");
 
   // Use real data for display only
-  const { rackData, loading, error, refetch } = useRackData(currentRack);
+  const { rackData, loading, error } = useRackData(currentRack);
 
   // Debug: Log the rack data to see what we're getting
   React.useEffect(() => {
@@ -267,60 +269,96 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
           <h2 className="text-2xl font-bold text-slate-900">Rack View</h2>
           <p className="text-slate-600">Visual layout of your server infrastructure</p>
         </div>
-        <div className="flex flex-wrap gap-4">
-          <Select value={selectedDataCenter} onValueChange={setSelectedDataCenter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select DC Site" />
+        <div className="flex items-center gap-2 min-w-0">
+          <Select value={filters.dc_site || ""} onValueChange={(value) => updateFilter('dc_site', value)}>
+            <SelectTrigger className="w-40 h-10 flex-shrink-0">
+              <SelectValue placeholder="DC Site" />
             </SelectTrigger>
             <SelectContent>
-              {enums?.sites?.map((site) => (
+              {hierarchyData.sites?.map((site) => (
                 <SelectItem key={site} value={site}>{site}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select DC Building" />
+          
+          <Select 
+            value={filters.dc_building || ""} 
+            onValueChange={(value) => updateFilter('dc_building', value)}
+            disabled={!filters.dc_site}
+          >
+            <SelectTrigger className="w-36 h-10 flex-shrink-0">
+              <SelectValue placeholder="Building" />
             </SelectTrigger>
             <SelectContent>
-              {enums?.buildings?.map((building) => (
+              {hierarchyData.buildings?.map((building) => (
                 <SelectItem key={building} value={building}>{building}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={selectedFloor} onValueChange={setSelectedFloor}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select DC Floor" />
+          
+          <Select 
+            value={filters.dc_floor || ""} 
+            onValueChange={(value) => updateFilter('dc_floor', value)}
+            disabled={!filters.dc_building}
+          >
+            <SelectTrigger className="w-28 h-10 flex-shrink-0">
+              <SelectValue placeholder="Floor" />
             </SelectTrigger>
             <SelectContent>
-              {enums?.floors?.map((floor) => (
+              {hierarchyData.floors?.map((floor) => (
                 <SelectItem key={floor} value={floor}>{floor}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select DC Room" />
+          
+          <Select 
+            value={filters.dc_room || ""} 
+            onValueChange={(value) => updateFilter('dc_room', value)}
+            disabled={!filters.dc_floor}
+          >
+            <SelectTrigger className="w-28 h-10 flex-shrink-0">
+              <SelectValue placeholder="Room" />
             </SelectTrigger>
             <SelectContent>
-              {enums?.rooms?.map((room) => (
+              {hierarchyData.rooms?.map((room) => (
                 <SelectItem key={room} value={room}>{room}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={currentRack} onValueChange={setSelectedRack}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Select Rack" />
+          
+          <Select 
+            value={currentRack} 
+            onValueChange={(value) => setSelectedRack(value)}
+            disabled={!filters.dc_room}
+          >
+            <SelectTrigger className="w-32 h-10 flex-shrink-0">
+              <SelectValue placeholder="Rack" />
             </SelectTrigger>
             <SelectContent>
-              {enums?.racks?.map((rack) => (
+              {hierarchyData.racks?.map((rack) => (
+                <SelectItem key={rack} value={rack}>{rack}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <div className="w-px h-6 bg-gray-300 mx-1 flex-shrink-0"></div>
+          
+          <Select 
+            value={filters.rack || ""} 
+            onValueChange={(value) => updateFilter('rack', value)}
+          >
+            <SelectTrigger className="w-36 h-10 flex-shrink-0">
+              <SelectValue placeholder="Any Rack" />
+            </SelectTrigger>
+            <SelectContent>
+              {hierarchyData.allRacks?.map((rack) => (
                 <SelectItem key={rack} value={rack}>{rack}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={viewMode} onValueChange={(value: ViewMode) => setViewMode(value)}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="View Mode" />
+            <SelectTrigger className="w-32 h-10 flex-shrink-0">
+              <SelectValue placeholder="View" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="physical">
@@ -337,13 +375,17 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               </SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={refetch}>
-            Refresh
+          <Button variant="outline" size="default" onClick={resetFilters} className="flex-shrink-0 h-10 px-4">
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset
           </Button>
-          <Button variant="outline" onClick={() => setIsEditingDescription(true)}>
+          <Button variant="outline" size="default" onClick={() => setIsEditingDescription(true)} className="flex-shrink-0 h-10 px-4">
             Edit Rack
           </Button>
         </div>
+        {filterLoading && (
+          <div className="text-sm text-blue-600">Loading hierarchy data...</div>
+        )}
       </div>
 
       {/* View Mode Info Banner */}
@@ -376,7 +418,9 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Database className="h-5 w-5 text-blue-600" />
-                <span>{rackData.datacenter_id} - {rackData.name}</span>
+                <span>
+                  {filters.dc_site || rackData.datacenter_id} - {filters.dc_building || rackData.location} - {filters.dc_floor || `Floor ${rackData.floor}`} - {filters.dc_room || 'Room-01'} - {rackData.name}
+                </span>
                 <Badge variant="outline">{viewMode} view</Badge>
               </CardTitle>
               <CardDescription>
@@ -387,7 +431,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               <div className="p-4 rounded-lg" style={{ backgroundColor: 'black' }}>
                 <div className="p-2 rounded-t-lg" style={{ backgroundColor: 'black' }}>
                   <div className="text-white text-center text-sm font-medium">
-                    {rackData.name} - Top
+                    {rackData.name}
                   </div>
                   {rackDescription && (
                     <div className="text-white text-center text-sm font-bold mt-2">
@@ -563,7 +607,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                 </div>
                 <div className="p-2 rounded-b-lg" style={{ backgroundColor: 'black' }}>
                   <div className="text-white text-center text-sm font-medium">
-                    {rackData.name} - Bottom
+                    {rackData.name}
                   </div>
                 </div>
               </div>

@@ -10,6 +10,24 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Get hierarchy data endpoint
+    if (url.pathname === '/get-hierarchy-data' && req.method === 'POST') {
+      const { handler } = await import('../get-hierarchy-data/index.ts')
+      return await handler(req)
+    }
+
+    // Get default rack endpoint
+    if (url.pathname === '/get-default-rack' && req.method === 'GET') {
+      const { handler } = await import('../get-default-rack/index.ts')
+      return await handler(req)
+    }
+
+    // Get rack location endpoint
+    if (url.pathname === '/get-rack-location' && req.method === 'POST') {
+      const { handler } = await import('../get-rack-location/index.ts')
+      return await handler(req)
+    }
+
     // Admin create user endpoint
     if (url.pathname === '/admin-create-user' && req.method === 'POST') {
       const { handler } = await import('../admin-create-user/index.ts')
