@@ -1,0 +1,3 @@
+[update-rack-description]
+bundle = true
+verify_jwt = true

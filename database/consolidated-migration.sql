@@ -69,9 +69,37 @@ CREATE TYPE public.site_type AS ENUM ('DC-East', 'DC-West', 'DC-North', 'DC-Sout
 -- Building types
 CREATE TYPE public.building_type AS ENUM ('Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other');
 
+-- Floor types
+CREATE TYPE public.floor_type AS ENUM ('1', '2', '3', '4', '5', 'B1', 'B2', 'Ground', 'Mezzanine');
+
+-- Room types  
+CREATE TYPE public.room_type AS ENUM (
+  'MDF', '101', '102', '103', '104', '105', '106', '107', '108', '109', '110',
+  '201', '202', '203', '204', '205', '206', '207', '208', '209', '210',
+  '301', '302', '303', '304', '305', '306', '307', '308', '309', '310',
+  '401', '402', '403', '404', '405', '406', '407', '408', '409', '410',
+  'Server Room A', 'Server Room B', 'Network Room', 'Storage Room', 'Other'
+);
+
 -- ============================================================================
 -- 2. TABLES
 -- ============================================================================
+
+-- Rack metadata table for additional rack information (RackView enhancement)
+-- This table must be created FIRST to establish foreign key relationships
+CREATE TABLE IF NOT EXISTS public.rack_metadata (
+    rack_name public.rack_type PRIMARY KEY,
+    dc_site public.site_type NOT NULL,
+    dc_building public.building_type,
+    dc_floor public.floor_type,
+    dc_room public.room_type,
+    description TEXT CHECK (LENGTH(description) <= 40),
+    total_units INTEGER DEFAULT 42,
+    power_capacity_watts INTEGER,
+    cooling_capacity_btu INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
 -- User profiles table (extends auth.users)
 CREATE TABLE public.profiles (
@@ -129,12 +157,12 @@ CREATE TABLE public.servers (
     operating_system public.os_type,
     dc_site public.site_type NOT NULL,
     dc_building public.building_type,
-    dc_floor TEXT,
-    dc_room TEXT,
+    dc_floor public.floor_type,
+    dc_room public.room_type,
     allocation public.allocation_type,
     status public.server_status DEFAULT 'Active'::public.server_status,
     device_type public.device_type NOT NULL,
-    rack public.rack_type,
+    rack public.rack_type REFERENCES public.rack_metadata(rack_name) ON DELETE SET NULL ON UPDATE CASCADE,
     unit public.unit_type,
     unit_height INTEGER DEFAULT 1 CHECK (unit_height >= 1 AND unit_height <= 10),
     warranty DATE,
@@ -144,19 +172,6 @@ CREATE TABLE public.servers (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     CONSTRAINT valid_warranty CHECK (warranty IS NULL OR warranty >= CURRENT_DATE)
-);
-
--- Rack metadata table for additional rack information (RackView enhancement)
-CREATE TABLE IF NOT EXISTS public.rack_metadata (
-    rack_name public.rack_type PRIMARY KEY,
-    datacenter_id public.site_type NOT NULL,
-    floor INTEGER,
-    location TEXT,
-    total_units INTEGER DEFAULT 42,
-    power_capacity_watts INTEGER,
-    cooling_capacity_btu INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ==================================================
@@ -544,6 +559,13 @@ COMMENT ON FUNCTION public.sync_enum_columns_to_filter_defaults() IS 'Syncs newl
 -- ============================================================================
 -- 3. SAMPLE DATA
 -- ============================================================================
+
+-- Insert rack metadata FIRST (required for foreign key constraint)
+INSERT INTO public.rack_metadata (rack_name, dc_site, dc_building, dc_floor, dc_room) VALUES
+('RACK-01', 'DC-East', 'Building-A', '1', 'MDF'),     -- Production & Network
+('RACK-02', 'DC-East', 'Building-A', '2', '201'),     -- Storage & Backup  
+('RACK-03', 'DC-East', 'Building-A', '3', '301');     -- Development & Testing
+
 -- Insert 25 sample server records with valid enum values
 INSERT INTO public.servers (
   id, serial_number, hostname, brand, model, ip_address, ip_oob, operating_system,
@@ -682,12 +704,6 @@ INSERT INTO public.servers (
  'DC-East', 'Building-A', '1', '203',
  'IAAS', 'Production', 'Active', 'Server', 'RACK-02', 'U21', 1, '2026-12-31', 'Logging server',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now());
-
--- Insert rack metadata for 3-rack consolidation
-INSERT INTO public.rack_metadata (rack_name, datacenter_id, floor, location) VALUES
-('RACK-01', 'DC-East', 1, 'Row A'),  -- Production & Network
-('RACK-02', 'DC-East', 1, 'Row A'),  -- Storage & Backup  
-('RACK-03', 'DC-East', 1, 'Row B');  -- Development & Testing
 
 -- ============================================================================
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
@@ -1123,6 +1139,8 @@ BEGIN
       WHEN enum_record.typname = 'os_type' THEN 'osTypes'
       WHEN enum_record.typname = 'site_type' THEN 'sites'
       WHEN enum_record.typname = 'building_type' THEN 'buildings'
+      WHEN enum_record.typname = 'floor_type' THEN 'floors'
+      WHEN enum_record.typname = 'room_type' THEN 'rooms'
       WHEN enum_record.typname = 'rack_type' THEN 'racks'
       WHEN enum_record.typname = 'unit_type' THEN 'units'
       WHEN enum_record.typname = 'user_role' THEN 'userRoles'

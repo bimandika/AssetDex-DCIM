@@ -5,9 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Database, Eye, Monitor, Info } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Database, Eye, Monitor, Info, Edit3 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useServerEnums } from "@/hooks/useServerEnums";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RackViewProps {
   selectedRackId?: string | null;
@@ -21,6 +25,10 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
   const [selectedRoom, setSelectedRoom] = useState("Room-101");
   const [selectedRack, setSelectedRack] = useState("RACK-01");
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
+  const [rackDescription, setRackDescription] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
 
   // Get dynamic enums for filtering
   const { enums } = useServerEnums();
@@ -45,8 +53,70 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
     if (rackData) {
       console.log('RackData units:', rackData.units.filter(u => u.server));
       console.log('Multi-unit servers:', rackData.units.filter(u => u.server && u.server.unitHeight > 1));
+      // Fetch existing description from rack_metadata table
+      fetchRackDescription();
     }
   }, [rackData]);
+
+  // Function to fetch rack description from database using Edge Function
+  const fetchRackDescription = async () => {
+    if (!rackData) return;
+    
+    try {
+      // Use the get-rack-data function to fetch rack metadata
+      const { data, error } = await supabase.functions.invoke('get-rack-data', {
+        body: { rackName: rackData.name }
+      });
+
+      if (error) {
+        console.error('Error fetching rack description:', error);
+        return;
+      }
+
+      if (data && data.data && data.data.description) {
+        setRackDescription(data.data.description);
+      }
+    } catch (error) {
+      console.error('Error fetching rack description:', error);
+    }
+  };
+
+  // Function to save rack description using Supabase Edge Function
+  const saveRackDescription = async () => {
+    if (!rackData) return;
+    
+    setIsSaving(true);
+    setSaveMessage("");
+    
+    try {
+      // Use the Supabase Edge Function we created
+      const { error } = await supabase.functions.invoke('update-rack-description', {
+        body: {
+          rack_name: rackData.name,
+          dc_site: rackData.datacenter_id,
+          dc_building: 'Building-A', // You may need to get this from rack data
+          dc_floor: '1', // You may need to get this from rack data
+          dc_room: 'MDF', // You may need to get this from rack data
+          description: rackDescription
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setSaveMessage("Description saved successfully!");
+      setTimeout(() => setSaveMessage(""), 3000);
+      // Refresh the description display
+      await fetchRackDescription();
+    } catch (error) {
+      console.error('Error saving rack description:', error);
+      setSaveMessage("Error saving description");
+      setTimeout(() => setSaveMessage(""), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Helper function to get device type icon
   const getDeviceIcon = (deviceType: string) => {
@@ -130,6 +200,9 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               {server.serialNumber}
             </Badge>
             <Badge variant="secondary" className="text-xs px-1 py-0">
+              {server.brand}
+            </Badge>
+            <Badge variant="outline" className="text-xs px-1 py-0">
               {server.model}
             </Badge>
             <Badge variant="outline" className="text-xs px-1 py-0">
@@ -157,6 +230,9 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
             </Badge>
             <Badge variant="secondary" className="text-xs px-1 py-0">
               {server.allocation}
+            </Badge>
+            <Badge variant="outline" className="text-xs px-1 py-0">
+              {server.operatingSystem}
             </Badge>
             <Badge variant="outline" className="text-xs px-1 py-0">
               {server.environment}
@@ -264,6 +340,9 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
           <Button variant="outline" onClick={refetch}>
             Refresh
           </Button>
+          <Button variant="outline" onClick={() => setIsEditingDescription(true)}>
+            Edit Rack
+          </Button>
         </div>
       </div>
 
@@ -275,7 +354,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               <Monitor className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium text-blue-900">Physical View</span>
               <span className="text-xs text-blue-700">
-                Showing: Serial Number • Model • IP OOB • Device Type • Status
+                Showing: Serial Number • Brand • Model • IP OOB • Device Type • Status
               </span>
             </>
           ) : (
@@ -283,7 +362,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               <Eye className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium text-blue-900">Logical View</span>
               <span className="text-xs text-blue-700">
-                Showing: Hostname • IP Address • Allocation • Environment
+                Showing: Hostname • IP Address • Allocation • Operating System • Environment
               </span>
             </>
           )}
@@ -305,13 +384,18 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="p-4 rounded-lg" style={{ backgroundColor: '#011330' }}>
-                <div className="p-2 rounded-t-lg" style={{ backgroundColor: '#011330' }}>
+              <div className="p-4 rounded-lg" style={{ backgroundColor: 'black' }}>
+                <div className="p-2 rounded-t-lg" style={{ backgroundColor: 'black' }}>
                   <div className="text-white text-center text-sm font-medium">
                     {rackData.name} - Top
                   </div>
+                  {rackDescription && (
+                    <div className="text-white text-center text-sm font-bold mt-2">
+                      {rackDescription}
+                    </div>
+                  )}
                 </div>
-                <div className="bg-slate-50 border-l-4 border-r-4 min-h-[800px]" style={{ borderLeftColor: '#ffffff', borderRightColor: '#ffffff' }}>
+                <div className="bg-slate-50 border-l-4 border-r-4 min-h-[800px]" style={{ borderLeftColor: '#ffffff', borderRightColor: '#ffffff', paddingTop: '8px', paddingBottom: '8px' }}>
                   <TooltipProvider>
                     {rackData.units.map((unit) => {
                       // For multi-unit servers, only render the starting unit (not marked as isPartOfMultiUnit)
@@ -324,78 +408,76 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                         return (
                           <div
                             key={unit.unit}
-                            className="flex items-center border-b border-gray-200 px-1 transition-colors bg-black rounded hover:bg-gray-600"
+                            className="flex items-center border-b border-gray-200 px-1 transition-colors bg-black rounded hover:bg-blue-600 border-2 border-transparent hover:border-blue-400"
                             style={{ 
                               minHeight: `${unit.server.unitHeight * 2.5}rem`,
                               paddingTop: '3px',
-                              paddingBottom: '3px'
+                              paddingBottom: '3px',
+                              marginBottom: '2px'
                             }}
                           >
                             <div className="flex-1 flex items-center">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div 
-                                    className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
-                                    style={{ 
-                                      minHeight: `${unit.server.unitHeight * 2.5 * 0.97}rem`,
-                                      height: `${unit.server.unitHeight * 2.5 * 0.97}rem`,
-                                      border: '2px solid #14213d',
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
-                                      cursor: 'pointer'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.border = '2px solid #14213d';
-                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.border = '2px solid #14213d';
-                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-3 w-full">
-                                      <div className="text-xs font-mono text-gray-600 flex-shrink-0 flex flex-col justify-center text-right">
-                                        <div>U{unit.unit}</div>
-                                        <div className="text-gray-400">-</div>
-                                        <div>U{unit.unit + unit.server.unitHeight - 1}</div>
-                                      </div>
-                                      <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                        <div className="mb-1">
-                                          {renderServerInfo(unit.server)}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                          {unit.server.unitHeight}U Server (Units U{unit.unit}-U{unit.unit + unit.server.unitHeight - 1})
-                                        </div>
-                                        {unit.server.unitHeight >= 3 && (
-                                          <div className="text-xs text-gray-400 mt-1">
-                                            Height: {unit.server.unitHeight} Units • Model: {unit.server.model}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center space-x-2 flex-shrink-0">
-                                        <div className={`w-4 h-4 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                        <Info className="h-4 w-4 text-gray-400" />
-                                      </div>
+                              <div 
+                                className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
+                                style={{ 
+                                  minHeight: `${unit.server.unitHeight * 2.5 * 0.99}rem`,
+                                  height: `${unit.server.unitHeight * 2.5 * 0.99}rem`,
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                                  cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                }}
+                              >
+                                <div className="flex items-center space-x-3 w-full">
+                                  <div className="text-xs font-mono text-gray-600 flex-shrink-0 flex flex-col justify-center text-right">
+                                    <div>U{unit.unit}</div>
+                                    <div className="text-gray-400">-</div>
+                                    <div>U{unit.unit + unit.server.unitHeight - 1}</div>
+                                  </div>
+                                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div className="mb-1">
+                                      {renderServerInfo(unit.server)}
                                     </div>
+                                    <div className="text-xs text-gray-500">
+                                      {unit.server.unitHeight}U Server (Units U{unit.unit}-U{unit.unit + unit.server.unitHeight - 1})
+                                    </div>
+                                    {unit.server.unitHeight >= 3 && (
+                                      <div className="text-xs text-gray-400 mt-1">
+                                        Height: {unit.server.unitHeight} Units • Model: {unit.server.model}
+                                      </div>
+                                    )}
                                   </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="right" className="max-w-xs">
-                                  <div className="space-y-1">
-                                    <div><strong>Hostname:</strong> {unit.server.hostname}</div>
-                                    <div><strong>Serial:</strong> {unit.server.serialNumber}</div>
-                                    <div><strong>Model:</strong> {unit.server.model}</div>
-                                    <div><strong>Status:</strong> {unit.server.status}</div>
-                                    <div><strong>IP Address:</strong> {unit.server.ipAddress}</div>
-                                    <div><strong>IP OOB:</strong> {unit.server.ipOOB}</div>
-                                    <div><strong>Device Type:</strong> {unit.server.deviceType}</div>
-                                    <div><strong>Allocation:</strong> {unit.server.allocation}</div>
-                                    <div><strong>Environment:</strong> {unit.server.environment}</div>
-                                    <div><strong>Height:</strong> {unit.server.unitHeight}U</div>
-                                    <div><strong>DC Site:</strong> {rackData.datacenter_id}</div>
-                                    <div><strong>DC Building:</strong> {rackData.location}</div>
-                                    <div><strong>DC Floor:</strong> Floor {rackData.floor}</div>
+                                  <div className="flex items-center space-x-2 flex-shrink-0">
+                                    <div className={`w-4 h-4 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Info className="h-4 w-4 text-gray-400 hover:text-gray-600 cursor-pointer" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-xs">
+                                        <div className="space-y-1">
+                                          <div><strong>Hostname:</strong> {unit.server.hostname}</div>
+                                          <div><strong>Serial:</strong> {unit.server.serialNumber}</div>
+                                          <div><strong>Model:</strong> {unit.server.model}</div>
+                                          <div><strong>Status:</strong> {unit.server.status}</div>
+                                          <div><strong>IP Address:</strong> {unit.server.ipAddress}</div>
+                                          <div><strong>IP OOB:</strong> {unit.server.ipOOB}</div>
+                                          <div><strong>Device Type:</strong> {unit.server.deviceType}</div>
+                                          <div><strong>Allocation:</strong> {unit.server.allocation}</div>
+                                          <div><strong>Environment:</strong> {unit.server.environment}</div>
+                                          <div><strong>Height:</strong> {unit.server.unitHeight}U</div>
+                                          <div><strong>DC Site:</strong> {rackData.datacenter_id}</div>
+                                          <div><strong>DC Building:</strong> {rackData.location}</div>
+                                          <div><strong>DC Floor:</strong> Floor {rackData.floor}</div>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
                                   </div>
-                                </TooltipContent>
-                              </Tooltip>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         );
@@ -406,65 +488,63 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                         <div
                           key={unit.unit}
                           className={`flex items-center min-h-10 border-b border-gray-200 px-1 transition-colors ${
-                            unit.server ? 'bg-black rounded hover:bg-gray-600' : ''
+                            unit.server ? 'bg-black rounded hover:bg-blue-600 border-2 border-transparent hover:border-blue-400' : ''
                           }`}
                           style={unit.server ? {
                             paddingTop: '3px',
-                            paddingBottom: '3px'
+                            paddingBottom: '3px',
+                            marginBottom: '2px'
                           } : {}}
                         >
                           {unit.server ? (
                             <div className="flex-1 flex items-center">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div 
-                                    className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
-                                    style={{
-                                      border: '2px solid #14213d',
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
-                                      cursor: 'pointer'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.border = '2px solid #14213d';
-                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.border = '2px solid #14213d';
-                                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-3 w-full">
-                                      <div className="text-xs font-mono text-gray-600 flex-shrink-0 text-right">
-                                        U{unit.unit}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        {renderServerInfo(unit.server)}
-                                      </div>
-                                      <div className="flex items-center space-x-2 flex-shrink-0">
-                                        <div className={`w-3 h-3 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                        <Info className="h-3 w-3 text-gray-400" />
-                                      </div>
-                                    </div>
+                              <div 
+                                className="flex items-center justify-between bg-white rounded px-2 py-2 shadow-sm w-full hover:bg-gray-50 transition-all duration-200"
+                                style={{
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                                  cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)';
+                                }}
+                              >
+                                <div className="flex items-center space-x-3 w-full">
+                                  <div className="text-xs font-mono text-gray-600 flex-shrink-0 text-right">
+                                    U{unit.unit}
                                   </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="right" className="max-w-xs">
-                                  <div className="space-y-1">
-                                    <div><strong>Hostname:</strong> {unit.server.hostname}</div>
-                                    <div><strong>Serial:</strong> {unit.server.serialNumber}</div>
-                                    <div><strong>Model:</strong> {unit.server.model}</div>
-                                    <div><strong>Status:</strong> {unit.server.status}</div>
-                                    <div><strong>IP Address:</strong> {unit.server.ipAddress}</div>
-                                    <div><strong>IP OOB:</strong> {unit.server.ipOOB}</div>
-                                    <div><strong>Device Type:</strong> {unit.server.deviceType}</div>
-                                    <div><strong>Allocation:</strong> {unit.server.allocation}</div>
-                                    <div><strong>Environment:</strong> {unit.server.environment}</div>
-                                    <div><strong>Height:</strong> {unit.server.unitHeight}U</div>
-                                    <div><strong>DC Site:</strong> {rackData.datacenter_id}</div>
-                                    <div><strong>DC Building:</strong> {rackData.location}</div>
-                                    <div><strong>DC Floor:</strong> Floor {rackData.floor}</div>
+                                  <div className="flex-1 min-w-0">
+                                    {renderServerInfo(unit.server)}
                                   </div>
-                                </TooltipContent>
-                              </Tooltip>
+                                  <div className="flex items-center space-x-2 flex-shrink-0">
+                                    <div className={`w-3 h-3 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Info className="h-3 w-3 text-gray-400 hover:text-gray-600 cursor-pointer" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-xs">
+                                        <div className="space-y-1">
+                                          <div><strong>Hostname:</strong> {unit.server.hostname}</div>
+                                          <div><strong>Serial:</strong> {unit.server.serialNumber}</div>
+                                          <div><strong>Model:</strong> {unit.server.model}</div>
+                                          <div><strong>Status:</strong> {unit.server.status}</div>
+                                          <div><strong>IP Address:</strong> {unit.server.ipAddress}</div>
+                                          <div><strong>IP OOB:</strong> {unit.server.ipOOB}</div>
+                                          <div><strong>Device Type:</strong> {unit.server.deviceType}</div>
+                                          <div><strong>Allocation:</strong> {unit.server.allocation}</div>
+                                          <div><strong>Environment:</strong> {unit.server.environment}</div>
+                                          <div><strong>Height:</strong> {unit.server.unitHeight}U</div>
+                                          <div><strong>DC Site:</strong> {rackData.datacenter_id}</div>
+                                          <div><strong>DC Building:</strong> {rackData.location}</div>
+                                          <div><strong>DC Floor:</strong> Floor {rackData.floor}</div>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             <>
@@ -481,7 +561,7 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
                     }).filter(Boolean)}
                   </TooltipProvider>
                 </div>
-                <div className="p-2 rounded-b-lg" style={{ backgroundColor: '#011330' }}>
+                <div className="p-2 rounded-b-lg" style={{ backgroundColor: 'black' }}>
                   <div className="text-white text-center text-sm font-medium">
                     {rackData.name} - Bottom
                   </div>
@@ -570,6 +650,65 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
           </Card>
         </div>
       </div>
+
+      {/* Edit Rack Dialog */}
+      <Dialog open={isEditingDescription} onOpenChange={setIsEditingDescription}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Edit3 className="h-5 w-5" />
+              <span>Edit Rack</span>
+            </DialogTitle>
+            <DialogDescription>
+              Update the rack description for {rackData?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">
+                Description
+              </Label>
+              <Input
+                id="description"
+                value={rackDescription}
+                onChange={(e) => setRackDescription(e.target.value)}
+                placeholder="Enter rack description"
+                maxLength={40}
+                className="col-span-3"
+              />
+            </div>
+            <div className="text-xs text-gray-500 text-right">
+              {rackDescription.length}/40 characters
+            </div>
+            {saveMessage && (
+              <div className={`text-sm ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
+                {saveMessage}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setIsEditingDescription(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={async () => {
+                await saveRackDescription();
+                if (!saveMessage.includes('Error') && !saveMessage.includes('Failed')) {
+                  setTimeout(() => setIsEditingDescription(false), 1000);
+                }
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -42,7 +42,7 @@ export const handler = async (req: Request): Promise<Response> => {
     if (action === 'get-enums') {
       try {
         // Fetch all enum types and their values
-        const { data: enums, error } = await supabase.rpc('get_all_enums')
+        const { data: enums, error } = await supabase.rpc('get_enum_values')
         
         if (error) throw error
         

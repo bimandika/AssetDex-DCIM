@@ -24,6 +24,8 @@ type EnumResponse = {
   osTypes: string[];
   sites: string[];
   buildings: string[];
+  floors: string[];
+  rooms: string[];
   racks: string[];
   units: string[];
 };

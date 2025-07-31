@@ -76,10 +76,13 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // Transform data to rack structure
     const rackData = {
+      id: rackName, // Add ID for API consistency
       name: rackName,
-      datacenter_id: rackMeta?.datacenter_id || 'DC-East',
-      floor: rackMeta?.floor || 1,
-      location: rackMeta?.location || 'Unknown',
+      datacenter_id: rackMeta?.dc_site || 'DC-East',
+      building: rackMeta?.dc_building || 'Building-A',
+      floor: rackMeta?.dc_floor || '1',
+      location: rackMeta?.dc_room || 'Unknown',
+      description: rackMeta?.description || '', // Include description field
       total_units: 42,
       servers: servers || []
     }

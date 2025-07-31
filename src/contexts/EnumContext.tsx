@@ -35,6 +35,8 @@ export const EnumContextProvider: React.FC<EnumContextProviderProps> = ({ childr
     operating_system: 'os_type',
     dc_site: 'site_type',
     dc_building: 'building_type',
+    dc_floor: 'floor_type',
+    dc_room: 'room_type',
     rack: 'rack_type',
     unit: 'unit_type'
   };
@@ -133,7 +135,7 @@ export const EnumContextProvider: React.FC<EnumContextProviderProps> = ({ childr
   }, []);
 
   // Global refresh function that updates all subscribers
-  const refreshEnums = useCallback(async (): Promise<ServerEnums | void> => {
+  const refreshEnums = useCallback(async (): Promise<ServerEnums> => {
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -155,6 +157,7 @@ export const EnumContextProvider: React.FC<EnumContextProviderProps> = ({ childr
       const error = err instanceof Error ? err : new Error('Failed to refresh enums');
       setError(error);
       setEnums(defaultServerEnums);
+      return defaultServerEnums;
     } finally {
       setLoading(false);
     }

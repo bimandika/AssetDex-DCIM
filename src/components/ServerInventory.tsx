@@ -98,6 +98,11 @@ const addRackSchema = z.object({
     .max(50, 'Rack name must be 50 characters or less')
     .regex(/^[A-Za-z0-9\-_]+$/, 'Rack name can only contain letters, numbers, hyphens, and underscores')
     .transform(val => val.trim()),
+  dc_site: z.string().min(1, 'Datacenter site is required'),
+  dc_building: z.string().min(1, 'Building is required'),
+  dc_floor: z.string().min(1, 'Floor is required'),
+  dc_room: z.string().min(1, 'Room is required'),
+  description: z.string().max(40, 'Description must be 40 characters or less').optional(),
 });
 
 const ServerInventory = () => {
@@ -119,6 +124,13 @@ const ServerInventory = () => {
   const { user, hasRole } = useAuth();
   const { toast } = useToast();
   const { formSchema, isLoading: isSchemaLoading, error: schemaError, refetch: refetchSchema } = useDynamicFormSchema();
+
+  // Debug: Log enums when they change
+  useEffect(() => {
+    console.log('ServerInventory: Current enums:', enums);
+    console.log('ServerInventory: Status enums:', enums?.status);
+    console.log('ServerInventory: Device types:', enums?.deviceTypes);
+  }, [enums]);
 
   // Check if user has write permissions (engineer or super_admin)
   const canEdit = hasRole('engineer');
@@ -233,10 +245,22 @@ const ServerInventory = () => {
     handleSubmit: handleRackSubmit,
     formState: { errors: rackErrors },
     reset: resetRackForm,
-  } = useForm<{ rack_name: string }>({
+  } = useForm<{ 
+    rack_name: string; 
+    dc_site: string; 
+    dc_building: string; 
+    dc_floor: string; 
+    dc_room: string; 
+    description?: string; 
+  }>({
     resolver: zodResolver(addRackSchema),
     defaultValues: {
       rack_name: '',
+      dc_site: 'DC-East',
+      dc_building: 'Building-A',
+      dc_floor: '1',
+      dc_room: 'MDF',
+      description: '',
     },
   });
 
@@ -751,7 +775,14 @@ const ServerInventory = () => {
   };
 
   // Function to handle "Add Rack" form submission
-  const onAddRackSubmit = async (values: { rack_name: string }) => {
+  const onAddRackSubmit = async (values: { 
+    rack_name: string; 
+    dc_site: string; 
+    dc_building: string; 
+    dc_floor: string; 
+    dc_room: string; 
+    description?: string; 
+  }) => {
     // Permission check: Assuming engineer role can add racks
     if (!hasRole('engineer')) {
       toast({
@@ -764,17 +795,61 @@ const ServerInventory = () => {
 
     setIsAddingRack(true);
     try {
-      // Use the addEnumValue function to add the new rack to the database
-      const success = await addEnumValue('rack', values.rack_name.trim());
+      // Step 1: Add the new rack to the PostgreSQL enum
+      const enumSuccess = await addEnumValue('rack', values.rack_name.trim());
       
-      if (success) {
+      if (!enumSuccess) {
+        throw new Error('Failed to add rack to enum');
+      }
+
+      // Step 2: Create rack metadata entry in rack_metadata table using our API
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
+      }
+
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/main` : 
+        'http://localhost:8000/functions/v1/main';
+
+      const metadataResponse = await fetch(`${apiUrl}/api/racks/${values.rack_name.trim()}/description`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        },
+        body: JSON.stringify({ 
+          description: values.description || '',
+          dc_site: values.dc_site,
+          dc_building: values.dc_building,
+          dc_floor: values.dc_floor,
+          dc_room: values.dc_room,
+          total_units: 42
+        })
+      });
+
+      if (!metadataResponse.ok) {
+        const errorText = await metadataResponse.text();
+        console.error('Error creating rack metadata:', errorText);
+        toast({
+          title: "Rack added with warning",
+          description: `Rack "${values.rack_name}" was added to the system, but metadata creation failed. Please contact support.`,
+          variant: 'default',
+        });
+      } else {
         toast({
           title: "Rack added successfully",
-          description: `Rack "${values.rack_name}" has been added to the system.`,
+          description: `Rack "${values.rack_name}" has been added to the system with metadata.`,
         });
-        setIsAddRackDialogOpen(false); // Close the dialog
-        resetRackForm(); // Reset the rack form for next use
       }
+      
+      setIsAddRackDialogOpen(false); // Close the dialog
+      resetRackForm(); // Reset the rack form for next use
+      
+      // Refresh enums to update the UI
+      await refreshEnums();
+      
     } catch (error) {
       console.error('Error adding rack:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -857,7 +932,7 @@ const ServerInventory = () => {
                   <DialogHeader>
                     <DialogTitle>Add New Rack</DialogTitle>
                     <DialogDescription>
-                      Enter the name for the new rack (e.g., RACK-A01).
+                      Enter the details for the new rack and its location.
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleRackSubmit(onAddRackSubmit)} className="space-y-4">
@@ -872,6 +947,93 @@ const ServerInventory = () => {
                       />
                       {rackErrors.rack_name && (
                         <p className="text-sm text-red-500">{rackErrors.rack_name.message}</p>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="dc_site">Site *</Label>
+                        <select
+                          id="dc_site"
+                          disabled={isAddingRack}
+                          {...registerRack('dc_site')}
+                          className={`w-full px-3 py-2 border rounded-md ${rackErrors.dc_site ? 'border-red-500' : 'border-gray-300'}`}
+                        >
+                          {enums.sites?.map((site) => (
+                            <option key={site} value={site}>{site}</option>
+                          ))}
+                        </select>
+                        {rackErrors.dc_site && (
+                          <p className="text-sm text-red-500">{rackErrors.dc_site.message}</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="dc_building">Building *</Label>
+                        <select
+                          id="dc_building"
+                          disabled={isAddingRack}
+                          {...registerRack('dc_building')}
+                          className={`w-full px-3 py-2 border rounded-md ${rackErrors.dc_building ? 'border-red-500' : 'border-gray-300'}`}
+                        >
+                          {enums.buildings?.map((building) => (
+                            <option key={building} value={building}>{building}</option>
+                          ))}
+                        </select>
+                        {rackErrors.dc_building && (
+                          <p className="text-sm text-red-500">{rackErrors.dc_building.message}</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="dc_floor">Floor *</Label>
+                        <select
+                          id="dc_floor"
+                          disabled={isAddingRack}
+                          {...registerRack('dc_floor')}
+                          className={`w-full px-3 py-2 border rounded-md ${rackErrors.dc_floor ? 'border-red-500' : 'border-gray-300'}`}
+                        >
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                        </select>
+                        {rackErrors.dc_floor && (
+                          <p className="text-sm text-red-500">{rackErrors.dc_floor.message}</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="dc_room">Room *</Label>
+                        <select
+                          id="dc_room"
+                          disabled={isAddingRack}
+                          {...registerRack('dc_room')}
+                          className={`w-full px-3 py-2 border rounded-md ${rackErrors.dc_room ? 'border-red-500' : 'border-gray-300'}`}
+                        >
+                          <option value="MDF">MDF</option>
+                          <option value="IDF">IDF</option>
+                          <option value="Comms">Comms</option>
+                        </select>
+                        {rackErrors.dc_room && (
+                          <p className="text-sm text-red-500">{rackErrors.dc_room.message}</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="description">Description (Optional)</Label>
+                      <Input
+                        id="description"
+                        placeholder="Optional description (max 40 chars)"
+                        maxLength={40}
+                        disabled={isAddingRack}
+                        {...registerRack('description')}
+                        className={rackErrors.description ? 'border-red-500' : ''}
+                      />
+                      {rackErrors.description && (
+                        <p className="text-sm text-red-500">{rackErrors.description.message}</p>
                       )}
                     </div>
                     <DialogFooter>

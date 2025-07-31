@@ -1,4 +1,4 @@
-export type ServerStatus = 'Active' | 'Inactive' | 'Maintenance' | 'Decommissioned' | 'Retired';
+export type ServerStatus = 'Active' | 'Ready' | 'Inactive' | 'Maintenance' | 'Decommissioned' | 'Retired';
 
 export type DeviceType = 'Server' | 'Storage' | 'Network';
 export type EnvironmentType = 'Production' | 'Testing' | 'Pre-Production' | 'Development';
@@ -24,7 +24,7 @@ export interface ServerEnums {
 
 // Default values in case API fails
 export const defaultServerEnums: ServerEnums = {
-  status: ['Active', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
+  status: ['Active', 'Ready', 'Inactive', 'Maintenance', 'Decommissioned', 'Retired'],
   deviceTypes: ['Server', 'Storage', 'Network'],
   allocationTypes: ['IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database'],
   environmentTypes: ['Production', 'Testing', 'Pre-Production', 'Development'],
@@ -44,6 +44,12 @@ export const defaultServerEnums: ServerEnums = {
   ],
   sites: ['DC-East', 'DC-West', 'DC-North', 'DC-South', 'DC-Central', 'DC1', 'DC2', 'DC3', 'DC4', 'DC5'],
   buildings: ['Building-A', 'Building-B', 'Building-C', 'Building-D', 'Building-E', 'Other'],
-  floors: ['Floor-1', 'Floor-2', 'Floor-3', 'Floor-4', 'Floor-5', 'Floor-B1', 'Floor-B2', 'Other'],
-  rooms: ['Room-101', 'Room-102', 'Room-103', 'Room-201', 'Room-202', 'Room-203', 'Room-301', 'Room-302', 'Other']
+  floors: ['1', '2', '3', '4', '5', 'B1', 'B2', 'Ground', 'Mezzanine'],
+  rooms: [
+    'MDF', '101', '102', '103', '104', '105', '106', '107', '108', '109', '110',
+    '201', '202', '203', '204', '205', '206', '207', '208', '209', '210',
+    '301', '302', '303', '304', '305', '306', '307', '308', '309', '310',
+    '401', '402', '403', '404', '405', '406', '407', '408', '409', '410',
+    'Server Room A', 'Server Room B', 'Network Room', 'Storage Room', 'Other'
+  ]
 };

@@ -85,6 +85,7 @@ export const useRackData = (rackName: string) => {
               deviceType: server.device_type,
               allocation: server.allocation,
               environment: server.environment,
+              operatingSystem: server.operating_system,
               unitHeight: server.unit_height || 1
             },
             isEmpty: false,

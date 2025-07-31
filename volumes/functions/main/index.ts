@@ -51,6 +51,18 @@ serve(async (req) => {
       const { handler } = await import('../get-rack-data/index.ts')
       return await handler(req)
     }
+
+    // Update rack description endpoint (for Supabase Edge Function call)
+    if (url.pathname === '/update-rack-description' && req.method === 'POST') {
+      const { handler } = await import('../update-rack-description/index.ts')
+      return await handler(req)
+    }
+
+    // Update rack description endpoint - matches PUT /api/racks/{rackId}/description
+    if (url.pathname.match(/^\/api\/racks\/[^\/]+\/description$/) && req.method === 'PUT') {
+      const { handler } = await import('../update-rack-description/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
