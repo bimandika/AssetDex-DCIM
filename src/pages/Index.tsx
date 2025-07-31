@@ -8,6 +8,7 @@ import { Server, Database, LayoutDashboard, Settings, Filter, Users } from "luci
 import ServerInventory from "@/components/ServerInventory";
 import Dashboard from "@/components/Dashboard";
 import RackView from "@/components/RackView";
+import RoomView from "@/components/RoomView";
 import Reports from "@/components/Reports";
 import ServerProperties from "@/components/ServerProperties";
 import DataCenterView from "@/components/DataCenterView";
@@ -111,7 +112,7 @@ const Index = () => {
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-7' : 'grid-cols-6'} lg:w-[${isAdmin ? '700px' : '600px'}] bg-white border border-slate-200 shadow-sm`}>
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-8' : 'grid-cols-7'} lg:w-[${isAdmin ? '800px' : '700px'}] bg-white border border-slate-200 shadow-sm`}>
             <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <LayoutDashboard className="h-4 w-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -123,6 +124,10 @@ const Index = () => {
             <TabsTrigger value="rackview" className="flex items-center space-x-2">
               <Database className="h-4 w-4" />
               <span className="hidden sm:inline">Rack View</span>
+            </TabsTrigger>
+            <TabsTrigger value="roomview" className="flex items-center space-x-2">
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">Room View</span>
             </TabsTrigger>
             <TabsTrigger value="datacenter" className="flex items-center space-x-2">
               <Database className="h-4 w-4" />
@@ -158,6 +163,10 @@ const Index = () => {
 
           <TabsContent value="rackview" className="space-y-6">
             <RackView selectedRackId={selectedRackId} />
+          </TabsContent>
+
+          <TabsContent value="roomview" className="space-y-6">
+            <RoomView onRackClick={handleViewRack} />
           </TabsContent>
 
           <TabsContent value="datacenter" className="space-y-6">
