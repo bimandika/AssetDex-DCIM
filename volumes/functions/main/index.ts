@@ -17,7 +17,7 @@ serve(async (req) => {
     }
 
     // Get default rack endpoint
-    if (url.pathname === '/get-default-rack' && req.method === 'GET') {
+    if (url.pathname === '/get-default-rack' && (req.method === 'GET' || req.method === 'POST')) {
       const { handler } = await import('../get-default-rack/index.ts')
       return await handler(req)
     }
@@ -67,6 +67,12 @@ serve(async (req) => {
     // Get rack data endpoint
     if (url.pathname === '/get-rack-data' && req.method === 'POST') {
       const { handler } = await import('../get-rack-data/index.ts')
+      return await handler(req)
+    }
+
+    // Get room data endpoint
+    if (url.pathname === '/get-room-data' && req.method === 'POST') {
+      const { handler } = await import('../get-room-data/index.ts')
       return await handler(req)
     }
 

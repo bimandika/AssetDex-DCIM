@@ -14,11 +14,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { supabase } from "@/integrations/supabase/client";
 
 interface RackViewProps {
-  selectedRackId?: string | null;
   onEditServer?: (serverId: string) => void;
 }
 
-const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
+const RackView = ({ onEditServer }: RackViewProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
   const [rackDescription, setRackDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -29,23 +28,13 @@ const RackView = ({ selectedRackId, onEditServer }: RackViewProps) => {
   // Use hierarchical filter hook
   const { hierarchyData, filters, loading: filterLoading, defaultRack, updateFilter, resetFilters } = useHierarchicalFilter();
 
-  // Map selectedRackId to actual rack names if needed
-  const rackMap: Record<string, string> = {
-    "1": "RACK-01",
-    "2": "RACK-02", 
-    "3": "RACK-03",
-    "4": "RACK-04"
-  };
-
   // Determine the current rack - use filter rack if set, otherwise use the default logic
   const currentRack = filters.rack 
     ? filters.rack
-    : selectedRackId && rackMap[selectedRackId] 
-    ? rackMap[selectedRackId] 
     : selectedRack 
     || (hierarchyData.racks.length > 0 && filters.dc_site && filters.dc_building && filters.dc_floor && filters.dc_room 
        ? hierarchyData.racks[0] 
-       : defaultRack || "RACK-01");
+       : defaultRack || hierarchyData.allRacks?.[0] || "RACK-01");
 
   // Use real data for display only
   const { rackData, loading, error } = useRackData(currentRack);

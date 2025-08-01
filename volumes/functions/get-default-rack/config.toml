@@ -1,7 +1,7 @@
 # Enable CORS
-[functions.get-enums]
+[functions.get-default-rack]
   cors = true
   verify_jwt = false
   allowed_origins = ["*"]
   allowed_headers = ["Authorization", "Content-Type", "apikey", "x-client-info"]
-  allowed_methods = ["GET", "OPTIONS"]
+  allowed_methods = ["GET", "POST", "OPTIONS"]

@@ -35,17 +35,29 @@ export const useHierarchicalFilter = () => {
   // Function to get first available rack as default and set its location
   const getDefaultRack = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('get-default-rack');
+      console.log('🔍 getDefaultRack: Fetching default rack...');
+      
+      // Use direct fetch (same pattern as getAllRacks)
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-default-rack` : 
+        'http://localhost:8000/functions/v1/get-default-rack';
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      });
 
-      if (error) {
-        console.error('Error fetching default rack:', error);
-        setDefaultRack('RACK-01');
-        // Set default location for RACK-01
-        await setDefaultRackLocationFallback('RACK-01');
-        return 'RACK-01'; // Fallback
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      const data = await response.json();
       const rack = data?.defaultRack || 'RACK-01';
+      
+      console.log(`✅ getDefaultRack: Successfully fetched default rack: ${rack}`);
       setDefaultRack(rack);
       
       // Get the location of this rack and set filters accordingly
@@ -53,7 +65,7 @@ export const useHierarchicalFilter = () => {
       
       return rack;
     } catch (error) {
-      console.error('Error in getDefaultRack:', error);
+      console.error('❌ getDefaultRack: Error fetching default rack, using fallback:', error);
       setDefaultRack('RACK-01');
       // Set default location for RACK-01
       await setDefaultRackLocationFallback('RACK-01');
@@ -67,7 +79,8 @@ export const useHierarchicalFilter = () => {
     const rackLocations: Record<string, any> = {
       'RACK-01': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '1', dc_room: 'MDF' },
       'RACK-02': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '2', dc_room: '201' },
-      'RACK-03': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '3', dc_room: '301' }
+      'RACK-03': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '3', dc_room: '301' },
+      'RACK-04': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '2', dc_room: '201' }
     };
 
     const location = rackLocations[rackName] || rackLocations['RACK-01'];
@@ -122,20 +135,38 @@ export const useHierarchicalFilter = () => {
   // Function to get all racks (not filtered by hierarchy)
   const getAllRacks = async () => {
     try {
-      // Use the existing get-enums endpoint to get all racks
-      const { data, error } = await supabase.functions.invoke('get-enums');
+      console.log('🔍 getAllRacks: Fetching racks from get-enums...');
+      
+      // Use direct fetch (same pattern as EnumContext) since it's proven to work
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-enums` : 
+        'http://localhost:8000/functions/v1/get-enums';
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        }
+      });
 
-      if (error) {
-        console.error('Error fetching all racks:', error);
-        // Fallback to hardcoded racks
-        return ['RACK-01', 'RACK-02', 'RACK-03'];
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      return data?.racks || ['RACK-01', 'RACK-02', 'RACK-03'];
+      const data = await response.json();
+      const racks = data?.racks;
+      
+      if (!racks || !Array.isArray(racks)) {
+        console.warn('⚠️ getAllRacks: Invalid racks data format:', racks);
+        return ['RACK-01', 'RACK-02', 'RACK-03']; // Final fallback
+      }
+
+      console.log(`✅ getAllRacks: Successfully fetched ${racks.length} racks`);
+      return racks;
     } catch (error) {
-      console.error('Error in getAllRacks:', error);
-      // Fallback to hardcoded racks
-      return ['RACK-01', 'RACK-02', 'RACK-03'];
+      console.error('❌ getAllRacks: Error fetching racks, using fallback:', error);
+      return ['RACK-01', 'RACK-02', 'RACK-03']; // Final fallback
     }
   };
 

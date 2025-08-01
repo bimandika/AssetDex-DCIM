@@ -5,8 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 type ViewMode = 'physical' | 'logical';
+
+interface RoomViewProps {
+  onRackClick?: (rackId: string) => void;
+}
 
 interface RackInfo {
   id: string;
@@ -36,7 +41,8 @@ interface ServerInfo {
   environment?: string;
 }
 
-const RoomView = () => {
+const RoomView = ({ onRackClick }: RoomViewProps) => {
+  const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
   const racksPerPage = 12;
@@ -118,6 +124,16 @@ const RoomView = () => {
   const startIndex = (currentPage - 1) * racksPerPage;
   const endIndex = startIndex + racksPerPage;
   const currentRacks = racksData.slice(startIndex, endIndex);
+
+  // Handle rack click
+  const handleRackClick = (rack: RackInfo) => {
+    if (onRackClick) {
+      onRackClick(rack.id);
+    } else {
+      // Navigate to rack view with the rack selected
+      navigate(`/rack/${rack.id}`);
+    }
+  };
 
   // Get status variant for badge
   const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
@@ -314,7 +330,8 @@ const RoomView = () => {
             {currentRacks.map((rack) => (
               <div
                 key={rack.id}
-                className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => handleRackClick(rack)}
               >
                 <div className="p-4">
                   {/* Rack Header */}
@@ -348,222 +365,28 @@ const RoomView = () => {
                     <span className="font-medium">{rack.totalServers}</span>
                   </div>
 
-                  {/* Full Rack Visualization - Matching RackView Style */}
+                  {/* Rack Visualization Preview */}
                   {viewMode === 'physical' && (
                     <div className="mt-3 border rounded">
-                      {/* Rack Container with Black Background */}
-                      <div className="p-2 rounded-lg" style={{ backgroundColor: 'black' }}>
-                        {/* Rack Top Header */}
-                        <div className="p-1 rounded-t-lg" style={{ backgroundColor: 'black' }}>
-                          <div className="text-white text-center text-xs font-medium">
-                            {rack.name}
-                          </div>
-                        </div>
-                        
-                        {/* Rack Frame with White Rails */}
-                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ borderLeftColor: '#ffffff', borderRightColor: '#ffffff', paddingTop: '4px', paddingBottom: '4px' }}>
-                          <div className="">
-                            {createRackUnits(rack.servers).map((unit, index) => {
-                              // Skip continuation units of multi-unit servers for cleaner display
-                              if (unit.server && unit.server.unitHeight > 1 && unit.isPartOfMultiUnit) {
-                                return null;
+                      <div className="grid grid-cols-12 gap-px bg-gray-200 p-1">
+                        {createRackUnits(rack.servers).slice(0, 24).map((unit, index) => (
+                          <div
+                            key={index}
+                            className={`
+                              h-1 w-full
+                              ${unit.server 
+                                ? unit.isPartOfMultiUnit 
+                                  ? getStatusColor(unit.server.status)
+                                  : getStatusColor(unit.server.status)
+                                : 'bg-gray-100'
                               }
-                              
-                              // Multi-unit server display - Clean inline style approach
-                              if (unit.server && unit.server.unitHeight > 1) {
-                                return (
-                                  <div
-                                    key={index}
-                                    className="flex items-center transition-colors rounded hover:bg-blue-600 hover:border-blue-400"
-                                    style={{ 
-                                      minHeight: '24.2px',
-                                      height: `${unit.server.unitHeight * 24.2}px`,
-                                      paddingLeft: '4px',
-                                      paddingRight: '4px',
-                                      marginBottom: '0px',
-                                      backgroundColor: 'black',
-                                      border: '2px solid transparent'
-                                    }}
-                                  >
-                                    <div className="flex-1 flex items-center">
-                                      <div 
-                                        className="flex items-center justify-between bg-white rounded w-full hover:bg-gray-50 transition-all duration-200"
-                                        style={{ 
-                                          minHeight: `${(unit.server.unitHeight * 24.2) - 8}px`,
-                                          height: `${(unit.server.unitHeight * 24.2) - 8}px`,
-                                          paddingLeft: '4px',
-                                          paddingRight: '4px',
-                                          paddingTop: '4px',
-                                          paddingBottom: '4px',
-                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                                          cursor: 'pointer',
-                                          overflow: 'hidden'
-                                        }}
-                                      >
-                                        <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
-                                            U{unit.unit}
-                                          </div>
-                                          <div className="flex-1 min-w-0 overflow-hidden">
-                                            {viewMode === 'physical' ? (
-                                              // Physical View: Serial Number, Model, IP OOB (horizontal layout)
-                                              <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-mono text-gray-700 truncate">
-                                                  {unit.server.serialNumber || 'N/A'}
-                                                </span>
-                                                <span className="text-gray-600 truncate">
-                                                  {unit.server.model || 'Unknown'}
-                                                </span>
-                                                <span className="font-mono text-gray-500 truncate">
-                                                  {unit.server.ipOOB || 'N/A'}
-                                                </span>
-                                              </div>
-                                            ) : (
-                                              // Logical View: Hostname, IP Address, Allocation (horizontal layout)
-                                              <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate">
-                                                  {unit.server.hostname}
-                                                </span>
-                                                <span className="font-mono text-gray-600 truncate">
-                                                  {unit.server.ipAddress || 'N/A'}
-                                                </span>
-                                                <span className="text-gray-500 truncate">
-                                                  {unit.server.allocation || 'N/A'}
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center space-x-1 flex-shrink-0">
-                                            <div className={`w-2 h-2 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              
-                              // Single unit server - Clean inline style approach
-                              return (
-                                <div
-                                  key={index}
-                                  className="flex items-center transition-colors rounded"
-                                  style={unit.server ? {
-                                    minHeight: '24.2px',
-                                    height: '24.2px',
-                                    paddingLeft: '4px',
-                                    paddingRight: '4px',
-                                    marginBottom: '0px',
-                                    backgroundColor: 'black',
-                                    border: '2px solid transparent'
-                                  } : {
-                                    minHeight: '24.2px',
-                                    height: '24.2px', 
-                                    paddingLeft: '4px',
-                                    paddingRight: '4px',
-                                    marginBottom: '0px',
-                                    backgroundColor: '#f8fafc',
-                                    border: '2px solid transparent'
-                                  }}
-                                >
-                                  {unit.server ? (
-                                    <div className="flex-1 flex items-center">
-                                      <div 
-                                        className="flex items-center justify-between bg-white rounded w-full hover:bg-gray-50 transition-all duration-200"
-                                        style={{
-                                          minHeight: '16.2px',
-                                          height: '16.2px',
-                                          paddingLeft: '4px',
-                                          paddingRight: '4px',
-                                          paddingTop: '4px',
-                                          paddingBottom: '4px',
-                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                                          cursor: 'pointer',
-                                          overflow: 'hidden'
-                                        }}
-                                      >
-                                        <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
-                                            U{unit.unit}
-                                          </div>
-                                          <div className="flex-1 min-w-0 overflow-hidden">
-                                            {viewMode === 'physical' ? (
-                                              // Physical View: Serial Number, Model, IP OOB (horizontal layout)
-                                              <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-mono text-gray-700 truncate">
-                                                  {unit.server.serialNumber || 'N/A'}
-                                                </span>
-                                                <span className="text-gray-600 truncate">
-                                                  {unit.server.model || 'Unknown'}
-                                                </span>
-                                                <span className="font-mono text-gray-500 truncate">
-                                                  {unit.server.ipOOB || 'N/A'}
-                                                </span>
-                                              </div>
-                                            ) : (
-                                              // Logical View: Hostname, IP Address, Allocation (horizontal layout)
-                                              <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate">
-                                                  {unit.server.hostname}
-                                                </span>
-                                                <span className="font-mono text-gray-600 truncate">
-                                                  {unit.server.ipAddress || 'N/A'}
-                                                </span>
-                                                <span className="text-gray-500 truncate">
-                                                  {unit.server.allocation || 'N/A'}
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center space-x-1 flex-shrink-0">
-                                            <div className={`w-2 h-2 rounded-full ${getStatusColor(unit.server.status)}`}></div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex-1 flex items-center">
-                                      <div 
-                                        className="flex items-center justify-between rounded w-full"
-                                        style={{
-                                          minHeight: '16.2px',
-                                          height: '16.2px',
-                                          paddingLeft: '4px',
-                                          paddingRight: '4px',
-                                          paddingTop: '4px',
-                                          paddingBottom: '4px',
-                                          backgroundColor: '#f8fafc',
-                                          overflow: 'hidden'
-                                        }}
-                                      >
-                                        <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-400 flex-shrink-0" style={{
-                                            width: '24px',
-                                            textAlign: 'right'
-                                          }}>
-                                            U{unit.unit}
-                                          </div>
-                                          <div className="flex-1 overflow-hidden" style={{
-                                            marginLeft: '8px'
-                                          }}>
-                                            <div className="text-[8px] text-gray-300 italic leading-none">Empty</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        
-                        {/* Rack Bottom Footer */}
-                        <div className="p-1 rounded-b-lg" style={{ backgroundColor: 'black' }}>
-                          <div className="text-white text-center text-xs font-medium">
-                            {rack.name}
-                          </div>
-                        </div>
+                            `}
+                            title={unit.server ? `U${unit.unit}: ${unit.server.hostname}` : `U${unit.unit}: Empty`}
+                          />
+                        ))}
+                      </div>
+                      <div className="text-xs text-center text-gray-500 py-1">
+                        Top 24U Preview
                       </div>
                     </div>
                   )}
@@ -623,4 +446,3 @@ const RoomView = () => {
 };
 
 export default RoomView;
- 

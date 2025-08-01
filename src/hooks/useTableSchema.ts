@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useEnumContext } from '@/contexts/EnumContext';
 
 // Define the TableColumn interface
 export interface TableColumn {
@@ -38,6 +39,18 @@ export const useTableSchema = (tableName: string = 'servers') => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
   const { toast } = useToast();
+  const { enums } = useEnumContext();
+
+  // Function to get current rack values dynamically
+  const getRackEnumValues = (): string[] => {
+    // Try to get racks from enums first
+    if (enums?.racks && Array.isArray(enums.racks) && enums.racks.length > 0) {
+      return enums.racks;
+    }
+    
+    // Fallback to a reasonable default set if enums not loaded yet
+    return ["RACK-01","RACK-02","RACK-03","RACK-04","RACK-05","RACK-06","RACK-07","RACK-08","RACK-09","RACK-10"];
+  };
 
   const fetchTableSchema = useCallback(async () => {
     try {
@@ -155,7 +168,7 @@ export const useTableSchema = (tableName: string = 'servers') => {
           is_nullable: 'YES',
           column_default: null,
           is_enum: true,
-          enum_values: ["RACK-01","RACK-02","RACK-03","RACK-04","RACK-05","RACK-06","RACK-07","RACK-08","RACK-09","RACK-10","RACK-11","RACK-12","RACK-15","RACK-20","RACK-25","RACK-30","RACK-31"]
+          enum_values: getRackEnumValues()
         },
         { 
           column_name: 'unit', 

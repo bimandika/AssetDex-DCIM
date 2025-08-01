@@ -37,12 +37,28 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     })
 
-    // Get the first available rack - for now return hardcoded default
-    // TODO: Query the database when RPC functions are working
-    const firstRack = 'RACK-01'
+    // Query the database for the first available rack
+    const { data: firstRack, error } = await supabaseClient
+      .from('rack_metadata')
+      .select('rack_name')
+      .order('rack_name')
+      .limit(1)
+      .single();
+
+    if (error) {
+      console.error('Error fetching default rack:', error);
+      // Fallback to hardcoded default if database query fails
+      return new Response(
+        JSON.stringify({ defaultRack: 'RACK-01' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
+    }
 
     return new Response(
-      JSON.stringify({ defaultRack: firstRack }),
+      JSON.stringify({ defaultRack: firstRack?.rack_name || 'RACK-01' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,

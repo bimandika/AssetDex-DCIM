@@ -43,17 +43,19 @@ export const handler = async (req: Request): Promise<Response> => {
       throw new Error('rackName is required')
     }
 
-    // Hardcoded rack locations based on database schema for now
-    const rackLocations: Record<string, any> = {
-      'RACK-01': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '1', dc_room: 'MDF' },
-      'RACK-02': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '2', dc_room: '201' },
-      'RACK-03': { dc_site: 'DC-East', dc_building: 'Building-A', dc_floor: '3', dc_room: '301' }
+    // Query database instead of hardcoded values
+    const { data: rackLocation, error } = await supabaseClient
+      .from('rack_metadata')
+      .select('dc_site, dc_building, dc_floor, dc_room')
+      .eq('rack_name', rackName)
+      .single();
+
+    if (error || !rackLocation) {
+      throw new Error(`Rack ${rackName} not found in database`);
     }
 
-    const location = rackLocations[rackName] || rackLocations['RACK-01']
-
     return new Response(
-      JSON.stringify({ location }),
+      JSON.stringify({ location: rackLocation }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
