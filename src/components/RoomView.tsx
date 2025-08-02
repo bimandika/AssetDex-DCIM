@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle } from "lucide-react";
+import { debugServerData, getLogicalViewStats } from "@/utils/debugRoomView";
 
 type ViewMode = 'physical' | 'logical';
 
@@ -46,6 +47,18 @@ const RoomView = () => {
   
   // Real data from backend hook
   const { racksData, loading, error } = useRoomData(filters);
+  
+  // Debug logical view data in development
+  if (racksData.length > 0) {
+    const allServers = racksData.flatMap(rack => rack.servers || []);
+    debugServerData(allServers, viewMode);
+    
+    // Log logical view stats
+    const stats = getLogicalViewStats(racksData);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📊 Logical View Stats:', stats);
+    }
+  }
   
   // Loading state
   if (loading) {
@@ -216,26 +229,48 @@ const RoomView = () => {
             </SelectContent>
           </Select>
 
-          {/* View Mode Toggle */}
-          <Select value={viewMode} onValueChange={(value: ViewMode) => setViewMode(value)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="physical">
-                <div className="flex items-center gap-2">
-                  <Eye className="h-4 w-4" />
-                  Physical
-                </div>
-              </SelectItem>
-              <SelectItem value="logical">
-                <div className="flex items-center gap-2">
-                  <Monitor className="h-4 w-4" />
-                  Logical
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Enhanced View Mode Toggle with Debug Info */}
+          <div className="flex items-center gap-4">
+            <Select value={viewMode} onValueChange={(value: ViewMode) => setViewMode(value)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="physical">
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    Physical
+                  </div>
+                </SelectItem>
+                <SelectItem value="logical">
+                  <div className="flex items-center gap-2">
+                    <Monitor className="h-4 w-4" />
+                    Logical
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* Debug indicator for development */}
+            {process.env.NODE_ENV === 'development' && racksData.length > 0 && (
+              <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                {viewMode.toUpperCase()}
+                {(() => {
+                  const sample = racksData[0]?.servers[0];
+                  if (sample) {
+                    return (
+                      <span className="ml-2">
+                        H: {sample.hostname ? '✅' : '❌'} 
+                        IP: {sample.ipAddress ? '✅' : '❌'} 
+                        A: {sample.allocation ? '✅' : '❌'}
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+          </div>
 
           <Button onClick={resetFilters} variant="outline" size="sm">
             <RotateCcw className="h-4 w-4 mr-2" />
@@ -366,6 +401,11 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
+                          {rack.location && (
+                            <div className="text-white text-center text-xs font-bold mt-1">
+                              {rack.location}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Rack Frame with White Rails - Fixed Height No Scroll */}
@@ -397,7 +437,9 @@ const RoomView = () => {
                                   >
                                     <div className="flex-1 flex items-center">
                                       <div 
-                                        className="flex items-center justify-between bg-white rounded w-full hover:bg-gray-50 transition-all duration-200"
+                                        className={`flex items-center justify-between rounded w-full hover:bg-gray-50 transition-all duration-200 ${
+                                          viewMode === 'logical' ? 'bg-blue-50 border border-blue-200' : 'bg-white'
+                                        }`}
                                         style={{ 
                                           minHeight: `${(unit.server.unitHeight * 24.2) - 8}px`,
                                           height: `${(unit.server.unitHeight * 24.2) - 8}px`,
@@ -405,7 +447,7 @@ const RoomView = () => {
                                           paddingRight: '4px',
                                           paddingTop: '4px',
                                           paddingBottom: '4px',
-                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                          boxShadow: viewMode === 'logical' ? '0 1px 4px rgba(59,130,246,0.15)' : '0 1px 4px rgba(0,0,0,0.07)',
                                           cursor: 'pointer',
                                           overflow: 'hidden'
                                         }}
@@ -429,16 +471,19 @@ const RoomView = () => {
                                                 </span>
                                               </div>
                                             ) : (
-                                              // Logical View: Hostname, IP Address, Allocation (horizontal layout)
+                                              // Enhanced Logical View: Multi-Unit Server with fallbacks and visual distinction
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate">
-                                                  {unit.server.hostname}
+                                                <span className="font-medium text-gray-700 truncate" 
+                                                      title={unit.server.hostname || unit.server.id}>
+                                                  {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                                 </span>
-                                                <span className="font-mono text-gray-600 truncate">
+                                                <span className="font-mono text-blue-600 truncate" 
+                                                      title={unit.server.ipAddress || 'No IP assigned'}>
                                                   {unit.server.ipAddress || 'N/A'}
                                                 </span>
-                                                <span className="text-gray-500 truncate">
-                                                  {unit.server.allocation || 'N/A'}
+                                                <span className="text-purple-600 truncate font-medium" 
+                                                      title={unit.server.allocation || 'No allocation'}>
+                                                  {unit.server.allocation || 'Unassigned'}
                                                 </span>
                                               </div>
                                             )}
@@ -479,7 +524,9 @@ const RoomView = () => {
                                   {unit.server ? (
                                     <div className="flex-1 flex items-center">
                                       <div 
-                                        className="flex items-center justify-between bg-white rounded w-full hover:bg-gray-50 transition-all duration-200"
+                                        className={`flex items-center justify-between rounded w-full hover:bg-gray-50 transition-all duration-200 ${
+                                          viewMode === 'logical' ? 'bg-blue-50 border border-blue-200' : 'bg-white'
+                                        }`}
                                         style={{
                                           minHeight: '16.2px',
                                           height: '16.2px',
@@ -487,7 +534,7 @@ const RoomView = () => {
                                           paddingRight: '4px',
                                           paddingTop: '4px',
                                           paddingBottom: '4px',
-                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                          boxShadow: viewMode === 'logical' ? '0 1px 4px rgba(59,130,246,0.15)' : '0 1px 4px rgba(0,0,0,0.07)',
                                           cursor: 'pointer',
                                           overflow: 'hidden'
                                         }}
@@ -511,16 +558,19 @@ const RoomView = () => {
                                                 </span>
                                               </div>
                                             ) : (
-                                              // Logical View: Hostname, IP Address, Allocation (horizontal layout)
+                                              // Enhanced Logical View: Single-Unit Server with fallbacks and visual distinction
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate">
-                                                  {unit.server.hostname}
+                                                <span className="font-medium text-gray-700 truncate" 
+                                                      title={unit.server.hostname || unit.server.id}>
+                                                  {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                                 </span>
-                                                <span className="font-mono text-gray-600 truncate">
+                                                <span className="font-mono text-blue-600 truncate" 
+                                                      title={unit.server.ipAddress || 'No IP assigned'}>
                                                   {unit.server.ipAddress || 'N/A'}
                                                 </span>
-                                                <span className="text-gray-500 truncate">
-                                                  {unit.server.allocation || 'N/A'}
+                                                <span className="text-purple-600 truncate font-medium" 
+                                                      title={unit.server.allocation || 'No allocation'}>
+                                                  {unit.server.allocation || 'Unassigned'}
                                                 </span>
                                               </div>
                                             )}
@@ -573,6 +623,223 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
+                          {rack.location && (
+                            <div className="text-white text-center text-xs font-bold mt-1">
+                              {rack.location}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Logical View - Same Rack Style as Physical */}
+                  {viewMode === 'logical' && (
+                    <div className="mt-3 border rounded">
+                      {/* Rack Container with Black Background - Same as Physical */}
+                      <div className="p-2 rounded-lg" style={{ 
+                        backgroundColor: 'black',
+                        height: '1250px',
+                        overflow: 'hidden'
+                      }}>
+                        {/* Rack Top Header */}
+                        <div className="p-1 rounded-t-lg" style={{ backgroundColor: 'black' }}>
+                          <div className="text-white text-center text-xs font-medium">
+                            {rack.name}
+                          </div>
+                          {rack.location && (
+                            <div className="text-white text-center text-xs font-bold mt-1">
+                              {rack.location}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Rack Frame with White Rails - Fixed Height No Scroll */}
+                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ 
+                          borderLeftColor: '#ffffff', 
+                          borderRightColor: '#ffffff', 
+                          paddingTop: '4px', 
+                          paddingBottom: '4px',
+                          height: '1185px',
+                          overflow: 'visible'
+                        }}>
+                          <div className="">
+                            {createRackUnits(rack.servers).map((unit, index) => {
+                              // Multi-unit server display - Logical View Style
+                              if (unit.server && unit.server.unitHeight > 1) {
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center transition-colors rounded hover:bg-blue-600 hover:border-blue-400"
+                                    style={{ 
+                                      minHeight: '24.2px',
+                                      height: `${unit.server.unitHeight * 24.2}px`,
+                                      paddingLeft: '4px',
+                                      paddingRight: '4px',
+                                      marginBottom: '2px',
+                                      backgroundColor: 'black',
+                                      border: '2px solid transparent'
+                                    }}
+                                  >
+                                    <div className="flex-1 flex items-center">
+                                      <div 
+                                        className="flex items-center justify-between rounded w-full hover:bg-gray-50 transition-all duration-200 bg-white"
+                                        style={{ 
+                                          minHeight: `${(unit.server.unitHeight * 24.2) - 8}px`,
+                                          height: `${(unit.server.unitHeight * 24.2) - 8}px`,
+                                          paddingLeft: '4px',
+                                          paddingRight: '4px',
+                                          paddingTop: '4px',
+                                          paddingBottom: '4px',
+                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                          cursor: 'pointer',
+                                          overflow: 'hidden'
+                                        }}
+                                      >
+                                        <div className="flex items-center space-x-2 w-full h-full">
+                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                            U{unit.unit}
+                                          </div>
+                                          <div className="flex-1 min-w-0 overflow-hidden">
+                                            {/* Logical View: Hostname, IP Address, Allocation */}
+                                            <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
+                                              <span className="font-medium text-gray-700 truncate" 
+                                                    title={unit.server.hostname || unit.server.id}>
+                                                {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
+                                              </span>
+                                              <span className="font-mono text-blue-600 truncate" 
+                                                    title={unit.server.ipAddress || 'No IP assigned'}>
+                                                {unit.server.ipAddress || 'N/A'}
+                                              </span>
+                                              <span className="text-purple-600 truncate font-medium" 
+                                                    title={unit.server.allocation || 'No allocation'}>
+                                                {unit.server.allocation || 'Unassigned'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center space-x-1 flex-shrink-0">
+                                            <div className={`w-2 h-2 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              // Single unit server or empty unit - Logical View Style
+                              return (
+                                <div
+                                  key={index}
+                                  className="flex items-center transition-colors rounded"
+                                  style={unit.server ? {
+                                    minHeight: '24.2px',
+                                    height: '24.2px',
+                                    paddingLeft: '4px',
+                                    paddingRight: '4px',
+                                    marginBottom: '2px',
+                                    backgroundColor: 'black',
+                                    border: '2px solid transparent'
+                                  } : {
+                                    minHeight: '24.2px',
+                                    height: '24.2px', 
+                                    paddingLeft: '4px',
+                                    paddingRight: '4px',
+                                    marginBottom: '2px',
+                                    backgroundColor: '#f3f4f6',
+                                    border: '2px solid transparent'
+                                  }}
+                                >
+                                  {unit.server ? (
+                                    <div className="flex-1 flex items-center">
+                                      <div 
+                                        className="flex items-center justify-between rounded w-full hover:bg-gray-50 transition-all duration-200 bg-white"
+                                        style={{
+                                          minHeight: '16.2px',
+                                          height: '16.2px',
+                                          paddingLeft: '4px',
+                                          paddingRight: '4px',
+                                          paddingTop: '4px',
+                                          paddingBottom: '4px',
+                                          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                                          cursor: 'pointer',
+                                          overflow: 'hidden'
+                                        }}
+                                      >
+                                        <div className="flex items-center space-x-2 w-full h-full">
+                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                            U{unit.unit}
+                                          </div>
+                                          <div className="flex-1 min-w-0 overflow-hidden">
+                                            {/* Logical View: Hostname, IP Address, Allocation */}
+                                            <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
+                                              <span className="font-medium text-gray-700 truncate" 
+                                                    title={unit.server.hostname || unit.server.id}>
+                                                {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
+                                              </span>
+                                              <span className="font-mono text-blue-600 truncate" 
+                                                    title={unit.server.ipAddress || 'No IP assigned'}>
+                                                {unit.server.ipAddress || 'N/A'}
+                                              </span>
+                                              <span className="text-purple-600 truncate font-medium" 
+                                                    title={unit.server.allocation || 'No allocation'}>
+                                                {unit.server.allocation || 'Unassigned'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center space-x-1 flex-shrink-0">
+                                            <div className={`w-2 h-2 rounded-full ${getStatusColor(unit.server.status)}`}></div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex-1 flex items-center">
+                                      <div 
+                                        className="flex items-center justify-between rounded w-full"
+                                        style={{
+                                          minHeight: '16.2px',
+                                          height: '16.2px',
+                                          paddingLeft: '4px',
+                                          paddingRight: '4px',
+                                          paddingTop: '4px',
+                                          paddingBottom: '4px',
+                                          backgroundColor: '#f3f4f6',
+                                          overflow: 'hidden'
+                                        }}
+                                      >
+                                        <div className="flex items-center space-x-2 w-full h-full">
+                                          <div className="text-[8px] font-mono text-gray-500 flex-shrink-0" style={{
+                                            width: '24px',
+                                            textAlign: 'right'
+                                          }}>
+                                            U{unit.unit}
+                                          </div>
+                                          <div className="flex-1 overflow-hidden" style={{
+                                            marginLeft: '8px'
+                                          }}>
+                                            <div className="text-[8px] text-gray-400 italic leading-none">Empty</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        
+                        {/* Rack Bottom Footer */}
+                        <div className="p-1 rounded-b-lg" style={{ backgroundColor: 'black' }}>
+                          <div className="text-white text-center text-xs font-medium">
+                            {rack.name}
+                          </div>
+                          {rack.location && (
+                            <div className="text-white text-center text-xs font-bold mt-1">
+                              {rack.location}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
