@@ -139,6 +139,22 @@ export const useTableSchema = (tableName: string = 'servers') => {
           enum_values: ["Building-A","Building-B","Building-C","Building-D","Building-E","Other"]
         },
         { 
+          column_name: 'dc_floor', 
+          data_type: 'select', 
+          is_nullable: 'YES',
+          column_default: null,
+          is_enum: true,
+          enum_values: ["1","2","3","4","5","B1","B2","Ground","Mezzanine"]
+        },
+        { 
+          column_name: 'dc_room', 
+          data_type: 'select', 
+          is_nullable: 'YES',
+          column_default: null,
+          is_enum: true,
+          enum_values: ["MDF","101","102","103","104","105","106","107","108","109","110","201","202","203","204","205","206","207","208","209","210","301","302","303","304","305","306","307","308","309","310","401","402","403","404","405","406","407","408","409","410","Server Room A","Server Room B","Network Room","Storage Room","Other"]
+        },
+        { 
           column_name: 'allocation', 
           data_type: 'select', 
           is_nullable: 'YES',

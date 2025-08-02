@@ -563,6 +563,116 @@ COMMENT ON FUNCTION public.auto_enable_filters_for_user(UUID, JSONB) IS 'Auto-en
 COMMENT ON FUNCTION public.sync_enum_columns_to_filter_defaults() IS 'Syncs newly detected enum columns to global filter defaults';
 
 -- ============================================================================
+-- UTILITY FUNCTIONS
+-- ============================================================================
+
+-- Function to automatically update the updated_at column
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION public.handle_updated_at() IS 'Trigger function to automatically update updated_at timestamp';
+
+-- ============================================================================
+-- 2.1. ENUM COLORS TABLE (Coloring System)
+-- ============================================================================
+
+-- Create enum_colors table for storing user-defined colors
+CREATE TABLE IF NOT EXISTS public.enum_colors (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    -- Enum identification
+    enum_type TEXT NOT NULL, -- 'allocation_type' or 'model_type'
+    enum_value TEXT NOT NULL, -- 'IAAS', 'PowerEdge R750', etc.
+    
+    -- Color information
+    color_hex TEXT NOT NULL, -- '#FF5733'
+    color_name TEXT, -- 'Red Orange' (optional)
+    
+    -- User/organization context
+    user_id UUID REFERENCES auth.users(id),
+    organization_id TEXT, -- For multi-tenant support
+    
+    -- Metadata
+    is_active BOOLEAN DEFAULT true,
+    created_by UUID REFERENCES auth.users(id),
+    
+    -- Constraints
+    UNIQUE(enum_type, enum_value, user_id)
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_enum_colors_type_value ON public.enum_colors(enum_type, enum_value);
+CREATE INDEX IF NOT EXISTS idx_enum_colors_user ON public.enum_colors(user_id);
+CREATE INDEX IF NOT EXISTS idx_enum_colors_active ON public.enum_colors(is_active);
+
+-- Enable RLS (Row Level Security)
+ALTER TABLE public.enum_colors ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY "Users can view their own colors" ON public.enum_colors
+    FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
+
+CREATE POLICY "Users can insert their own colors" ON public.enum_colors
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own colors" ON public.enum_colors
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own colors" ON public.enum_colors
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Create trigger for updated_at
+CREATE TRIGGER handle_enum_colors_updated_at
+    BEFORE UPDATE ON public.enum_colors
+    FOR EACH ROW
+    EXECUTE PROCEDURE public.handle_updated_at();
+
+-- Grant permissions
+GRANT ALL ON public.enum_colors TO authenticated;
+GRANT ALL ON public.enum_colors TO service_role;
+
+-- Comments for documentation
+COMMENT ON TABLE public.enum_colors IS 'Store user-defined colors for enum values (allocation_type, model_type)';
+COMMENT ON COLUMN public.enum_colors.enum_type IS 'Type of enum: allocation_type or model_type';
+COMMENT ON COLUMN public.enum_colors.enum_value IS 'Specific enum value to colorize';
+COMMENT ON COLUMN public.enum_colors.color_hex IS 'Hex color code (e.g., #FF5733)';
+COMMENT ON COLUMN public.enum_colors.user_id IS 'User who owns this color preference (NULL for system defaults)';
+
+-- Create helper function for enum color operations
+CREATE OR REPLACE FUNCTION delete_enum_color(color_id UUID)
+RETURNS JSON AS $$
+DECLARE
+    deleted_record JSON;
+BEGIN
+    -- Delete the record and return it
+    DELETE FROM public.enum_colors 
+    WHERE id = color_id
+    RETURNING row_to_json(enum_colors.*) INTO deleted_record;
+    
+    -- Check if a record was deleted
+    IF deleted_record IS NULL THEN
+        RAISE EXCEPTION 'No enum color found with id: %', color_id;
+    END IF;
+    
+    RETURN deleted_record;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION delete_enum_color(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION delete_enum_color(UUID) TO service_role;
+
+-- Comment for documentation
+COMMENT ON FUNCTION delete_enum_color(UUID) IS 'Delete an enum color by ID and return the deleted record';
+
+-- ============================================================================
 -- 3. SAMPLE DATA
 -- ============================================================================
 
@@ -1418,6 +1528,37 @@ INSERT INTO public.servers (
 
 -- END DC-EAST EXTENSION DUMMY DATA (82 new servers across 15 racks)
 -- END DUMMY DATA SECTION
+
+-- ============================================================================
+-- 3.1. ENUM COLORS SAMPLE DATA
+-- ============================================================================
+
+-- Insert default color palette for enum values based on actual schema
+INSERT INTO public.enum_colors (enum_type, enum_value, color_hex, color_name, user_id) VALUES
+
+-- Allocation types from actual schema: ('IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database')
+('allocation_type', 'IAAS', '#3B82F6', 'Blue', NULL),             -- Infrastructure as a Service
+('allocation_type', 'PAAS', '#10B981', 'Green', NULL),            -- Platform as a Service  
+('allocation_type', 'SAAS', '#F59E0B', 'Amber', NULL),            -- Software as a Service
+('allocation_type', 'Load Balancer', '#8B5CF6', 'Purple', NULL),  -- Load Balancer
+('allocation_type', 'Database', '#EF4444', 'Red', NULL),          -- Database
+
+-- Model types from actual schema
+('model_type', 'PowerEdge R740', '#1E40AF', 'Dark Blue', NULL),    -- Dell
+('model_type', 'PowerEdge R750', '#1D4ED8', 'Blue', NULL),         -- Dell
+('model_type', 'PowerEdge R750xd', '#2563EB', 'Medium Blue', NULL), -- Dell
+('model_type', 'PowerVault ME4', '#3B82F6', 'Light Blue', NULL),   -- Dell Storage
+('model_type', 'ProLiant DL380', '#059669', 'Dark Green', NULL),   -- HPE
+('model_type', 'ProLiant DL360', '#10B981', 'Green', NULL),        -- HPE
+('model_type', 'Apollo 4510', '#34D399', 'Light Green', NULL),     -- HPE
+('model_type', 'ASA 5525-X', '#DC2626', 'Red', NULL),              -- Cisco
+('model_type', 'Nexus 93180YC-EX', '#F97316', 'Orange', NULL),     -- Cisco
+('model_type', 'MX204', '#7C3AED', 'Purple', NULL),                -- Juniper
+('model_type', 'AFF A400', '#06B6D4', 'Cyan', NULL),               -- NetApp
+('model_type', 'Other', '#6B7280', 'Gray', NULL)                   -- Generic
+
+ON CONFLICT (enum_type, enum_value, user_id) DO NOTHING;
+
 -- ============================================================================
 
 -- ============================================================================

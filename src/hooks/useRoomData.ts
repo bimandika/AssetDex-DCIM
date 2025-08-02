@@ -22,6 +22,7 @@ interface RackInfo {
   id: string;
   name: string;
   location: string;
+  description?: string;
   utilization: number;
   totalServers: number;
   status: "Active" | "Maintenance" | "Offline";
@@ -77,6 +78,7 @@ export const useRoomData = (filters: FilterState): UseRoomDataResult => {
           id: rack.id || rack.name,
           name: rack.name,
           location: rack.location || `${filters.dc_building} - Floor ${filters.dc_floor}`,
+          description: rack.description, // Add rack description mapping
           utilization: rack.utilization || 0,
           totalServers: rack.serverCount || rack.servers?.length || 0,
           status: 'Active', // Default status since get-room-data doesn't return rack status

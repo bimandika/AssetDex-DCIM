@@ -147,6 +147,8 @@ export const handler = async (req: Request): Promise<Response> => {
       'operating_system': 'osTypes',
       'dc_site': 'sites',
       'dc_building': 'buildings',
+      'dc_floor': 'floors',
+      'dc_room': 'rooms',
       'rack': 'racks',
       'unit': 'units'
     };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent } from "react";
+import { useState, useEffect, useCallback, ChangeEvent, FormEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Plus, Trash2, Edit, Upload } from "lucide-react";
+import { Plus, Trash2, Edit3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTableSchema } from "@/hooks/useTableSchema";
 import { supabase } from "@/integrations/supabase/client";
@@ -449,7 +449,13 @@ const ServerProperties = () => {
   const openAddEnumDialog = (property: ServerProperty) => {
     setSelectedProperty(property);
     setNewEnumValue("");
-    setIsAddEnumDialogOpen(true);
+    
+    // Special handling for rack properties - open rack dialog directly
+    if (property.key === 'rack') {
+      setIsAddRackDialogOpen(true);
+    } else {
+      setIsAddEnumDialogOpen(true);
+    }
   };
 
   // Enum value management state
@@ -457,10 +463,23 @@ const ServerProperties = () => {
   const [selectedProperty, setSelectedProperty] = useState<ServerProperty | null>(null);
   const [newEnumValue, setNewEnumValue] = useState("");
 
+  // Rack description management states
+  const [isRackDescriptionDialogOpen, setIsRackDescriptionDialogOpen] = useState(false);
+  const [selectedRackName, setSelectedRackName] = useState("");
+  const [rackDescription, setRackDescription] = useState("");
+  const [isSavingRackDescription, setIsSavingRackDescription] = useState(false);
+  const [rackDescriptions, setRackDescriptions] = useState<Record<string, string>>({});
+
+  // Add rack dialog states
+  const [isAddRackDialogOpen, setIsAddRackDialogOpen] = useState(false);
+  const [newRackName, setNewRackName] = useState("");
+  const [newRackDescription, setNewRackDescription] = useState("");
+
   // Handler to add enum value using global context
   const handleAddEnumValue = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedProperty || !newEnumValue.trim()) return;
+    
     try {
       await addEnumValue(selectedProperty.key, newEnumValue);
       await refreshEnums(); // Ensure enums are refreshed after add
@@ -506,6 +525,155 @@ const ServerProperties = () => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
   };
+
+  // Load rack descriptions
+  const loadRackDescriptions = useCallback(async () => {
+    const rackProperty = properties.find(p => p.key === 'rack');
+    if (!rackProperty?.options) return;
+
+    const descriptions: Record<string, string> = {};
+    
+    for (const rackName of rackProperty.options) {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-rack-data', {
+          body: { rackName }
+        });
+
+        if (!error && data?.data?.description) {
+          descriptions[rackName] = data.data.description;
+        }
+      } catch (error) {
+        console.error(`Error fetching description for rack ${rackName}:`, error);
+      }
+    }
+    
+    setRackDescriptions(descriptions);
+  }, [properties]);
+
+  // Save rack description
+  const saveRackDescription = async (rackName: string, description: string) => {
+    setIsSavingRackDescription(true);
+    
+    try {
+      const { error } = await supabase.functions.invoke('update-rack-description', {
+        body: {
+          rack_name: rackName,
+          dc_site: 'DC-East', // Default values - could be made configurable
+          dc_building: 'Building-A',
+          dc_floor: '1',
+          dc_room: 'MDF',
+          description: description
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      setRackDescriptions(prev => ({
+        ...prev,
+        [rackName]: description
+      }));
+
+      toast({
+        title: "Success",
+        description: `Description for ${rackName} saved successfully!`
+      });
+
+      return true;
+    } catch (error: any) {
+      console.error('Error saving rack description:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save rack description",
+        variant: "destructive"
+      });
+      return false;
+    } finally {
+      setIsSavingRackDescription(false);
+    }
+  };
+
+  // Handle rack description edit
+  const handleEditRackDescription = (rackName: string) => {
+    setSelectedRackName(rackName);
+    setRackDescription(rackDescriptions[rackName] || "");
+    setIsRackDescriptionDialogOpen(true);
+  };
+
+  // Handle add rack with description
+  const handleAddRackWithDescription = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedProperty || !newRackName.trim()) return;
+
+    try {
+      // First add the rack enum value
+      await addEnumValue(selectedProperty.key, newRackName);
+      
+      // Then save the description if provided
+      if (newRackDescription.trim()) {
+        await saveRackDescription(newRackName, newRackDescription);
+      }
+      
+      await refreshEnums(); // Ensure enums are refreshed after add
+      
+      // Update local property options after refresh
+      setProperties((prev) => prev.map((p) =>
+        p.key === selectedProperty.key && p.options
+          ? { ...p, options: [...p.options, newRackName] }
+          : p
+      ));
+      
+      // Refresh the table schema to ensure enum values are updated everywhere
+      try {
+        await refreshSchema();
+        console.log('Table schema refreshed after rack addition');
+        
+        // Emit events for other components to refresh their schemas and enums
+        window.dispatchEvent(new CustomEvent('enumsUpdated', { 
+          detail: { 
+            action: 'enum_value_added', 
+            columnKey: selectedProperty.key,
+            columnName: selectedProperty.name,
+            newValue: newRackName
+          } 
+        }));
+        
+        window.dispatchEvent(new CustomEvent('schemaUpdated', { 
+          detail: { 
+            action: 'enum_value_added', 
+            columnKey: selectedProperty.key,
+            columnName: selectedProperty.name,
+            newValue: newRackName
+          } 
+        }));
+      } catch (refreshError) {
+        console.error('Failed to refresh table schema after rack addition:', refreshError);
+      }
+      
+      toast({ 
+        title: 'Rack Added', 
+        description: `Added ${newRackName} to ${selectedProperty.key}${newRackDescription ? ' with description' : ''}`
+      });
+      
+      setIsAddRackDialogOpen(false);
+      setNewRackName("");
+      setNewRackDescription("");
+      
+      // Reload rack descriptions
+      await loadRackDescriptions();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  // Load rack descriptions when properties change
+  useEffect(() => {
+    if (properties.length > 0) {
+      loadRackDescriptions();
+    }
+  }, [properties, loadRackDescriptions]);
 
   const handleTypeChange = (value: string) => {
     setNewColumn((prev: Partial<ServerProperty>) => {
@@ -570,29 +738,6 @@ const ServerProperties = () => {
       setIsSubmitting(false);
       setIsDeleteDialogOpen(false);
       setPropertyToDelete(null);
-    }
-  };
-
-  const handleBulkImportComplete = async (count: number) => {
-    try {
-      // Refresh the schema after bulk import
-      const { error } = await supabase.functions.invoke('get-table-schema', {
-        method: 'GET',
-        body: { table: 'servers' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Import Complete",
-        description: `Successfully imported ${count} servers and refreshed schema`
-      });
-    } catch (err: any) {
-      console.error('Error refreshing schema after import:', err);
-      toast({
-        title: "Import Complete",
-        description: `Successfully imported ${count} servers (schema refresh failed)`
-      });
     }
   };
 
@@ -678,7 +823,7 @@ const ServerProperties = () => {
                             setNewColumn(prev => ({
                               ...prev,
                               enumTypeName: e.target.value,
-                              enumValues: [e.target.value, ...(prev.enumValues || []).filter((v, i) => i !== 0)]
+                              enumValues: [e.target.value, ...(prev.enumValues || []).filter((_, i) => i !== 0)]
                             }));
                           }}
                           placeholder="First enum value (e.g., device_status)"
@@ -784,9 +929,26 @@ const ServerProperties = () => {
                         {property.is_enum && (
                           <div className="flex flex-wrap gap-2 mt-2 items-center justify-start">
                             {property.options?.map((value) => (
-                              <Badge key={value} variant="secondary" className="px-2 py-1 rounded-full text-xs font-normal">
-                                {value}
-                              </Badge>
+                              <div key={value} className="flex items-center gap-1">
+                                <Badge variant="secondary" className="px-2 py-1 rounded-full text-xs font-normal">
+                                  {value}
+                                  {property.key === 'rack' && rackDescriptions[value] && (
+                                    <span className="ml-1 text-slate-500">({rackDescriptions[value]})</span>
+                                  )}
+                                </Badge>
+                                {property.key === 'rack' && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditRackDescription(value)}
+                                    className="h-6 w-6 p-0 hover:bg-slate-100"
+                                    title={`Edit description for ${value}`}
+                                  >
+                                    <Edit3 className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
                             ))}
                           </div>
                         )}
@@ -863,7 +1025,7 @@ const ServerProperties = () => {
         </TabsContent>
 
         <TabsContent value="import" className="space-y-6">
-          <BulkImport onImportComplete={handleBulkImportComplete} />
+          <BulkImport />
         </TabsContent>
       </Tabs>
 
@@ -886,6 +1048,105 @@ const ServerProperties = () => {
             />
             <Button type="submit">Add</Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Rack Dialog */}
+      <Dialog open={isAddRackDialogOpen} onOpenChange={setIsAddRackDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Rack</DialogTitle>
+            <DialogDescription>
+              Add a new rack with optional description
+              <br />
+              <span className="text-amber-600 font-medium">⚠️ Warning: Rack values cannot be deleted after being added.</span>
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddRackWithDescription} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rackName">Rack Name</Label>
+              <Input
+                id="rackName"
+                value={newRackName}
+                onChange={(e) => setNewRackName(e.target.value)}
+                placeholder="e.g., RACK-04"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rackDescription">Description (Optional)</Label>
+              <Input
+                id="rackDescription"
+                value={newRackDescription}
+                onChange={(e) => setNewRackDescription(e.target.value)}
+                placeholder="e.g., High-density compute rack"
+                maxLength={40}
+              />
+              <div className="text-xs text-gray-500">
+                {newRackDescription.length}/40 characters
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={() => setIsAddRackDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Add Rack</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Rack Description Dialog */}
+      <Dialog open={isRackDescriptionDialogOpen} onOpenChange={setIsRackDescriptionDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Edit3 className="h-5 w-5" />
+              <span>Edit Rack Description</span>
+            </DialogTitle>
+            <DialogDescription>
+              Update the description for {selectedRackName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">
+                Description
+              </Label>
+              <Input
+                id="description"
+                value={rackDescription}
+                onChange={(e) => setRackDescription(e.target.value)}
+                placeholder="Enter rack description"
+                maxLength={40}
+                className="col-span-3"
+              />
+            </div>
+            <div className="text-xs text-gray-500 text-right">
+              {rackDescription.length}/40 characters
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setIsRackDescriptionDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={async () => {
+                const success = await saveRackDescription(selectedRackName, rackDescription);
+                if (success) {
+                  setIsRackDescriptionDialogOpen(false);
+                }
+              }}
+              disabled={isSavingRackDescription}
+            >
+              {isSavingRackDescription ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

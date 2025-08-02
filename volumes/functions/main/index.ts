@@ -58,6 +58,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Enum colors endpoint
+    if (url.pathname === '/enum-colors' && ["GET", "POST", "PUT", "DELETE", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../enum-colors/index.ts')
+      return await handler(req)
+    }
+
     // Get table schema endpoint
     if (url.pathname === '/get-table-schema' && req.method === 'GET') {
       const { handler } = await import('../get-table-schema/index.ts')

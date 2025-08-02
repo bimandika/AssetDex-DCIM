@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 import { useRoomData } from "@/hooks/useRoomData";
+import { useEnumColors } from "@/hooks/useEnumColors";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle } from "lucide-react";
+import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle, Palette } from "lucide-react";
 import { debugServerData, getLogicalViewStats } from "@/utils/debugRoomView";
+import { EnumColorManager } from "@/components/EnumColorManager";
+import { EnumColorDemo } from "@/components/EnumColorDemo";
 
 type ViewMode = 'physical' | 'logical';
 
@@ -13,6 +16,7 @@ interface RackInfo {
   id: string;
   name: string;
   location: string;
+  description?: string;
   utilization: number;
   totalServers: number;
   status: "Active" | "Maintenance" | "Offline";
@@ -40,6 +44,7 @@ interface ServerInfo {
 const RoomView = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
+  const [showColorManager, setShowColorManager] = useState(false);
   const racksPerPage = 12;
 
   // Use hierarchical filter hook but only up to room level
@@ -47,6 +52,10 @@ const RoomView = () => {
   
   // Real data from backend hook
   const { racksData, loading, error } = useRoomData(filters);
+  
+  // Enum colors hook for coloring servers by allocation and model
+  const { getColor: getAllocationColor } = useEnumColors('allocation_type');
+  const { getColor: getModelColor } = useEnumColors('model_type');
   
   // Debug logical view data in development
   if (racksData.length > 0) {
@@ -93,6 +102,26 @@ const RoomView = () => {
         return 'bg-gray-400';
     }
   };
+
+  // Helper function to get server background color based on enum colors
+  const getServerBackgroundColor = (server: ServerInfo) => {
+    if (viewMode === 'logical' && server.allocation) {
+      const allocationColor = getAllocationColor(server.allocation);
+      if (allocationColor && allocationColor !== '#ffffff' && allocationColor !== '#000000') {
+        return allocationColor;
+      }
+    } else if (viewMode === 'physical' && server.model) {
+      const modelColor = getModelColor(server.model);
+      if (modelColor && modelColor !== '#ffffff' && modelColor !== '#000000') {
+        return modelColor;
+      }
+    }
+    // Default colors - ensure they're always valid hex colors with good contrast
+    return viewMode === 'logical' ? '#2563eb' : '#1f2937'; // blue-600 for logical (darker), gray-800 for physical
+  };
+
+    // Use simple black text for all server labels for better visibility
+  const getTextColor = () => '#000000';
 
   // Create rack units array with server positioning
   const createRackUnits = (servers: ServerInfo[]) => {
@@ -276,6 +305,16 @@ const RoomView = () => {
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset
           </Button>
+          
+          <Button 
+            onClick={() => setShowColorManager(!showColorManager)} 
+            variant="outline" 
+            size="sm"
+            className="ml-2"
+          >
+            <Palette className="h-4 w-4 mr-2" />
+            Colors
+          </Button>
         </div>
       </div>
 
@@ -348,6 +387,20 @@ const RoomView = () => {
         </div>
       ) : (
         <>
+          {/* Color Management Section */}
+          {showColorManager && (
+            <div className="mb-6 space-y-4">
+              <EnumColorDemo />
+              <EnumColorManager 
+                enumType={viewMode === 'logical' ? 'allocation_type' : 'model_type'}
+                onColorChange={() => {
+                  // Trigger re-render when colors change
+                  // The hooks will automatically refetch colors
+                }}
+              />
+            </div>
+          )}
+          
           {/* Racks Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {currentRacks.map((rack) => (
@@ -393,7 +446,7 @@ const RoomView = () => {
                       {/* Rack Container with Black Background */}
                       <div className="p-2 rounded-lg" style={{ 
                         backgroundColor: 'black',
-                        height: '1250px',
+                        height: '1280px',
                         overflow: 'hidden'
                       }}>
                         {/* Rack Top Header */}
@@ -401,15 +454,15 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
-                          {rack.location && (
+                          {rack.description && (
                             <div className="text-white text-center text-xs font-bold mt-1">
-                              {rack.location}
+                              {rack.description}
                             </div>
                           )}
                         </div>
                         
                         {/* Rack Frame with White Rails - Fixed Height No Scroll */}
-                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ 
+                        <div className="bg-gray-100 border-l-4 border-r-4" style={{ 
                           borderLeftColor: '#ffffff', 
                           borderRightColor: '#ffffff', 
                           paddingTop: '4px', 
@@ -425,13 +478,13 @@ const RoomView = () => {
                                   <div
                                     key={index}
                                     className="flex items-center transition-colors rounded hover:bg-blue-600 hover:border-blue-400"
-                                    style={{ 
+                                    style={{
                                       minHeight: '24.2px',
                                       height: `${unit.server.unitHeight * 24.2}px`,
                                       paddingLeft: '4px',
                                       paddingRight: '4px',
                                       marginBottom: '2px',
-                                      backgroundColor: 'black',
+                                      backgroundColor: getServerBackgroundColor(unit.server),
                                       border: '2px solid transparent'
                                     }}
                                   >
@@ -453,36 +506,67 @@ const RoomView = () => {
                                         }}
                                       >
                                         <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                          <div 
+                                            className="text-[8px] font-mono flex-shrink-0 text-right"
+                                            style={{ 
+                                              color: getTextColor()
+                                            }}
+                                          >
                                             U{unit.unit}
                                           </div>
                                           <div className="flex-1 min-w-0 overflow-hidden">
                                             {viewMode === 'physical' ? (
                                               // Physical View: Serial Number, Model, IP OOB (horizontal layout)
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-mono text-gray-700 truncate">
+                                                <span 
+                                                  className="font-mono truncate"
+                                                  style={{ 
+                                                    color: getTextColor()
+                                                  }}
+                                                >
                                                   {unit.server.serialNumber || 'N/A'}
                                                 </span>
-                                                <span className="text-gray-600 truncate">
+                                                <span 
+                                                  className="truncate"
+                                                  style={{ 
+                                                    color: getTextColor()
+                                                  }}
+                                                >
                                                   {unit.server.model || 'Unknown'}
                                                 </span>
-                                                <span className="font-mono text-gray-500 truncate">
+                                                <span 
+                                                  className="font-mono truncate"
+                                                  style={{ 
+                                                    color: getTextColor()
+                                                  }}
+                                                >
                                                   {unit.server.ipOOB || 'N/A'}
                                                 </span>
                                               </div>
                                             ) : (
                                               // Enhanced Logical View: Multi-Unit Server with fallbacks and visual distinction
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate" 
-                                                      title={unit.server.hostname || unit.server.id}>
+                                                <span 
+                                                  className="font-medium truncate" 
+                                                  title={unit.server.hostname || unit.server.id}
+                                                  style={{ 
+                                                    color: getTextColor()
+                                                  }}
+                                                >
                                                   {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                                 </span>
-                                                <span className="font-mono text-blue-600 truncate" 
-                                                      title={unit.server.ipAddress || 'No IP assigned'}>
+                                                <span 
+                                                  className="font-mono truncate" 
+                                                  title={unit.server.ipAddress || 'No IP assigned'}
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.ipAddress || 'N/A'}
                                                 </span>
-                                                <span className="text-purple-600 truncate font-medium" 
-                                                      title={unit.server.allocation || 'No allocation'}>
+                                                <span 
+                                                  className="truncate font-medium" 
+                                                  title={unit.server.allocation || 'No allocation'}
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.allocation || 'Unassigned'}
                                                 </span>
                                               </div>
@@ -509,7 +593,7 @@ const RoomView = () => {
                                     paddingLeft: '4px',
                                     paddingRight: '4px',
                                     marginBottom: '2px',
-                                    backgroundColor: 'black',
+                                    backgroundColor: getServerBackgroundColor(unit.server),
                                     border: '2px solid transparent'
                                   } : {
                                     minHeight: '24.2px',
@@ -540,36 +624,57 @@ const RoomView = () => {
                                         }}
                                       >
                                         <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                          <div 
+                                            className="text-[8px] font-mono flex-shrink-0 text-right"
+                                            style={{ color: getTextColor() }}
+                                          >
                                             U{unit.unit}
                                           </div>
                                           <div className="flex-1 min-w-0 overflow-hidden">
                                             {viewMode === 'physical' ? (
                                               // Physical View: Serial Number, Model, IP OOB (horizontal layout)
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-mono text-gray-700 truncate">
+                                                <span 
+                                                  className="font-mono truncate"
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.serialNumber || 'N/A'}
                                                 </span>
-                                                <span className="text-gray-600 truncate">
+                                                <span 
+                                                  className="truncate"
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.model || 'Unknown'}
                                                 </span>
-                                                <span className="font-mono text-gray-500 truncate">
+                                                <span 
+                                                  className="font-mono truncate"
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.ipOOB || 'N/A'}
                                                 </span>
                                               </div>
                                             ) : (
                                               // Enhanced Logical View: Single-Unit Server with fallbacks and visual distinction
                                               <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                                <span className="font-medium text-gray-700 truncate" 
-                                                      title={unit.server.hostname || unit.server.id}>
+                                                <span 
+                                                  className="font-medium truncate" 
+                                                  title={unit.server.hostname || unit.server.id}
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                                 </span>
-                                                <span className="font-mono text-blue-600 truncate" 
-                                                      title={unit.server.ipAddress || 'No IP assigned'}>
+                                                <span 
+                                                  className="font-mono truncate" 
+                                                  title={unit.server.ipAddress || 'No IP assigned'}
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.ipAddress || 'N/A'}
                                                 </span>
-                                                <span className="text-purple-600 truncate font-medium" 
-                                                      title={unit.server.allocation || 'No allocation'}>
+                                                <span 
+                                                  className="truncate font-medium" 
+                                                  title={unit.server.allocation || 'No allocation'}
+                                                  style={{ color: getTextColor() }}
+                                                >
                                                   {unit.server.allocation || 'Unassigned'}
                                                 </span>
                                               </div>
@@ -623,9 +728,9 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
-                          {rack.location && (
+                          {rack.description && (
                             <div className="text-white text-center text-xs font-bold mt-1">
-                              {rack.location}
+                              {rack.description}
                             </div>
                           )}
                         </div>
@@ -639,7 +744,7 @@ const RoomView = () => {
                       {/* Rack Container with Black Background - Same as Physical */}
                       <div className="p-2 rounded-lg" style={{ 
                         backgroundColor: 'black',
-                        height: '1250px',
+                        height: '1280px',
                         overflow: 'hidden'
                       }}>
                         {/* Rack Top Header */}
@@ -647,15 +752,15 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
-                          {rack.location && (
+                          {rack.description && (
                             <div className="text-white text-center text-xs font-bold mt-1">
-                              {rack.location}
+                              {rack.description}
                             </div>
                           )}
                         </div>
                         
                         {/* Rack Frame with White Rails - Fixed Height No Scroll */}
-                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ 
+                        <div className="bg-gray-100 border-l-4 border-r-4" style={{ 
                           borderLeftColor: '#ffffff', 
                           borderRightColor: '#ffffff', 
                           paddingTop: '4px', 
@@ -671,13 +776,13 @@ const RoomView = () => {
                                   <div
                                     key={index}
                                     className="flex items-center transition-colors rounded hover:bg-blue-600 hover:border-blue-400"
-                                    style={{ 
+                                    style={{
                                       minHeight: '24.2px',
                                       height: `${unit.server.unitHeight * 24.2}px`,
                                       paddingLeft: '4px',
                                       paddingRight: '4px',
                                       marginBottom: '2px',
-                                      backgroundColor: 'black',
+                                      backgroundColor: getServerBackgroundColor(unit.server),
                                       border: '2px solid transparent'
                                     }}
                                   >
@@ -697,21 +802,25 @@ const RoomView = () => {
                                         }}
                                       >
                                         <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                          <div className="text-[8px] font-mono flex-shrink-0 text-right"
+                                               style={{ color: getTextColor() }}>
                                             U{unit.unit}
                                           </div>
                                           <div className="flex-1 min-w-0 overflow-hidden">
                                             {/* Logical View: Hostname, IP Address, Allocation */}
                                             <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                              <span className="font-medium text-gray-700 truncate" 
+                                              <span className="font-medium truncate" 
+                                                    style={{ color: getTextColor() }}
                                                     title={unit.server.hostname || unit.server.id}>
                                                 {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                               </span>
-                                              <span className="font-mono text-blue-600 truncate" 
+                                              <span className="font-mono truncate" 
+                                                    style={{ color: getTextColor() }}
                                                     title={unit.server.ipAddress || 'No IP assigned'}>
                                                 {unit.server.ipAddress || 'N/A'}
                                               </span>
-                                              <span className="text-purple-600 truncate font-medium" 
+                                              <span className="truncate font-medium" 
+                                                    style={{ color: getTextColor() }}
                                                     title={unit.server.allocation || 'No allocation'}>
                                                 {unit.server.allocation || 'Unassigned'}
                                               </span>
@@ -738,7 +847,7 @@ const RoomView = () => {
                                     paddingLeft: '4px',
                                     paddingRight: '4px',
                                     marginBottom: '2px',
-                                    backgroundColor: 'black',
+                                    backgroundColor: getServerBackgroundColor(unit.server),
                                     border: '2px solid transparent'
                                   } : {
                                     minHeight: '24.2px',
@@ -767,22 +876,34 @@ const RoomView = () => {
                                         }}
                                       >
                                         <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-600 flex-shrink-0 text-right">
+                                          <div 
+                                            className="text-[8px] font-mono flex-shrink-0 text-right"
+                                            style={{ color: getTextColor() }}
+                                          >
                                             U{unit.unit}
                                           </div>
                                           <div className="flex-1 min-w-0 overflow-hidden">
                                             {/* Logical View: Hostname, IP Address, Allocation */}
                                             <div className="flex items-center gap-1 h-full overflow-hidden text-[8px]">
-                                              <span className="font-medium text-gray-700 truncate" 
-                                                    title={unit.server.hostname || unit.server.id}>
+                                              <span 
+                                                className="font-medium truncate" 
+                                                title={unit.server.hostname || unit.server.id}
+                                                style={{ color: getTextColor() }}
+                                              >
                                                 {unit.server.hostname || `Server-${unit.server.id.slice(-4)}`}
                                               </span>
-                                              <span className="font-mono text-blue-600 truncate" 
-                                                    title={unit.server.ipAddress || 'No IP assigned'}>
+                                              <span 
+                                                className="font-mono truncate" 
+                                                title={unit.server.ipAddress || 'No IP assigned'}
+                                                style={{ color: getTextColor() }}
+                                              >
                                                 {unit.server.ipAddress || 'N/A'}
                                               </span>
-                                              <span className="text-purple-600 truncate font-medium" 
-                                                    title={unit.server.allocation || 'No allocation'}>
+                                              <span 
+                                                className="truncate font-medium" 
+                                                title={unit.server.allocation || 'No allocation'}
+                                                style={{ color: getTextColor() }}
+                                              >
                                                 {unit.server.allocation || 'Unassigned'}
                                               </span>
                                             </div>
@@ -835,9 +956,9 @@ const RoomView = () => {
                           <div className="text-white text-center text-xs font-medium">
                             {rack.name}
                           </div>
-                          {rack.location && (
+                          {rack.description && (
                             <div className="text-white text-center text-xs font-bold mt-1">
-                              {rack.location}
+                              {rack.description}
                             </div>
                           )}
                         </div>
