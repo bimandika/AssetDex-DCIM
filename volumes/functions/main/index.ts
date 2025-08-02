@@ -76,6 +76,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Check rack availability endpoint
+    if (url.pathname === '/check-rack-availability' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+      const { handler } = await import('../check-rack-availability/index.ts')
+      return await handler(req)
+    }
+
     // Update rack description endpoint (for Supabase Edge Function call)
     if (url.pathname === '/update-rack-description' && req.method === 'POST') {
       const { handler } = await import('../update-rack-description/index.ts')

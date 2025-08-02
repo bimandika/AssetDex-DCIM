@@ -73,7 +73,6 @@ export const useRoomData = (filters: FilterState): UseRoomDataResult => {
       
       // Transform the data to match RoomView.tsx expected format
       const transformedRacks: RackInfo[] = data?.racks?.map((rack: any) => {
-        console.log('🔍 Processing rack:', rack.name, 'with servers:', rack.servers?.length || 0);
         return {
           id: rack.id || rack.name,
           name: rack.name,
@@ -83,11 +82,11 @@ export const useRoomData = (filters: FilterState): UseRoomDataResult => {
           status: 'Active', // Default status since get-room-data doesn't return rack status
           room: filters.dc_room || '',
           servers: rack.servers?.map((server: any) => {
-            console.log('🔍 Processing server:', server.hostname, 'at position:', server.position);
+            const position = server.position || parseInt(server.unit?.replace('U', '') || '1');
             return {
               id: server.id,
               hostname: server.hostname,
-              position: server.position || parseInt(server.unit?.replace('U', '') || '1'), // Use server.position if available, fallback to parsing unit
+              position: position,
               model: server.model || 'Unknown',
               type: 'Server' as const,
               status: server.status || 'Active',

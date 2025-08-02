@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import { DynamicFormRenderer } from "@/components/forms/DynamicFormRenderer";
 import { generateDynamicValidationSchema, generateDefaultValues, transformFormDataForSubmission } from "@/utils/dynamicValidation";
 import { useFilterableColumns } from "@/hooks/useFilterableColumns";
 import FilterManagerDialog from "@/components/FilterManagerDialog";
+import RackAvailabilityChecker from "./RackAvailabilityChecker";
 
 // Import types from enums
 import type {
@@ -238,6 +239,11 @@ const ServerInventory = () => {
     resolver: zodResolver(combinedValidationSchema()),
     defaultValues: getCombinedDefaultValues(),
   });
+
+  // Watch form values for real-time rack availability checking
+  const watchedRack = useWatch({ control: form.control, name: 'rack' });
+  const watchedUnit = useWatch({ control: form.control, name: 'unit' });
+  const watchedUnitHeight = useWatch({ control: form.control, name: 'unit_height' });
 
   // Initialize form for "Add Rack" dialog
   const {
@@ -1380,6 +1386,22 @@ const ServerInventory = () => {
                           </div>
                         </div>
 
+                        {/* Rack Availability Checker */}
+                        {watchedRack && watchedUnit && watchedUnitHeight && (
+                          <div className="mt-4">
+                            <RackAvailabilityChecker
+                              rack={watchedRack}
+                              position={parseInt(watchedUnit?.replace('U', '') || '1')}
+                              unitHeight={watchedUnitHeight || 1}
+                              excludeServerId={editingServer?.id}
+                              onSuggestionApply={(position: number) => {
+                                form.setValue('unit', `U${position}`);
+                              }}
+                              className="w-full"
+                            />
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 gap-4 mt-4">
                           <div className="space-y-2">
                             <Label htmlFor="allocation">Allocation</Label>
@@ -1789,8 +1811,8 @@ const ServerInventory = () => {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{getEnvironmentBadge(server.environment)}</TableCell>
-                  <TableCell>{getAllocationBadge(server.allocation)}</TableCell>
+                  <TableCell>{getEnvironmentBadge(server.environment || undefined)}</TableCell>
+                  <TableCell>{getAllocationBadge(server.allocation || undefined)}</TableCell>
                   <TableCell>
                     {server.warranty ? (
                       <div className="text-sm">

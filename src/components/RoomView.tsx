@@ -83,34 +83,38 @@ const RoomView = () => {
 
   // Create rack units array with server positioning
   const createRackUnits = (servers: ServerInfo[]) => {
-    const units: Array<{ unit: number; server?: ServerInfo; isPartOfMultiUnit?: boolean }> = [];
+    const renderUnits: Array<{ unit: number; server?: ServerInfo; isEmpty?: boolean }> = [];
     
-    // Initialize all 42 units as empty
-    for (let i = 1; i <= 42; i++) {
-      units.push({ unit: i });
-    }
-    
-    // Place servers in their positions
+    // Create a set of all occupied units for quick lookup
+    const occupiedUnits = new Set<number>();
     servers.forEach(server => {
-      const startUnit = server.position;
-      const endUnit = server.position + server.unitHeight - 1;
-      
-      for (let u = startUnit; u <= endUnit; u++) {
-        const unitIndex = u - 1; // Convert to 0-based index
-        if (unitIndex >= 0 && unitIndex < units.length) {
-          if (u === startUnit) {
-            // First unit of the server
-            units[unitIndex] = { unit: u, server };
-          } else {
-            // Subsequent units of multi-unit server
-            units[unitIndex] = { unit: u, server, isPartOfMultiUnit: true };
-          }
-        }
+      for (let i = 0; i < server.unitHeight; i++) {
+        occupiedUnits.add(server.position - i);
       }
     });
     
-    // Return units in reverse order (U42 to U1, top to bottom)
-    return units.reverse();
+    // Create a map of starting position to server for quick lookup
+    const serverMap = new Map<number, ServerInfo>();
+    servers.forEach(server => {
+      serverMap.set(server.position, server);
+    });
+    
+    // Render from top (U42) to bottom (U1)
+    for (let unit = 42; unit >= 1; unit--) {
+      if (serverMap.has(unit)) {
+        // This unit starts a server
+        const server = serverMap.get(unit)!;
+        renderUnits.push({ unit, server });
+      } else if (occupiedUnits.has(unit)) {
+        // This unit is occupied by a multi-unit server but not the starting unit
+        // Don't render anything for this unit - it's part of the server above
+      } else {
+        // Empty unit
+        renderUnits.push({ unit, isEmpty: true });
+      }
+    }
+    
+    return renderUnits;
   };
 
   // Calculate pagination
@@ -352,7 +356,11 @@ const RoomView = () => {
                   {viewMode === 'physical' && (
                     <div className="mt-3 border rounded">
                       {/* Rack Container with Black Background */}
-                      <div className="p-2 rounded-lg" style={{ backgroundColor: 'black' }}>
+                      <div className="p-2 rounded-lg" style={{ 
+                        backgroundColor: 'black',
+                        height: '1250px',
+                        overflow: 'hidden'
+                      }}>
                         {/* Rack Top Header */}
                         <div className="p-1 rounded-t-lg" style={{ backgroundColor: 'black' }}>
                           <div className="text-white text-center text-xs font-medium">
@@ -360,15 +368,17 @@ const RoomView = () => {
                           </div>
                         </div>
                         
-                        {/* Rack Frame with White Rails */}
-                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ borderLeftColor: '#ffffff', borderRightColor: '#ffffff', paddingTop: '4px', paddingBottom: '4px' }}>
+                        {/* Rack Frame with White Rails - Fixed Height No Scroll */}
+                        <div className="bg-slate-50 border-l-4 border-r-4" style={{ 
+                          borderLeftColor: '#ffffff', 
+                          borderRightColor: '#ffffff', 
+                          paddingTop: '4px', 
+                          paddingBottom: '4px',
+                          height: '1185px',
+                          overflow: 'visible'
+                        }}>
                           <div className="">
                             {createRackUnits(rack.servers).map((unit, index) => {
-                              // Skip continuation units of multi-unit servers for cleaner display
-                              if (unit.server && unit.server.unitHeight > 1 && unit.isPartOfMultiUnit) {
-                                return null;
-                              }
-                              
                               // Multi-unit server display - Clean inline style approach
                               if (unit.server && unit.server.unitHeight > 1) {
                                 return (
@@ -380,7 +390,7 @@ const RoomView = () => {
                                       height: `${unit.server.unitHeight * 24.2}px`,
                                       paddingLeft: '4px',
                                       paddingRight: '4px',
-                                      marginBottom: '0px',
+                                      marginBottom: '2px',
                                       backgroundColor: 'black',
                                       border: '2px solid transparent'
                                     }}
@@ -443,7 +453,7 @@ const RoomView = () => {
                                 );
                               }
                               
-                              // Single unit server - Clean inline style approach
+                              // Single unit server or empty unit - Clean inline style approach
                               return (
                                 <div
                                   key={index}
@@ -453,7 +463,7 @@ const RoomView = () => {
                                     height: '24.2px',
                                     paddingLeft: '4px',
                                     paddingRight: '4px',
-                                    marginBottom: '0px',
+                                    marginBottom: '2px',
                                     backgroundColor: 'black',
                                     border: '2px solid transparent'
                                   } : {
@@ -461,8 +471,8 @@ const RoomView = () => {
                                     height: '24.2px', 
                                     paddingLeft: '4px',
                                     paddingRight: '4px',
-                                    marginBottom: '0px',
-                                    backgroundColor: '#f8fafc',
+                                    marginBottom: '2px',
+                                    backgroundColor: '#f3f4f6',
                                     border: '2px solid transparent'
                                   }}
                                 >
@@ -532,12 +542,12 @@ const RoomView = () => {
                                           paddingRight: '4px',
                                           paddingTop: '4px',
                                           paddingBottom: '4px',
-                                          backgroundColor: '#f8fafc',
+                                          backgroundColor: '#f3f4f6',
                                           overflow: 'hidden'
                                         }}
                                       >
                                         <div className="flex items-center space-x-2 w-full h-full">
-                                          <div className="text-[8px] font-mono text-gray-400 flex-shrink-0" style={{
+                                          <div className="text-[8px] font-mono text-gray-500 flex-shrink-0" style={{
                                             width: '24px',
                                             textAlign: 'right'
                                           }}>
@@ -546,7 +556,7 @@ const RoomView = () => {
                                           <div className="flex-1 overflow-hidden" style={{
                                             marginLeft: '8px'
                                           }}>
-                                            <div className="text-[8px] text-gray-300 italic leading-none">Empty</div>
+                                            <div className="text-[8px] text-gray-400 italic leading-none">Empty</div>
                                           </div>
                                         </div>
                                       </div>
