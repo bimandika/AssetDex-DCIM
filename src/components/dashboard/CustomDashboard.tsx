@@ -20,7 +20,10 @@ import { TimelineWidget } from './TimelineWidget'
 import { ServerMetricWidget } from './ServerMetricWidget'
 import { SimpleMetricWidget } from './SimpleMetricWidget'
 import WidgetEditDialog from './WidgetEditDialog'
+import StatWidget from './StatWidget';
+import GaugeWidget from './GaugeWidget';
 import type { Widget } from '@/hooks/useDashboard'
+import { useNavigate } from 'react-router-dom'
 
 interface CustomDashboardProps {
   dashboardId?: string
@@ -43,6 +46,7 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
     setCurrentDashboard,
     isLoading
   } = useDashboard()
+  const navigate = useNavigate();
   
   const [editMode, setEditMode] = useState(false)
   const [dashboardName, setDashboardName] = useState('')
@@ -66,19 +70,21 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
 
   // Create new dashboard
   const handleCreateDashboard = async () => {
-    const name = dashboardName.trim() || 'New Dashboard'
+    const name = dashboardName.trim() || 'New Dashboard';
     const result = await createDashboard({
       name,
       description: 'Custom server tracking dashboard',
       layout: []
-    })
-    
+    });
     if (result) {
-      setEditMode(true)
+      setEditMode(true);
+      setCurrentDashboard(result);
       toast({
         title: 'Success',
         description: `Dashboard "${name}" created successfully`,
-      })
+      });
+      // Removed navigate(`/dashboard/${result.id}`)
+      // The main view will now show the newly created dashboard
     }
   }
 
@@ -101,7 +107,7 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
   }
 
   // Add new widget
-  const handleAddWidget = async (type: 'metric' | 'chart' | 'table' | 'timeline') => {
+  const handleAddWidget = async (type: 'metric' | 'chart' | 'table' | 'timeline' | 'stat' | 'gauge') => {
     if (!currentDashboard) return
 
     // Find available position
@@ -150,6 +156,10 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
         return { showTrend: true, showProgress: true }
       case 'timeline':
         return { maxEvents: 10, groupBy: 'day' }
+      case 'stat':
+        return { statType: 'count', statLabel: 'Sample Stat' }
+      case 'gauge':
+        return { gaugeValue: 75, gaugeLabel: 'Sample Gauge' }
       default:
         return {}
     }
@@ -174,6 +184,21 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
           table: 'servers',
           orderBy: 'created_at'
         }
+      case 'table':
+        return {
+          table: 'servers',
+          aggregation: 'count'
+        }
+      case 'stat':
+        return {
+          table: 'servers',
+          aggregation: 'count'
+        }
+      case 'gauge':
+        return {
+          table: 'servers',
+          aggregation: 'count'
+        }
       default:
         return {}
     }
@@ -195,18 +220,24 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
   const renderWidget = (widget: Widget) => {
     const commonProps = {
       widget,
-      onUpdate: () => handleEditWidget(widget), // Changed to open edit dialog
+      onUpdate: () => handleEditWidget(widget),
       onDelete: () => deleteWidget(widget.id),
       editMode
-    }
+    };
 
     switch (widget.widget_type) {
       case 'chart':
-        return <EnhancedChartWidget {...commonProps} />
+        return <EnhancedChartWidget {...commonProps} />;
       case 'timeline':
-        return <TimelineWidget {...commonProps} />
+        return <TimelineWidget {...commonProps} />;
       case 'metric':
-        return <SimpleMetricWidget {...commonProps} />
+        return <SimpleMetricWidget {...commonProps} />;
+      case 'table':
+        return <TableWidget {...commonProps} />;
+      case 'stat':
+        return <StatWidget {...commonProps} />;
+      case 'gauge':
+        return <GaugeWidget {...commonProps} />;
       default:
         return (
           <Card className="h-full">
@@ -216,7 +247,7 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
               </p>
             </CardContent>
           </Card>
-        )
+        );
     }
   }
 
@@ -445,9 +476,6 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleAddWidget('timeline')}>
               Timeline Widget
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => handleAddWidget('table')}>
-              Table Widget
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleAddWidget('stat')}>
               Stat Widget

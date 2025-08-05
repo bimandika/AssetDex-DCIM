@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { AlertCircle, X, Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertCircle, Filter } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ServerFilterConfig, FilterValidationResult } from '@/types/filterTypes'
 import { useServerFilterOptions } from '@/hooks/useServerFilterOptions'
@@ -33,7 +33,6 @@ const ServerFilterComponent: React.FC<ServerFilterComponentProps> = ({
     validateFilters
   } = useServerFilterOptions()
 
-  const [isExpanded, setIsExpanded] = useState(false)
   const [validationResult, setValidationResult] = useState<FilterValidationResult | null>(null)
   const [isValidating, setIsValidating] = useState(false)
 
@@ -151,7 +150,7 @@ const ServerFilterComponent: React.FC<ServerFilterComponentProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Filter className="h-4 w-4" />
-            <CardTitle className="text-base">Server Filters</CardTitle>
+            <CardTitle className="text-base">Server Selection</CardTitle>
             {activeFilterCount > 0 && (
               <Badge variant="secondary" className="text-xs">
                 {activeFilterCount} active
@@ -169,260 +168,248 @@ const ServerFilterComponent: React.FC<ServerFilterComponentProps> = ({
                 Clear All
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="h-8 w-8 p-0"
-            >
-              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
           </div>
         </div>
         <CardDescription>
           Filter servers by model, data center location, allocation, and environment
         </CardDescription>
       </CardHeader>
+      <CardContent className="pt-2">
+        {/* Filter Logic */}
+        <div className="space-y-2">
+          <Label>Filter Logic</Label>
+          <Select
+            value={filters.logic || 'AND'}
+            onValueChange={(value: 'AND' | 'OR') => updateFilter('logic', value)}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="AND">AND (All)</SelectItem>
+              <SelectItem value="OR">OR (Any)</SelectItem>
+            </SelectContent>
+          </Select>
+          <div style={{ marginBottom: '10px' }} />
+        </div>
 
-      {isExpanded && (
-        <CardContent className="space-y-6">
-          {/* Filter Logic */}
-          <div className="space-y-2">
-            <Label>Filter Logic</Label>
-            <Select
-              value={filters.logic || 'AND'}
-              onValueChange={(value: 'AND' | 'OR') => updateFilter('logic', value)}
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="AND">AND (All)</SelectItem>
-                <SelectItem value="OR">OR (Any)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <Separator />
 
-          <Separator />
-
-          {/* Model Filter */}
-          <div className="space-y-3">
-            <Label>Models</Label>
-            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-              {filterOptions.models.map((model) => (
-                <div key={model} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`model-${model}`}
-                    checked={(filters.models || []).includes(model)}
-                    onCheckedChange={(checked) => 
-                      handleMultiSelectChange('models', model, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor={`model-${model}`} className="text-sm font-normal">
-                    {model}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Data Center Hierarchy */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Label>Data Center Location</Label>
-              <Checkbox
-                id="hierarchical-filtering"
-                checked={filters.hierarchical_filtering !== false}
-                onCheckedChange={(checked) => 
-                  updateFilter('hierarchical_filtering', checked as boolean)
-                }
-              />
-              <Label htmlFor="hierarchical-filtering" className="text-sm font-normal">
-                Hierarchical filtering
-              </Label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* Site */}
-              <div className="space-y-2">
-                <Label>Site</Label>
-                <Select
-                  value={hierarchicalState.selectedSite || ''}
-                  onValueChange={(value) => handleDCChange('site', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select site" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filterOptions.dc_sites.map((site) => (
-                      <SelectItem key={site} value={site}>{site}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Model Filter */}
+        <div className="space-y-3" style={{ marginBottom: '10px' }}>
+          <Label>Models</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {filterOptions.models.map((model) => (
+              <div key={model} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`model-${model}`}
+                  checked={(filters.models || []).includes(model)}
+                  onCheckedChange={(checked) => 
+                    handleMultiSelectChange('models', model, checked as boolean)
+                  }
+                />
+                <Label htmlFor={`model-${model}`} className="text-sm font-normal">
+                  {model}
+                </Label>
               </div>
+            ))}
+          </div>
+        </div>
 
-              {/* Building */}
-              <div className="space-y-2">
-                <Label>Building</Label>
-                <Select
-                  value={hierarchicalState.selectedBuilding || ''}
-                  onValueChange={(value) => handleDCChange('building', value)}
-                  disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedSite}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select building" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {hierarchicalState.availableBuildings.map((building) => (
-                      <SelectItem key={building} value={building}>{building}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <Separator style={{ marginBottom: '10px' }} />
 
-              {/* Floor */}
-              <div className="space-y-2">
-                <Label>Floor</Label>
-                <Select
-                  value={hierarchicalState.selectedFloor || ''}
-                  onValueChange={(value) => handleDCChange('floor', value)}
-                  disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedBuilding}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select floor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {hierarchicalState.availableFloors.map((floor) => (
-                      <SelectItem key={floor} value={floor}>{floor}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Room */}
-              <div className="space-y-2">
-                <Label>Room</Label>
-                <Select
-                  value={filters.dc_rooms?.[0] || ''}
-                  onValueChange={(value) => handleDCChange('room', value)}
-                  disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedFloor}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select room" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {hierarchicalState.availableRooms.map((room) => (
-                      <SelectItem key={room} value={room}>{room}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        {/* Data Center Hierarchy */}
+        <div className="space-y-4" style={{ marginBottom: '10px' }}>
+          <div className="flex items-center space-x-2">
+            <Label>Data Center Location</Label>
+            <Checkbox
+              id="hierarchical-filtering"
+              checked={filters.hierarchical_filtering !== false}
+              onCheckedChange={(checked) => 
+                updateFilter('hierarchical_filtering', checked as boolean)
+              }
+            />
+            <Label htmlFor="hierarchical-filtering" className="text-sm font-normal">
+              Hierarchical filtering
+            </Label>
           </div>
 
-          <Separator />
-
-          {/* Allocation Filter */}
-          <div className="space-y-3">
-            <Label>Allocation Types</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {filterOptions.allocations.map((allocation) => (
-                <div key={allocation} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`allocation-${allocation}`}
-                    checked={(filters.allocations || []).includes(allocation)}
-                    onCheckedChange={(checked) => 
-                      handleMultiSelectChange('allocations', allocation, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor={`allocation-${allocation}`} className="text-sm font-normal">
-                    {allocation}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Environment Filter */}
-          <div className="space-y-3">
-            <Label>Environments</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {filterOptions.environments.map((environment) => (
-                <div key={environment} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`environment-${environment}`}
-                    checked={(filters.environments || []).includes(environment)}
-                    onCheckedChange={(checked) => 
-                      handleMultiSelectChange('environments', environment, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor={`environment-${environment}`} className="text-sm font-normal">
-                    {environment}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Status Filter */}
-          <div className="space-y-3">
-            <Label>Status</Label>
-            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-              {filterOptions.status.map((status) => (
-                <div key={status} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`status-${status}`}
-                    checked={(filters.status || []).includes(status)}
-                    onCheckedChange={(checked) =>
-                      handleMultiSelectChange('status', status, checked as boolean)
-                    }
-                  />
-                  <Label htmlFor={`status-${status}`} className="text-sm font-normal">
-                    {status}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
-     
-
-          {/* Validation Results */}
-          {validationResult && (
+          <div className="grid grid-cols-2 gap-4">
+            {/* Site */}
             <div className="space-y-2">
-              {validationResult.errors.length > 0 && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {validationResult.errors.join(', ')}
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {validationResult.warnings.length > 0 && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {validationResult.warnings.join(', ')}
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {validationResult.isValid && validationResult.resultCount !== undefined && (
-                <div className="text-sm text-muted-foreground">
-                  {isValidating ? 'Validating...' : `${validationResult.resultCount} servers match these filters`}
-                </div>
-              )}
+              <Label>Site</Label>
+              <Select
+                value={hierarchicalState.selectedSite || ''}
+                onValueChange={(value) => handleDCChange('site', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select site" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filterOptions.dc_sites.map((site) => (
+                    <SelectItem key={site} value={site}>{site}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
-        </CardContent>
-      )}
+
+            {/* Building */}
+            <div className="space-y-2">
+              <Label>Building</Label>
+              <Select
+                value={hierarchicalState.selectedBuilding || ''}
+                onValueChange={(value) => handleDCChange('building', value)}
+                disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedSite}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select building" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hierarchicalState.availableBuildings.map((building) => (
+                    <SelectItem key={building} value={building}>{building}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Floor */}
+            <div className="space-y-2">
+              <Label>Floor</Label>
+              <Select
+                value={hierarchicalState.selectedFloor || ''}
+                onValueChange={(value) => handleDCChange('floor', value)}
+                disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedBuilding}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select floor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hierarchicalState.availableFloors.map((floor) => (
+                    <SelectItem key={floor} value={floor}>{floor}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Room */}
+            <div className="space-y-2">
+              <Label>Room</Label>
+              <Select
+                value={filters.dc_rooms?.[0] || ''}
+                onValueChange={(value) => handleDCChange('room', value)}
+                disabled={filters.hierarchical_filtering !== false && !hierarchicalState.selectedFloor}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select room" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hierarchicalState.availableRooms.map((room) => (
+                    <SelectItem key={room} value={room}>{room}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <Separator style={{ marginBottom: '10px' }} />
+
+        {/* Allocation Types */}
+        <div className="space-y-3" style={{ marginBottom: '10px' }}>
+          <Label>Allocation Types</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {filterOptions.allocations.map((allocation) => (
+              <div key={allocation} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`allocation-${allocation}`}
+                  checked={(filters.allocations || []).includes(allocation)}
+                  onCheckedChange={(checked) => 
+                    handleMultiSelectChange('allocations', allocation, checked as boolean)
+                  }
+                />
+                <Label htmlFor={`allocation-${allocation}`} className="text-sm font-normal">
+                  {allocation}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator style={{ marginBottom: '10px' }} />
+
+        {/* Environments */}
+        <div className="space-y-3" style={{ marginBottom: '10px' }}>
+          <Label>Environments</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {filterOptions.environments.map((environment) => (
+              <div key={environment} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`environment-${environment}`}
+                  checked={(filters.environments || []).includes(environment)}
+                  onCheckedChange={(checked) => 
+                    handleMultiSelectChange('environments', environment, checked as boolean)
+                  }
+                />
+                <Label htmlFor={`environment-${environment}`} className="text-sm font-normal">
+                  {environment}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator style={{ marginBottom: '10px' }} />
+
+        {/* Status */}
+        <div className="space-y-3" style={{ marginBottom: '10px' }}>
+          <Label>Status</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {filterOptions.status.map((status) => (
+              <div key={status} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`status-${status}`}
+                  checked={(filters.status || []).includes(status)}
+                  onCheckedChange={(checked) =>
+                    handleMultiSelectChange('status', status, checked as boolean)
+                  }
+                />
+                <Label htmlFor={`status-${status}`} className="text-sm font-normal">
+                  {status}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Validation Results */}
+        {validationResult && (
+          <div className="space-y-2">
+            {validationResult.errors.length > 0 && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {validationResult.errors.join(', ')}
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {validationResult.warnings.length > 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {validationResult.warnings.join(', ')}
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {validationResult.isValid && validationResult.resultCount !== undefined && (
+              <div className="text-sm text-muted-foreground">
+                {isValidating ? 'Validating...' : `${validationResult.resultCount} servers match these filters`}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }

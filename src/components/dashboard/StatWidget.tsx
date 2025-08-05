@@ -1,0 +1,106 @@
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Widget } from '@/hooks/useDashboard';
+import { RefreshCw, Settings, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+
+interface StatWidgetProps {
+  widget: Widget;
+  editMode?: boolean;
+  onUpdate?: () => void;
+  onRefresh?: () => void;
+  onDelete?: () => void;
+}
+
+interface WidgetActionBarProps {
+  onUpdate: () => void;
+  onRefresh?: () => void;
+  onDelete?: () => void;
+}
+
+const WidgetActionBar: React.FC<WidgetActionBarProps> = ({ onUpdate, onRefresh, onDelete }) => (
+  <div className="flex space-x-1 justify-end items-center mb-2">
+    <Button variant="ghost" size="sm" onClick={onRefresh} className="h-8 w-8 p-0" title="Refresh">
+      <RefreshCw size={18} />
+    </Button>
+    <Button variant="ghost" size="sm" onClick={onUpdate} className="h-8 w-8 p-0" title="Edit">
+      <Settings size={18} />
+    </Button>
+    <Button variant="ghost" size="sm" onClick={onDelete} className="h-8 w-8 p-0 text-red-600 hover:text-red-700" title="Delete">
+      <X size={18} />
+    </Button>
+  </div>
+);
+
+const fetchWidgetData = async (config: any): Promise<any> => {
+  try {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+    if (!token) throw new Error('No authentication token available');
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000'}/functions/v1/widget-data`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ config }),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    return result.success ? result.data : null;
+  } catch (err: any) {
+    throw err;
+  }
+};
+
+const StatWidget: React.FC<StatWidgetProps> = ({ widget, editMode, onUpdate = () => {}, onDelete = () => {} }) => {
+  const [stat, setStat] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadData = async () => {
+    setIsRefreshing(true);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const config = widget.data_source || {};
+      const result = await fetchWidgetData(config);
+      setStat(result?.value ?? null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [widget.data_source]);
+
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle>{widget.title || 'Stat Widget'}</CardTitle>
+        {editMode && (
+          <WidgetActionBar onUpdate={onUpdate} onRefresh={loadData} onDelete={onDelete} />
+        )}
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center justify-center h-full">
+          {isLoading ? (
+            <span className="text-2xl text-muted-foreground">Loading...</span>
+          ) : error ? (
+            <span className="text-red-500 text-sm">{error}</span>
+          ) : (
+            <span className="text-4xl font-bold text-blue-600">{stat}</span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default StatWidget;

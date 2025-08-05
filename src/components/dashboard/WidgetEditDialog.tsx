@@ -152,7 +152,6 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
           {/* Basic Settings */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Basic Settings</h3>
-            
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Title</Label>
@@ -163,7 +162,6 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
                   placeholder="Widget title"
                 />
               </div>
-              
               <div className="space-y-2">
                 <Label htmlFor="widget_type">Widget Type</Label>
                 <Select
@@ -176,7 +174,6 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
                   <SelectContent>
                     <SelectItem value="metric">Metric</SelectItem>
                     <SelectItem value="chart">Chart</SelectItem>
-                    <SelectItem value="table">Table</SelectItem>
                     <SelectItem value="timeline">Timeline</SelectItem>
                     <SelectItem value="stat">Stat</SelectItem>
                     <SelectItem value="gauge">Gauge</SelectItem>
@@ -186,229 +183,225 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
             </div>
           </div>
 
-          {/* Position and Size */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Position & Size</h3>
-            
-            <div className="grid grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="position_x">X Position</Label>
-                <Input
-                  id="position_x"
-                  type="number"
-                  min="0"
-                  max="11"
-                  value={formData.position_x}
-                  onChange={(e) => updateFormData('position_x', parseInt(e.target.value))}
-                />
+          {/* Only show advanced sections for non-metric/gauge/stat widgets */}
+          {!(formData.widget_type === 'metric' || formData.widget_type === 'gauge' || formData.widget_type === 'stat') && (
+            <>
+              {/* Position and Size */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Position & Size</h3>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="position_x">X Position</Label>
+                    <Input
+                      id="position_x"
+                      type="number"
+                      min="0"
+                      max="11"
+                      value={formData.position_x}
+                      onChange={(e) => updateFormData('position_x', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="position_y">Y Position</Label>
+                    <Input
+                      id="position_y"
+                      type="number"
+                      min="0"
+                      value={formData.position_y}
+                      onChange={(e) => updateFormData('position_y', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="width">Width</Label>
+                    <Input
+                      id="width"
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={formData.width}
+                      onChange={(e) => updateFormData('width', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="height">Height</Label>
+                    <Input
+                      id="height"
+                      type="number"
+                      min="1"
+                      value={formData.height}
+                      onChange={(e) => updateFormData('height', parseInt(e.target.value))}
+                    />
+                  </div>
+                </div>
               </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="position_y">Y Position</Label>
-                <Input
-                  id="position_y"
-                  type="number"
-                  min="0"
-                  value={formData.position_y}
-                  onChange={(e) => updateFormData('position_y', parseInt(e.target.value))}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="width">Width</Label>
-                <Input
-                  id="width"
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={formData.width}
-                  onChange={(e) => updateFormData('width', parseInt(e.target.value))}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="height">Height</Label>
-                <Input
-                  id="height"
-                  type="number"
-                  min="1"
-                  value={formData.height}
-                  onChange={(e) => updateFormData('height', parseInt(e.target.value))}
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* Widget-specific Configuration */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Widget Configuration</h3>
-            
-            {formData.widget_type === 'chart' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="chart_type">Chart Type</Label>
-                  <Select
-                    value={formData.config.type || 'bar'}
-                    onValueChange={(value) => updateConfig('type', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bar">Bar Chart</SelectItem>
-                      <SelectItem value="line">Line Chart</SelectItem>
-                      <SelectItem value="pie">Pie Chart</SelectItem>
-                      <SelectItem value="area">Area Chart</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex items-center space-x-2 pt-6">
-                  <input
-                    type="checkbox"
-                    id="show_legend"
-                    checked={formData.config.showLegend || false}
-                    onChange={(e) => updateConfig('showLegend', e.target.checked)}
-                  />
-                  <Label htmlFor="show_legend">Show Legend</Label>
+              {/* Widget-specific Configuration */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Widget Configuration</h3>
+                {formData.widget_type === 'chart' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="chart_type">Chart Type</Label>
+                      <Select
+                        value={formData.config.type || 'bar'}
+                        onValueChange={(value) => updateConfig('type', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="bar">Bar Chart</SelectItem>
+                          <SelectItem value="line">Line Chart</SelectItem>
+                          <SelectItem value="pie">Pie Chart</SelectItem>
+                          <SelectItem value="area">Area Chart</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center space-x-2 pt-6">
+                      <input
+                        type="checkbox"
+                        id="show_legend"
+                        checked={formData.config.showLegend || false}
+                        onChange={(e) => updateConfig('showLegend', e.target.checked)}
+                      />
+                      <Label htmlFor="show_legend">Show Legend</Label>
+                    </div>
+                  </div>
+                )}
+
+                {formData.widget_type === 'metric' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="show_trend"
+                        checked={formData.config.showTrend || false}
+                        onChange={(e) => updateConfig('showTrend', e.target.checked)}
+                      />
+                      <Label htmlFor="show_trend">Show Trend</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="show_progress"
+                        checked={formData.config.showProgress || false}
+                        onChange={(e) => updateConfig('showProgress', e.target.checked)}
+                      />
+                      <Label htmlFor="show_progress">Show Progress</Label>
+                    </div>
+                  </div>
+                )}
+
+                {formData.widget_type === 'timeline' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="max_events">Max Events</Label>
+                      <Input
+                        id="max_events"
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={formData.config.maxEvents || 10}
+                        onChange={(e) => updateConfig('maxEvents', parseInt(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="group_by">Group By</Label>
+                      <Select
+                        value={formData.config.groupBy || 'day'}
+                        onValueChange={(value) => updateConfig('groupBy', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hour">Hour</SelectItem>
+                          <SelectItem value="day">Day</SelectItem>
+                          <SelectItem value="week">Week</SelectItem>
+                          <SelectItem value="month">Month</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Data Source */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Data Source</h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="data_table">Table</Label>
+                    <Select
+                      value={formData.data_source.table || ''}
+                      onValueChange={(value) => updateDataSource('table', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a table" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="servers">Servers</SelectItem>
+                        <SelectItem value="racks">Racks</SelectItem>
+                        <SelectItem value="rooms">Rooms</SelectItem>
+                        <SelectItem value="data_centers">Data Centers</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Field dropdown, shown only if a table is selected */}
+                  {formData.data_source.table && (
+                    <div className="space-y-2">
+                      <Label htmlFor="field">Field</Label>
+                      <Select
+                        value={formData.data_source.field || ''}
+                        onValueChange={(value) => updateDataSource('field', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a field" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(tableFields[formData.data_source.table] || []).map((field) => (
+                            <SelectItem key={field} value={field}>{field}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="aggregation">Aggregation</Label>
+                    <Select
+                      value={formData.data_source.aggregation || 'count'}
+                      onValueChange={(value) => updateDataSource('aggregation', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="count">Count</SelectItem>
+                        <SelectItem value="sum">Sum</SelectItem>
+                        <SelectItem value="avg">Average</SelectItem>
+                        <SelectItem value="min">Minimum</SelectItem>
+                        <SelectItem value="max">Maximum</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
-            )}
+            </>
+          )}
 
-            {formData.widget_type === 'metric' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="show_trend"
-                    checked={formData.config.showTrend || false}
-                    onChange={(e) => updateConfig('showTrend', e.target.checked)}
-                  />
-                  <Label htmlFor="show_trend">Show Trend</Label>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="show_progress"
-                    checked={formData.config.showProgress || false}
-                    onChange={(e) => updateConfig('showProgress', e.target.checked)}
-                  />
-                  <Label htmlFor="show_progress">Show Progress</Label>
-                </div>
-              </div>
-            )}
-
-            {formData.widget_type === 'timeline' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="max_events">Max Events</Label>
-                  <Input
-                    id="max_events"
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={formData.config.maxEvents || 10}
-                    onChange={(e) => updateConfig('maxEvents', parseInt(e.target.value))}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="group_by">Group By</Label>
-                  <Select
-                    value={formData.config.groupBy || 'day'}
-                    onValueChange={(value) => updateConfig('groupBy', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hour">Hour</SelectItem>
-                      <SelectItem value="day">Day</SelectItem>
-                      <SelectItem value="week">Week</SelectItem>
-                      <SelectItem value="month">Month</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Data Source */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Data Source</h3>
-            
+          {/* Server Selection - Only show for servers table or for metric/gauge/stat widgets, but not for chart/timeline */}
+          {(formData.data_source.table === 'servers' && !(formData.widget_type === 'chart' || formData.widget_type === 'timeline')) || (formData.widget_type === 'metric' || formData.widget_type === 'gauge' || formData.widget_type === 'stat') ? (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="data_table">Table</Label>
-                <Select
-                  value={formData.data_source.table || ''}
-                  onValueChange={(value) => updateDataSource('table', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a table" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="servers">Servers</SelectItem>
-                    <SelectItem value="racks">Racks</SelectItem>
-                    <SelectItem value="rooms">Rooms</SelectItem>
-                    <SelectItem value="data_centers">Data Centers</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Field dropdown, shown only if a table is selected */}
-              {formData.data_source.table && (
-                <div className="space-y-2">
-                  <Label htmlFor="field">Field</Label>
-                  <Select
-                    value={formData.data_source.field || ''}
-                    onValueChange={(value) => updateDataSource('field', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a field" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(tableFields[formData.data_source.table] || []).map((field) => (
-                        <SelectItem key={field} value={field}>{field}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="aggregation">Aggregation</Label>
-                <Select
-                  value={formData.data_source.aggregation || 'count'}
-                  onValueChange={(value) => updateDataSource('aggregation', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="count">Count</SelectItem>
-                    <SelectItem value="sum">Sum</SelectItem>
-                    <SelectItem value="avg">Average</SelectItem>
-                    <SelectItem value="min">Minimum</SelectItem>
-                    <SelectItem value="max">Maximum</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Server Filters - Only show for servers table */}
-          {formData.data_source.table === 'servers' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Server Filters</h3>
+              <h3 className="text-lg font-medium">Server Selection</h3>
               <ServerFilterComponent
                 filters={formData.server_filters}
                 onChange={updateServerFilters}
                 onValidate={handleFilterValidation}
               />
             </div>
-          )}
+          ) : null}
         </div>
 
         <DialogFooter>
