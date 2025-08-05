@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface EnumColor {
@@ -22,9 +22,10 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
   const [colorMap, setColorMap] = useState<EnumColorMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<number>(Date.now()); // Force re-render timestamp
 
   // Fetch colors using Supabase Edge Function
-  const fetchColors = async () => {
+  const fetchColors = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -58,12 +59,21 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
       const enumColors = data?.data || [];
       setColors(enumColors);
       
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🎨 Fetched ${enumColors.length} colors for ${enumType}:`, enumColors);
+      }
+      
       // Create color map for easy lookup
       const map: EnumColorMap = {};
       enumColors.forEach((color: EnumColor) => {
         map[color.enum_value] = color.color_hex;
       });
       setColorMap(map);
+      setLastUpdate(Date.now()); // Force re-render by updating timestamp
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🎨 Updated colorMap for ${enumType}:`, map);
+      }
 
     } catch (err) {
       console.error('Error fetching enum colors:', err);
@@ -71,7 +81,7 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
     } finally {
       setLoading(false);
     }
-  };
+  }, [enumType]);
 
   // Create or update a color using Supabase Edge Function
   const saveColor = async (
@@ -94,7 +104,7 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
         throw new Error('Authentication required. Please sign in.');
       }
 
-      const { error: saveError } = await supabase.functions.invoke('enum-colors', {
+      const { data: saveResponse, error: saveError } = await supabase.functions.invoke('enum-colors', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -108,7 +118,19 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
       });
 
       if (saveError) {
+        console.error('🎨 Error saving color:', saveError);
         throw saveError;
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎨 Color save response:', saveResponse);
+        console.log('🎨 Full save request details:', {
+          enumType,
+          enumValue,
+          colorHex,
+          colorName,
+          responseData: saveResponse?.data
+        });
       }
 
       // Refresh colors after save
@@ -205,7 +227,11 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
 
   // Get color for a specific enum value
   const getColor = (enumValue: string): string | undefined => {
-    return colorMap[enumValue];
+    const color = colorMap[enumValue];
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🎨 getColor for "${enumValue}" (${enumType}):`, color, 'from colorMap:', colorMap);
+    }
+    return color;
   };
 
   // Get all colors for a specific enum type
@@ -237,13 +263,37 @@ export function useEnumColors(enumType?: 'allocation_type' | 'model_type') {
 
   useEffect(() => {
     fetchColors();
-  }, [enumType]);
+    
+    // Listen for color updates from other components
+    const handleColorUpdate = (event: CustomEvent) => {
+      const { enumType: updatedEnumType } = event.detail;
+      console.log('🎨 Color update event received for:', updatedEnumType, 'current hook enumType:', enumType);
+      
+      // Refresh colors if:
+      // 1. This hook has no specific enum type (listens to all)
+      // 2. The event has no specific enum type (affects all)
+      // 3. The enum types match
+      if (!enumType || !updatedEnumType || enumType === updatedEnumType) {
+        console.log('🎨 Refreshing colors for hook with enumType:', enumType);
+        fetchColors();
+      } else {
+        console.log('🎨 Ignoring color update - enum type mismatch');
+      }
+    };
+    
+    window.addEventListener('colorsUpdated', handleColorUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('colorsUpdated', handleColorUpdate as EventListener);
+    };
+  }, [enumType, fetchColors]);
 
   return {
     colors,
     colorMap,
     loading,
     error,
+    lastUpdate, // Include timestamp for components that need to force re-renders
     fetchColors,
     saveColor,
     updateColor,

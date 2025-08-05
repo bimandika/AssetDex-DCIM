@@ -79,6 +79,8 @@ async function handleGet(supabaseClient: any, url: URL) {
   const enumType = url.searchParams.get('enum_type')
   const enumValue = url.searchParams.get('enum_value')
   
+  console.log('GET request:', { enumType, enumValue });
+  
   let query = supabaseClient
     .from('enum_colors')
     .select('*')
@@ -97,12 +99,14 @@ async function handleGet(supabaseClient: any, url: URL) {
   const { data, error } = await query
 
   if (error) {
+    console.error('GET query error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 
+  console.log(`GET response: Found ${data?.length || 0} colors:`, data);
   return new Response(JSON.stringify({ data }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })
@@ -115,6 +119,7 @@ async function handlePost(supabaseClient: any, req: Request, user: any) {
   console.log('POST request:', { enum_type, enum_value, color_hex, color_name, user_id: user.id });
 
   if (!enum_type || !enum_value || !color_hex) {
+    console.error('Missing required fields:', { enum_type, enum_value, color_hex });
     return new Response(JSON.stringify({ 
       error: 'Missing required fields: enum_type, enum_value, color_hex' 
     }), {
@@ -125,6 +130,7 @@ async function handlePost(supabaseClient: any, req: Request, user: any) {
 
   // Validate hex color format
   if (!/^#[0-9A-F]{6}$/i.test(color_hex)) {
+    console.error('Invalid color format:', color_hex);
     return new Response(JSON.stringify({ 
       error: 'Invalid color_hex format. Expected #RRGGBB' 
     }), {
@@ -133,29 +139,79 @@ async function handlePost(supabaseClient: any, req: Request, user: any) {
     })
   }
 
-  // User is already authenticated at the top level
-  const { data, error } = await supabaseClient
+  // Prepare upsert data
+  const upsertData = {
+    enum_type,
+    enum_value,
+    color_hex,
+    color_name,
+    user_id: user.id,
+    created_by: user.id,
+    is_active: true
+  };
+  
+  console.log('Upserting data:', upsertData);
+
+  // First, check if there's an existing record for this enum_type + enum_value
+  const { data: existingRecords, error: findError } = await supabaseClient
     .from('enum_colors')
-    .upsert({
-      enum_type,
-      enum_value,
-      color_hex,
-      color_name,
-      user_id: user.id,
-      created_by: user.id,
-      is_active: true
-    })
-    .select()
-    .single()
+    .select('id, user_id')
+    .eq('enum_type', enum_type)
+    .eq('enum_value', enum_value)
+    .eq('is_active', true);
+
+  if (findError) {
+    console.error('Error finding existing records:', findError);
+    return new Response(JSON.stringify({ error: findError.message }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  let data, error;
+
+  if (existingRecords && existingRecords.length > 0) {
+    // Update the existing record
+    const existingRecord = existingRecords[0];
+    console.log('Updating existing record:', existingRecord.id);
+    
+    const updateResult = await supabaseClient
+      .from('enum_colors')
+      .update({
+        color_hex,
+        color_name,
+        user_id: user.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existingRecord.id)
+      .select()
+      .single();
+    
+    data = updateResult.data;
+    error = updateResult.error;
+  } else {
+    // Create a new record
+    console.log('Creating new record');
+    
+    const insertResult = await supabaseClient
+      .from('enum_colors')
+      .insert(upsertData)
+      .select()
+      .single();
+    
+    data = insertResult.data;
+    error = insertResult.error;
+  }
 
   if (error) {
-    console.error('Upsert error:', error);
+    console.error('Operation error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 
+  console.log('Successfully saved color:', data);
   return new Response(JSON.stringify({ data }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })

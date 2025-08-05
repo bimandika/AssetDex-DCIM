@@ -46,3 +46,9 @@ create policy "Anyone can upload an avatar."
 create policy "Anyone can update an avatar."
   on storage.objects for update
   with check ( bucket_id = 'avatars' );
+
+-- ============================================================================
+-- SAMPLE DATA FOR CUSTOM DASHBOARD DEMONSTRATION
+-- ============================================================================
+-- Load comprehensive sample data for dashboard demonstration
+-- Run sample-dashboard-data.sql after the main migration for realistic data

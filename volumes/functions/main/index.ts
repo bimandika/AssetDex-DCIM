@@ -99,6 +99,18 @@ serve(async (req) => {
       const { handler } = await import('../update-rack-description/index.ts')
       return await handler(req)
     }
+
+    // Dashboard manager endpoint
+    if (url.pathname === '/dashboard-manager' && ["GET", "POST", "PUT", "DELETE", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../dashboard-manager/index.ts')
+      return await handler(req)
+    }
+
+    // Widget data endpoint
+    if (url.pathname === '/widget-data' && ["GET", "POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../widget-data/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,

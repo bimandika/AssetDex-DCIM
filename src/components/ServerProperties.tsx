@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTableSchema } from "@/hooks/useTableSchema";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerEnums } from "@/hooks/useServerEnums";
+import { useEnumColors } from "@/hooks/useEnumColors";
 import BulkImport from "@/components/property-management/BulkImport";
 
 export interface ServerProperty {
@@ -82,6 +83,36 @@ const ServerProperties = () => {
   });
   const { toast } = useToast();
   const { addEnumValue, refreshEnums } = useServerEnums();
+  const { getColorsForType, fetchColors, saveColor } = useEnumColors();
+
+  // Helper function to get color for enum values
+  const getEnumValueColor = (propertyKey: string, enumValue: string): string => {
+    const enumType = propertyKey === 'allocation' ? 'allocation_type' : 
+                     propertyKey === 'model' ? 'model_type' : null;
+    
+    if (!enumType) return '#e2e8f0'; // default gray color
+    
+    const colors = getColorsForType(enumType);
+    const colorEntry = colors.find(c => c.enum_value === enumValue);
+    return colorEntry?.color_hex || '#e2e8f0';
+  };
+
+  // Helper function to determine text color based on background
+  const getContrastTextColor = (backgroundColor: string): string => {
+    // Remove # if present
+    const hex = backgroundColor.replace('#', '');
+    
+    // Convert to RGB
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Return black for light backgrounds, white for dark backgrounds
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+  };
 
   // Merge dynamic columns with default properties
   useEffect(() => {
@@ -449,6 +480,7 @@ const ServerProperties = () => {
   const openAddEnumDialog = (property: ServerProperty) => {
     setSelectedProperty(property);
     setNewEnumValue("");
+    setNewEnumColor("#3B82F6"); // Reset color to default
     
     // Special handling for rack properties - open rack dialog directly
     if (property.key === 'rack') {
@@ -475,6 +507,16 @@ const ServerProperties = () => {
   const [newRackName, setNewRackName] = useState("");
   const [newRackDescription, setNewRackDescription] = useState("");
 
+  // Color management states
+  const [newEnumColor, setNewEnumColor] = useState("#3B82F6"); // Default blue color
+  const [colorRefreshKey, setColorRefreshKey] = useState(0); // Force re-render when colors change
+  
+  // Individual enum color editing states
+  const [isEditColorDialogOpen, setIsEditColorDialogOpen] = useState(false);
+  const [editingEnumValue, setEditingEnumValue] = useState("");
+  const [editingEnumProperty, setEditingEnumProperty] = useState<ServerProperty | null>(null);
+  const [editingColor, setEditingColor] = useState("#3B82F6");
+
   // Handler to add enum value using global context
   const handleAddEnumValue = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -482,6 +524,31 @@ const ServerProperties = () => {
     
     try {
       await addEnumValue(selectedProperty.key, newEnumValue);
+      
+      // Save color for allocation and model properties
+      if ((selectedProperty.key === 'allocation' || selectedProperty.key === 'model') && newEnumColor) {
+        const enumType = selectedProperty.key === 'allocation' ? 'allocation_type' : 'model_type';
+        try {
+          const success = await saveColor(enumType, newEnumValue, newEnumColor, `${newEnumValue} Color`);
+          
+          if (success) {
+            // Refresh colors immediately to show the new color
+            await fetchColors();
+            setColorRefreshKey(prev => prev + 1); // Force re-render to show colors
+            console.log('Colors refreshed after saving new color');
+            
+            // Dispatch event for cross-component synchronization
+            window.dispatchEvent(new CustomEvent('colorsUpdated', { 
+              detail: { enumType } 
+            }));
+            console.log('🎨 ServerProperties: Dispatched colorsUpdated event for', enumType);
+          }
+        } catch (colorError) {
+          console.error('Error saving color:', colorError);
+          // Don't fail the entire operation if color saving fails
+        }
+      }
+      
       await refreshEnums(); // Ensure enums are refreshed after add
       
       // Update local property options after refresh
@@ -521,6 +588,7 @@ const ServerProperties = () => {
       toast({ title: 'Option Added', description: `Added ${newEnumValue} to ${selectedProperty.key}` });
       setIsAddEnumDialogOpen(false);
       setNewEnumValue("");
+      setNewEnumColor("#3B82F6"); // Reset color to default
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
@@ -600,6 +668,58 @@ const ServerProperties = () => {
     setSelectedRackName(rackName);
     setRackDescription(rackDescriptions[rackName] || "");
     setIsRackDescriptionDialogOpen(true);
+  };
+
+  // Handle enum color edit
+  const handleEditEnumColor = (property: ServerProperty, enumValue: string) => {
+    setEditingEnumProperty(property);
+    setEditingEnumValue(enumValue);
+    const currentColor = getEnumValueColor(property.key, enumValue);
+    setEditingColor(currentColor);
+    setIsEditColorDialogOpen(true);
+  };
+
+  // Save edited enum color
+  const handleSaveEditedColor = async () => {
+    if (!editingEnumProperty || !editingEnumValue || !editingColor) return;
+
+    try {
+      const enumType = editingEnumProperty.key === 'allocation' ? 'allocation_type' : 'model_type';
+      
+      const success = await saveColor(enumType, editingEnumValue, editingColor, `${editingEnumValue} Color`);
+      
+      if (success) {
+        // Refresh colors immediately to show the updated color
+        await fetchColors();
+        setColorRefreshKey(prev => prev + 1); // Force re-render to show colors
+        
+        // Dispatch event for cross-component synchronization
+        window.dispatchEvent(new CustomEvent('colorsUpdated', { 
+          detail: { enumType } 
+        }));
+        console.log('🎨 ServerProperties: Dispatched colorsUpdated event for', enumType);
+        
+        toast({ 
+          title: 'Color Updated', 
+          description: `Updated color for ${editingEnumValue}` 
+        });
+        
+        setIsEditColorDialogOpen(false);
+        setEditingEnumValue("");
+        setEditingEnumProperty(null);
+        setEditingColor("#3B82F6");
+      } else {
+        throw new Error('Failed to save color');
+      }
+      
+    } catch (error: any) {
+      console.error('Error updating color:', error);
+      toast({ 
+        title: 'Error', 
+        description: 'Failed to update color', 
+        variant: 'destructive' 
+      });
+    }
   };
 
   // Handle add rack with description
@@ -930,7 +1050,18 @@ const ServerProperties = () => {
                           <div className="flex flex-wrap gap-2 mt-2 items-center justify-start">
                             {property.options?.map((value) => (
                               <div key={value} className="flex items-center gap-1">
-                                <Badge variant="secondary" className="px-2 py-1 rounded-full text-xs font-normal">
+                                <Badge 
+                                  variant="secondary" 
+                                  className="px-2 py-1 rounded-full text-xs font-normal"
+                                  key={`${value}-${colorRefreshKey}`} // Force re-render when colors change
+                                  style={
+                                    (property.key === 'model' || property.key === 'allocation') ? {
+                                      backgroundColor: getEnumValueColor(property.key, value),
+                                      color: getContrastTextColor(getEnumValueColor(property.key, value)),
+                                      border: `1px solid ${getEnumValueColor(property.key, value)}`
+                                    } : {}
+                                  }
+                                >
                                   {value}
                                   {property.key === 'rack' && rackDescriptions[value] && (
                                     <span className="ml-1 text-slate-500">({rackDescriptions[value]})</span>
@@ -948,6 +1079,18 @@ const ServerProperties = () => {
                                     <Edit3 className="h-3 w-3" />
                                   </Button>
                                 )}
+                                {(property.key === 'model' || property.key === 'allocation') && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditEnumColor(property, value)}
+                                    className="h-6 w-6 p-0 hover:bg-slate-100"
+                                    title={`Edit color for ${value}`}
+                                  >
+                                    <Edit3 className="h-3 w-3" />
+                                  </Button>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -956,16 +1099,18 @@ const ServerProperties = () => {
                       {/* Add Option button in top right above Required/System */}
                       {property.is_enum && (
                         <div className="flex flex-col items-end justify-start min-w-[100px]">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openAddEnumDialog(property)}
-                            className="flex items-center justify-center h-7 text-xs px-2 mb-2"
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Add Option
-                          </Button>
+                          <div className="flex gap-2 mb-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openAddEnumDialog(property)}
+                              className="flex items-center justify-center h-7 text-xs px-2"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Option
+                            </Button>
+                          </div>
                           <div className="flex items-center space-x-2 mt-2">
                             <Badge variant="secondary" className="text-xs">Required</Badge>
                             {property.isSystem && (
@@ -1041,12 +1186,56 @@ const ServerProperties = () => {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddEnumValue} className="space-y-4">
-            <Input
-              value={newEnumValue}
-              onChange={(e) => setNewEnumValue(e.target.value)}
-              placeholder="Enter new option"
-            />
-            <Button type="submit">Add</Button>
+            <div className="space-y-2">
+              <Label htmlFor="enumValue">Option Name</Label>
+              <Input
+                id="enumValue"
+                value={newEnumValue}
+                onChange={(e) => setNewEnumValue(e.target.value)}
+                placeholder="Enter new option"
+                required
+              />
+            </div>
+            
+            {/* Color picker for allocation and model properties */}
+            {(selectedProperty?.key === 'allocation' || selectedProperty?.key === 'model') && (
+              <div className="space-y-2">
+                <Label htmlFor="enumColor">Color</Label>
+                <div className="flex items-center space-x-3">
+                  <input
+                    id="enumColor"
+                    type="color"
+                    value={newEnumColor}
+                    onChange={(e) => setNewEnumColor(e.target.value)}
+                    className="w-12 h-8 rounded border border-gray-300 cursor-pointer"
+                  />
+                  <Input
+                    value={newEnumColor}
+                    onChange={(e) => setNewEnumColor(e.target.value)}
+                    placeholder="#3B82F6"
+                    className="w-24 font-mono text-sm"
+                  />
+                  <div className="text-sm text-gray-500">
+                    Choose a color for this {selectedProperty?.name.toLowerCase()} value
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex justify-end space-x-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  setIsAddEnumDialogOpen(false);
+                  setNewEnumValue("");
+                  setNewEnumColor("#3B82F6");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Add Option</Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
@@ -1145,6 +1334,74 @@ const ServerProperties = () => {
               disabled={isSavingRackDescription}
             >
               {isSavingRackDescription ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Color Dialog */}
+      <Dialog open={isEditColorDialogOpen} onOpenChange={setIsEditColorDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Edit3 className="h-5 w-5" />
+              <span>Edit Color</span>
+            </DialogTitle>
+            <DialogDescription>
+              Update the color for "{editingEnumValue}" in {editingEnumProperty?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editColor">Color</Label>
+              <div className="flex items-center space-x-3">
+                <input
+                  id="editColor"
+                  type="color"
+                  value={editingColor}
+                  onChange={(e) => setEditingColor(e.target.value)}
+                  className="w-12 h-8 rounded border border-gray-300 cursor-pointer"
+                />
+                <Input
+                  value={editingColor}
+                  onChange={(e) => setEditingColor(e.target.value)}
+                  placeholder="#3B82F6"
+                  className="w-24 font-mono text-sm"
+                />
+                <div className="text-sm text-gray-500">
+                  Choose a new color
+                </div>
+              </div>
+            </div>
+            {/* Preview */}
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <Badge 
+                variant="secondary" 
+                className="px-3 py-1 rounded-full text-sm font-normal"
+                style={{
+                  backgroundColor: editingColor,
+                  color: getContrastTextColor(editingColor),
+                  border: `1px solid ${editingColor}`
+                }}
+              >
+                {editingEnumValue}
+              </Badge>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setIsEditColorDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleSaveEditedColor}
+            >
+              Save Color
             </Button>
           </div>
         </DialogContent>

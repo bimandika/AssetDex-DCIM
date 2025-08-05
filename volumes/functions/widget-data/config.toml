@@ -1,0 +1,7 @@
+# Enable CORS and JWT verification for widget-data function
+[functions.widget-data]
+cors = true
+verify_jwt = true
+allowed_origins = ["*"]
+allowed_headers = ["Authorization", "Content-Type", "apikey", "x-client-info"]
+allowed_methods = ["GET", "POST", "OPTIONS"]

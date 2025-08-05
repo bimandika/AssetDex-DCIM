@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Server, Database, Settings, ArrowUp, ArrowDown, LayoutDashboard, Wrench } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import DashboardBuilder from "./dashboard/DashboardBuilder";
+import CustomDashboard from "./dashboard/CustomDashboard";
 
 const mockData = {
   totalServers: 1247,
@@ -201,7 +201,7 @@ const Dashboard = () => {
         </TabsContent>
 
         <TabsContent value="custom" className="space-y-6">
-          <DashboardBuilder />
+          <CustomDashboard />
         </TabsContent>
       </Tabs>
     </div>

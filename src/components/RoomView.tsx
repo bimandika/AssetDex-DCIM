@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 import { useRoomData } from "@/hooks/useRoomData";
 import { useEnumColors } from "@/hooks/useEnumColors";
@@ -54,8 +54,30 @@ const RoomView = () => {
   const { racksData, loading, error } = useRoomData(filters);
   
   // Enum colors hook for coloring servers by allocation and model
-  const { getColor: getAllocationColor } = useEnumColors('allocation_type');
-  const { getColor: getModelColor } = useEnumColors('model_type');
+  const { getColor: getAllocationColor, lastUpdate: allocationLastUpdate } = useEnumColors('allocation_type');
+  const { getColor: getModelColor, lastUpdate: modelLastUpdate } = useEnumColors('model_type');
+  
+  // Force re-render when colors are updated from other components
+  const [colorRefreshKey, setColorRefreshKey] = useState(0);
+  
+  useEffect(() => {
+    const handleColorUpdate = () => {
+      console.log('🎨 RoomView received color update event, forcing re-render');
+      setColorRefreshKey(prev => prev + 1);
+    };
+    
+    window.addEventListener('colorsUpdated', handleColorUpdate);
+    
+    return () => {
+      window.removeEventListener('colorsUpdated', handleColorUpdate);
+    };
+  }, []);
+  
+  // Also respond to changes in the lastUpdate timestamps from the hooks
+  useEffect(() => {
+    console.log('🎨 RoomView detected color update via timestamps, allocation:', allocationLastUpdate, 'model:', modelLastUpdate);
+    setColorRefreshKey(prev => prev + 1);
+  }, [allocationLastUpdate, modelLastUpdate]);
   
   // Debug logical view data in development
   if (racksData.length > 0) {
@@ -105,6 +127,9 @@ const RoomView = () => {
 
   // Helper function to get server background color based on enum colors
   const getServerBackgroundColor = (server: ServerInfo) => {
+    // Use lastUpdate timestamps to ensure this function re-evaluates when colors change
+    const refreshTrigger = colorRefreshKey + allocationLastUpdate + modelLastUpdate;
+    
     if (viewMode === 'logical' && server.allocation) {
       const allocationColor = getAllocationColor(server.allocation);
       if (allocationColor && allocationColor !== '#ffffff' && allocationColor !== '#000000') {

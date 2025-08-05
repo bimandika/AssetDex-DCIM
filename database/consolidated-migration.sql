@@ -2214,3 +2214,1323 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_default_rack() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_rack_location(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_all_racks() TO authenticated;
+
+-- ============================================================================
+-- 15. CUSTOM DASHBOARD SYSTEM
+-- ============================================================================
+
+-- Dashboard status enum
+CREATE TYPE public.dashboard_status AS ENUM ('active', 'archived', 'draft');
+
+-- Widget types enum  
+CREATE TYPE public.widget_type AS ENUM ('metric', 'chart', 'table', 'timeline', 'stat', 'gauge');
+
+-- Chart types enum
+CREATE TYPE public.chart_type AS ENUM ('bar', 'line', 'pie', 'area', 'timeline');
+
+-- ============================================================================
+-- 15.1 DASHBOARD TABLES
+-- ============================================================================
+
+-- Main dashboards table
+CREATE TABLE public.dashboards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    layout JSONB DEFAULT '[]'::jsonb,
+    filters JSONB DEFAULT '{}'::jsonb,
+    settings JSONB DEFAULT '{}'::jsonb,
+    status public.dashboard_status DEFAULT 'draft',
+    is_public BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT dashboards_name_user_unique UNIQUE (name, user_id),
+    CONSTRAINT dashboards_name_length CHECK (LENGTH(name) >= 1 AND LENGTH(name) <= 255)
+);
+
+-- Dashboard widgets table
+CREATE TABLE public.dashboard_widgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dashboard_id UUID NOT NULL REFERENCES public.dashboards(id) ON DELETE CASCADE,
+    widget_type public.widget_type NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    position_x INTEGER NOT NULL DEFAULT 0,
+    position_y INTEGER NOT NULL DEFAULT 0,
+    width INTEGER NOT NULL DEFAULT 4,
+    height INTEGER NOT NULL DEFAULT 3,
+    config JSONB DEFAULT '{}'::jsonb,
+    data_source JSONB DEFAULT '{}'::jsonb,
+    filters JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT widget_position_positive CHECK (position_x >= 0 AND position_y >= 0),
+    CONSTRAINT widget_size_positive CHECK (width > 0 AND height > 0),
+    CONSTRAINT widget_title_length CHECK (LENGTH(title) >= 1 AND LENGTH(title) <= 255)
+);
+
+-- Widget data sources configuration table
+CREATE TABLE public.widget_data_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    widget_id UUID NOT NULL REFERENCES public.dashboard_widgets(id) ON DELETE CASCADE,
+    table_name VARCHAR(255) NOT NULL,
+    fields JSONB DEFAULT '[]'::jsonb,
+    group_by VARCHAR(255),
+    aggregation VARCHAR(50),
+    filters JSONB DEFAULT '[]'::jsonb,
+    date_range JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    CONSTRAINT valid_table_name CHECK (table_name IN ('servers', 'rack_metadata')),
+    CONSTRAINT valid_aggregation CHECK (aggregation IS NULL OR aggregation IN ('count', 'sum', 'avg', 'min', 'max'))
+);
+
+-- ============================================================================
+-- 15.2 DASHBOARD INDEXES
+-- ============================================================================
+
+-- Dashboards indexes
+CREATE INDEX idx_dashboards_user_id ON public.dashboards(user_id);
+CREATE INDEX idx_dashboards_status ON public.dashboards(status);
+CREATE INDEX idx_dashboards_created_at ON public.dashboards(created_at);
+CREATE INDEX idx_dashboards_public ON public.dashboards(is_public) WHERE is_public = true;
+
+-- Widgets indexes
+CREATE INDEX idx_dashboard_widgets_dashboard_id ON public.dashboard_widgets(dashboard_id);
+CREATE INDEX idx_dashboard_widgets_type ON public.dashboard_widgets(widget_type);
+CREATE INDEX idx_dashboard_widgets_position ON public.dashboard_widgets(position_x, position_y);
+
+-- Data sources indexes
+CREATE INDEX idx_widget_data_sources_widget_id ON public.widget_data_sources(widget_id);
+CREATE INDEX idx_widget_data_sources_table ON public.widget_data_sources(table_name);
+
+-- ============================================================================
+-- 15.3 DASHBOARD ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+
+-- Enable RLS on all dashboard tables
+ALTER TABLE public.dashboards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_widgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.widget_data_sources ENABLE ROW LEVEL SECURITY;
+
+-- Dashboard policies
+CREATE POLICY "Users can view their own dashboards"
+    ON public.dashboards FOR SELECT
+    USING (auth.uid() = user_id OR is_public = true);
+
+CREATE POLICY "Users can create their own dashboards"
+    ON public.dashboards FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own dashboards"
+    ON public.dashboards FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own dashboards"
+    ON public.dashboards FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- Widget policies (inherit from dashboard ownership)
+CREATE POLICY "Users can view widgets from accessible dashboards"
+    ON public.dashboard_widgets FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboards d
+            WHERE d.id = dashboard_id
+            AND (d.user_id = auth.uid() OR d.is_public = true)
+        )
+    );
+
+CREATE POLICY "Users can create widgets in their own dashboards"
+    ON public.dashboard_widgets FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.dashboards d
+            WHERE d.id = dashboard_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update widgets in their own dashboards"
+    ON public.dashboard_widgets FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboards d
+            WHERE d.id = dashboard_id
+            AND d.user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.dashboards d
+            WHERE d.id = dashboard_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete widgets from their own dashboards"
+    ON public.dashboard_widgets FOR DELETE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboards d
+            WHERE d.id = dashboard_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+-- Data source policies (inherit from widget ownership)
+CREATE POLICY "Users can view data sources from accessible widgets"
+    ON public.widget_data_sources FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboard_widgets w
+            JOIN public.dashboards d ON d.id = w.dashboard_id
+            WHERE w.id = widget_id
+            AND (d.user_id = auth.uid() OR d.is_public = true)
+        )
+    );
+
+CREATE POLICY "Users can create data sources for their own widgets"
+    ON public.widget_data_sources FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.dashboard_widgets w
+            JOIN public.dashboards d ON d.id = w.dashboard_id
+            WHERE w.id = widget_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update data sources for their own widgets"
+    ON public.widget_data_sources FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboard_widgets w
+            JOIN public.dashboards d ON d.id = w.dashboard_id
+            WHERE w.id = widget_id
+            AND d.user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.dashboard_widgets w
+            JOIN public.dashboards d ON d.id = w.dashboard_id
+            WHERE w.id = widget_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete data sources from their own widgets"
+    ON public.widget_data_sources FOR DELETE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.dashboard_widgets w
+            JOIN public.dashboards d ON d.id = w.dashboard_id
+            WHERE w.id = widget_id
+            AND d.user_id = auth.uid()
+        )
+    );
+
+-- ============================================================================
+-- 15.4 DASHBOARD FUNCTIONS
+-- ============================================================================
+
+-- Update timestamp trigger function
+CREATE OR REPLACE FUNCTION public.update_dashboard_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply update triggers
+CREATE TRIGGER update_dashboards_updated_at
+    BEFORE UPDATE ON public.dashboards
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_dashboard_updated_at();
+
+CREATE TRIGGER update_dashboard_widgets_updated_at
+    BEFORE UPDATE ON public.dashboard_widgets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_dashboard_updated_at();
+
+CREATE TRIGGER update_widget_data_sources_updated_at
+    BEFORE UPDATE ON public.widget_data_sources
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_dashboard_updated_at();
+
+-- Dashboard management functions
+CREATE OR REPLACE FUNCTION public.dashboard_create(
+    p_name VARCHAR(255),
+    p_description TEXT DEFAULT NULL,
+    p_layout JSONB DEFAULT '[]'::jsonb
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_dashboard_id UUID;
+BEGIN
+    INSERT INTO public.dashboards (name, description, user_id, layout)
+    VALUES (p_name, p_description, auth.uid(), p_layout)
+    RETURNING id INTO v_dashboard_id;
+    
+    RETURN v_dashboard_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.dashboard_update(
+    p_dashboard_id UUID,
+    p_name VARCHAR(255) DEFAULT NULL,
+    p_description TEXT DEFAULT NULL,
+    p_layout JSONB DEFAULT NULL,
+    p_filters JSONB DEFAULT NULL,
+    p_settings JSONB DEFAULT NULL,
+    p_status public.dashboard_status DEFAULT NULL
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.dashboards
+    SET 
+        name = COALESCE(p_name, name),
+        description = COALESCE(p_description, description),
+        layout = COALESCE(p_layout, layout),
+        filters = COALESCE(p_filters, filters),
+        settings = COALESCE(p_settings, settings),
+        status = COALESCE(p_status, status),
+        updated_at = NOW()
+    WHERE id = p_dashboard_id
+    AND user_id = auth.uid();
+    
+    RETURN FOUND;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.dashboard_delete(p_dashboard_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    DELETE FROM public.dashboards
+    WHERE id = p_dashboard_id
+    AND user_id = auth.uid();
+    
+    RETURN FOUND;
+END;
+$$;
+
+-- Widget management functions
+CREATE OR REPLACE FUNCTION public.widget_create(
+    p_dashboard_id UUID,
+    p_widget_type public.widget_type,
+    p_title VARCHAR(255),
+    p_position_x INTEGER DEFAULT 0,
+    p_position_y INTEGER DEFAULT 0,
+    p_width INTEGER DEFAULT 4,
+    p_height INTEGER DEFAULT 3,
+    p_config JSONB DEFAULT '{}'::jsonb
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_widget_id UUID;
+BEGIN
+    -- Verify user owns the dashboard
+    IF NOT EXISTS (
+        SELECT 1 FROM public.dashboards
+        WHERE id = p_dashboard_id AND user_id = auth.uid()
+    ) THEN
+        RAISE EXCEPTION 'Dashboard not found or access denied';
+    END IF;
+    
+    INSERT INTO public.dashboard_widgets (
+        dashboard_id, widget_type, title, position_x, position_y, width, height, config
+    )
+    VALUES (
+        p_dashboard_id, p_widget_type, p_title, p_position_x, p_position_y, p_width, p_height, p_config
+    )
+    RETURNING id INTO v_widget_id;
+    
+    RETURN v_widget_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.widget_update(
+    p_widget_id UUID,
+    p_title VARCHAR(255) DEFAULT NULL,
+    p_position_x INTEGER DEFAULT NULL,
+    p_position_y INTEGER DEFAULT NULL,
+    p_width INTEGER DEFAULT NULL,
+    p_height INTEGER DEFAULT NULL,
+    p_config JSONB DEFAULT NULL,
+    p_data_source JSONB DEFAULT NULL,
+    p_filters JSONB DEFAULT NULL
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.dashboard_widgets
+    SET 
+        title = COALESCE(p_title, title),
+        position_x = COALESCE(p_position_x, position_x),
+        position_y = COALESCE(p_position_y, position_y),
+        width = COALESCE(p_width, width),
+        height = COALESCE(p_height, height),
+        config = COALESCE(p_config, config),
+        data_source = COALESCE(p_data_source, data_source),
+        filters = COALESCE(p_filters, filters),
+        updated_at = NOW()
+    WHERE id = p_widget_id
+    AND EXISTS (
+        SELECT 1 FROM public.dashboards d
+        WHERE d.id = dashboard_id AND d.user_id = auth.uid()
+    );
+    
+    RETURN FOUND;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.widget_delete(p_widget_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    DELETE FROM public.dashboard_widgets
+    WHERE id = p_widget_id
+    AND EXISTS (
+        SELECT 1 FROM public.dashboards d
+        WHERE d.id = dashboard_id AND d.user_id = auth.uid()
+    );
+    
+    RETURN FOUND;
+END;
+$$;
+
+-- Data query functions for widgets
+CREATE OR REPLACE FUNCTION public.get_server_data(
+    p_filters JSONB DEFAULT '[]'::jsonb,
+    p_group_by VARCHAR(255) DEFAULT NULL,
+    p_aggregation VARCHAR(50) DEFAULT 'count',
+    p_date_range JSONB DEFAULT '{}'::jsonb
+)
+RETURNS TABLE (
+    group_value TEXT,
+    aggregated_value NUMERIC,
+    record_count INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_sql TEXT;
+    v_where_clause TEXT := '';
+    v_group_clause TEXT := '';
+    v_select_clause TEXT;
+    v_filter JSONB;
+    v_date_start TEXT;
+    v_date_end TEXT;
+    array_element TEXT;
+BEGIN
+    -- Build WHERE clause from filters
+    IF jsonb_array_length(p_filters) > 0 THEN
+        v_where_clause := ' WHERE 1=1';
+        
+        FOR v_filter IN SELECT * FROM jsonb_array_elements(p_filters)
+        LOOP
+            IF v_filter->>'operator' = 'equals' THEN
+                v_where_clause := v_where_clause || ' AND ' || (v_filter->>'field') || ' = ' || quote_literal(v_filter->>'value');
+            ELSIF v_filter->>'operator' = 'contains' THEN
+                -- Cast enum fields to text for ILIKE operations
+                IF (v_filter->>'field') IN ('model', 'brand', 'allocation', 'status', 'device_type', 'operating_system', 'dc_site', 'dc_building', 'dc_floor', 'dc_room') THEN
+                    v_where_clause := v_where_clause || ' AND ' || (v_filter->>'field') || '::text ILIKE ' || quote_literal('%' || (v_filter->>'value') || '%');
+                ELSE
+                    v_where_clause := v_where_clause || ' AND ' || (v_filter->>'field') || ' ILIKE ' || quote_literal('%' || (v_filter->>'value') || '%');
+                END IF;
+            ELSIF v_filter->>'operator' = 'in' THEN
+                -- Handle array values for IN operator
+                IF jsonb_typeof(v_filter->'value') = 'array' THEN
+                    -- If value is a JSON array, extract elements and build IN clause
+                    v_where_clause := v_where_clause || ' AND ' || (v_filter->>'field') || ' IN (';
+                    FOR array_element IN SELECT jsonb_array_elements_text(v_filter->'value')
+                    LOOP
+                        v_where_clause := v_where_clause || quote_literal(array_element) || ',';
+                    END LOOP;
+                    -- Remove trailing comma and close parenthesis
+                    v_where_clause := rtrim(v_where_clause, ',') || ')';
+                ELSE
+                    -- Single value, treat as simple equality
+                    v_where_clause := v_where_clause || ' AND ' || (v_filter->>'field') || ' = ' || quote_literal(v_filter->>'value');
+                END IF;
+            END IF;
+        END LOOP;
+    END IF;
+    
+    -- Add date range filter if specified
+    IF p_date_range ? 'field' AND p_date_range ? 'start' AND p_date_range ? 'end' THEN
+        v_date_start := p_date_range->>'start';
+        v_date_end := p_date_range->>'end';
+        
+        IF v_where_clause = '' THEN
+            v_where_clause := ' WHERE ';
+        ELSE
+            v_where_clause := v_where_clause || ' AND ';
+        END IF;
+        
+        v_where_clause := v_where_clause || (p_date_range->>'field') || ' BETWEEN ' || 
+                         quote_literal(v_date_start) || ' AND ' || quote_literal(v_date_end);
+    END IF;
+    
+    -- Build SELECT and GROUP BY clauses
+    IF p_group_by IS NOT NULL THEN
+        v_select_clause := p_group_by || '::text as group_value';
+        v_group_clause := ' GROUP BY ' || p_group_by;
+    ELSE
+        v_select_clause := '''Total''::text as group_value';
+    END IF;
+    
+    -- Build aggregation
+    CASE p_aggregation
+        WHEN 'count' THEN
+            v_select_clause := v_select_clause || ', COUNT(*)::numeric as aggregated_value, COUNT(*)::integer as record_count';
+        WHEN 'sum' THEN
+            v_select_clause := v_select_clause || ', SUM(1)::numeric as aggregated_value, COUNT(*)::integer as record_count';
+        WHEN 'avg' THEN
+            v_select_clause := v_select_clause || ', AVG(1)::numeric as aggregated_value, COUNT(*)::integer as record_count';
+        ELSE
+            v_select_clause := v_select_clause || ', COUNT(*)::numeric as aggregated_value, COUNT(*)::integer as record_count';
+    END CASE;
+    
+    -- Build final query
+    v_sql := 'SELECT ' || v_select_clause || ' FROM public.servers' || v_where_clause || v_group_clause || ' ORDER BY group_value';
+    
+    -- Execute and return
+    RETURN QUERY EXECUTE v_sql;
+END;
+$$;
+
+-- Grant permissions for dashboard functions
+GRANT EXECUTE ON FUNCTION public.dashboard_create(VARCHAR(255), TEXT, JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dashboard_update(UUID, VARCHAR(255), TEXT, JSONB, JSONB, JSONB, public.dashboard_status) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dashboard_delete(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.widget_create(UUID, public.widget_type, VARCHAR(255), INTEGER, INTEGER, INTEGER, INTEGER, JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.widget_update(UUID, VARCHAR(255), INTEGER, INTEGER, INTEGER, INTEGER, JSONB, JSONB, JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.widget_delete(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_server_data(JSONB, VARCHAR(255), VARCHAR(50), JSONB) TO authenticated;
+
+-- ============================================================================
+-- 16. SAMPLE DASHBOARD DATA
+-- ============================================================================
+-- Add sample dashboards and widgets to demonstrate custom dashboard functionality
+-- Uses existing server data (300+ servers already in the system)
+
+-- Add sample dashboard with widgets to demonstrate the custom dashboard functionality
+INSERT INTO public.dashboards (
+    id, name, description, layout, filters, settings, status, is_public, user_id
+) VALUES (
+    gen_random_uuid(),
+    'Server Operations Dashboard',
+    'Comprehensive dashboard for server operations and monitoring',
+    '[]'::jsonb,
+    '{}'::jsonb,
+    '{
+        "theme": "default",
+        "autoRefresh": true,
+        "refreshInterval": 300,
+        "gridSize": 12
+    }'::jsonb,
+    'active',
+    true,
+    (SELECT id FROM auth.users LIMIT 1)  -- Assign to first available user
+) ON CONFLICT DO NOTHING;
+
+-- Add sample widgets for the dashboard
+INSERT INTO public.dashboard_widgets (
+    id, dashboard_id, widget_type, title, position_x, position_y, width, height, config, data_source, filters
+) VALUES 
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'Servers by Status',
+    0, 0, 4, 1,
+    '{
+        "type": "pie",
+        "showLegend": true,
+        "colors": ["#10b981", "#f59e0b", "#ef4444", "#6b7280", "#3b82f6"]
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "status",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'Servers by Data Center',
+    4, 0, 4, 1,
+    '{
+        "type": "bar",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "dc_site",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'metric',
+    'Total Servers',
+    8, 0, 4, 1,
+    '{
+        "showTrend": true,
+        "showProgress": false
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'Servers by Environment',
+    0, 1, 6, 1,
+    '{
+        "type": "doughnut",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "environment",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'timeline',
+    'Recent Server Deployments',
+    6, 1, 6, 1,
+    '{
+        "maxEvents": 10,
+        "groupBy": "day"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "orderBy": "created_at"
+    }'::jsonb,
+    '[
+        {
+            "field": "created_at", 
+            "operator": "gte", 
+            "value": "2024-07-01"
+        }
+    ]'::jsonb
+) ON CONFLICT DO NOTHING;
+
+-- Create a comprehensive infrastructure dashboard
+INSERT INTO public.dashboards (
+    id, name, description, layout, filters, settings, status, is_public, user_id
+) VALUES (
+    gen_random_uuid(),
+    'Infrastructure Overview',
+    'Executive dashboard showing overall infrastructure health and metrics',
+    '[]'::jsonb,
+    '{}'::jsonb,
+    '{
+        "theme": "executive",
+        "autoRefresh": true,
+        "refreshInterval": 60,
+        "gridSize": 12
+    }'::jsonb,
+    'active',
+    true,
+    (SELECT id FROM auth.users LIMIT 1)
+) ON CONFLICT DO NOTHING;
+
+-- Add infrastructure widgets
+INSERT INTO public.dashboard_widgets (
+    id, dashboard_id, widget_type, title, position_x, position_y, width, height, config, data_source, filters
+) VALUES 
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'chart',
+    'Hardware Distribution by Brand',
+    0, 0, 6, 1,
+    '{
+        "type": "bar",
+        "showLegend": true,
+        "colors": ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6"]
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "brand",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'chart',
+    'Device Types Distribution',
+    6, 0, 6, 1,
+    '{
+        "type": "pie",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "device_type",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Production Servers',
+    0, 1, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {
+            "field": "environment",
+            "operator": "equals",
+            "value": "Production"
+        }
+    ]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Active Servers',
+    3, 1, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {
+            "field": "status",
+            "operator": "equals",
+            "value": "Active"
+        }
+    ]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Servers Under Maintenance',
+    6, 1, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": false
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {
+            "field": "status",
+            "operator": "equals",
+            "value": "Maintenance"
+        }
+    ]'::jsonb
+),
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Total Data Centers',
+    9, 1, 3, 1,
+    '{
+        "showTrend": false,
+        "showProgress": false
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "dc_site",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+) ON CONFLICT DO NOTHING;
+
+-- Add more detailed analytical widgets showing cross-field relationships
+INSERT INTO public.dashboard_widgets (
+    id, dashboard_id, widget_type, title, position_x, position_y, width, height, config, data_source, filters
+) VALUES 
+-- Widget 1: HPE Servers by Status in DC1
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'metric',
+    'HPE Servers Ready in DC1',
+    0, 2, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true,
+        "color": "#10b981"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "HPE"},
+        {"field": "dc_site", "operator": "equals", "value": "DC1"},
+        {"field": "status", "operator": "equals", "value": "Ready"}
+    ]'::jsonb
+),
+-- Widget 2: Dell Servers with IAAS Allocation
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'metric',
+    'Dell IAAS Allocated',
+    3, 2, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true,
+        "color": "#3b82f6"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "Dell"},
+        {"field": "allocation", "operator": "equals", "value": "IAAS"}
+    ]'::jsonb
+),
+-- Widget 3: Production Servers by Model
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'Production Servers by Model',
+    6, 2, 6, 1,
+    '{
+        "type": "horizontalBar",
+        "showLegend": true,
+        "maxItems": 8
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "model",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "environment", "operator": "equals", "value": "Production"}
+    ]'::jsonb
+),
+-- Widget 4: Dell Storage Servers in Maintenance
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Dell Storage Maintenance',
+    0, 2, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": false,
+        "color": "#f59e0b"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "Dell"},
+        {"field": "device_type", "operator": "equals", "value": "Storage"},
+        {"field": "status", "operator": "equals", "value": "Maintenance"}
+    ]'::jsonb
+),
+-- Widget 5: DC2 Server Status Distribution
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'chart',
+    'DC2 Server Status',
+    3, 2, 4, 1,
+    '{
+        "type": "doughnut",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "status",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "dc_site", "operator": "equals", "value": "DC2"}
+    ]'::jsonb
+),
+-- Widget 6: Development Environment by Brand
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'chart',
+    'Dev Environment Brands',
+    7, 2, 5, 1,
+    '{
+        "type": "pie",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "brand",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "environment", "operator": "equals", "value": "Development"}
+    ]'::jsonb
+),
+-- Widget 7: Server Storage Devices Ready Count
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'metric',
+    'Storage Devices Ready',
+    0, 3, 4, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true,
+        "color": "#8b5cf6"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "device_type", "operator": "equals", "value": "Storage"},
+        {"field": "status", "operator": "equals", "value": "Ready"}
+    ]'::jsonb
+),
+-- Widget 8: PAAS Allocation by Data Center
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'PAAS by Data Center',
+    4, 3, 4, 1,
+    '{
+        "type": "bar",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "dc_site",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "allocation", "operator": "equals", "value": "PAAS"}
+    ]'::jsonb
+),
+-- Widget 9: High-End Models Distribution
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Server Operations Dashboard' LIMIT 1),
+    'chart',
+    'High-End Server Models',
+    8, 3, 4, 1,
+    '{
+        "type": "pie",
+        "showLegend": true,
+        "maxItems": 6
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "model",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "model", "operator": "regex", "value": "(DL380|PowerEdge|Power9|x3650)"}
+    ]'::jsonb
+),
+-- Widget 10: Production Environment Servers
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Infrastructure Overview' LIMIT 1),
+    'metric',
+    'Production Environment',
+    0, 3, 4, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true,
+        "color": "#ef4444"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "environment", "operator": "in", "value": ["Production", "Pre-Production"]}
+    ]'::jsonb
+) ON CONFLICT DO NOTHING;
+
+-- Create a specialized Data Center Analytics dashboard
+INSERT INTO public.dashboards (
+    id, name, description, layout, filters, settings, status, is_public, user_id
+) VALUES (
+    gen_random_uuid(),
+    'Data Center Analytics',
+    'Detailed analytics showing server distributions across data centers with specific model and allocation insights',
+    '[]'::jsonb,
+    '{}'::jsonb,
+    '{
+        "theme": "analytics",
+        "autoRefresh": true,
+        "refreshInterval": 120,
+        "gridSize": 12
+    }'::jsonb,
+    'active',
+    true,
+    (SELECT id FROM auth.users LIMIT 1)
+) ON CONFLICT DO NOTHING;
+
+-- Add specialized analytics widgets
+INSERT INTO public.dashboard_widgets (
+    id, dashboard_id, widget_type, title, position_x, position_y, width, height, config, data_source, filters
+) VALUES 
+-- DC Analytics Widget 1: Model Distribution in Each DC
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Data Center Analytics' LIMIT 1),
+    'chart',
+    'Models in DC1 vs DC2',
+    0, 0, 6, 2,
+    '{
+        "type": "groupedBar",
+        "showLegend": true,
+        "groupBy": ["dc_site", "model"]
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "model",
+        "secondaryGroupBy": "dc_site",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+-- DC Analytics Widget 2: Allocation Types by DC
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Data Center Analytics' LIMIT 1),
+    'chart',
+    'Allocation Types by DC',
+    6, 0, 6, 2,
+    '{
+        "type": "stackedBar",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "dc_site",
+        "secondaryGroupBy": "allocation",
+        "aggregation": "count"
+    }'::jsonb,
+    '[]'::jsonb
+),
+-- DC Analytics Widget 3: Ready HPE Servers by Location
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Data Center Analytics' LIMIT 1),
+    'metric',
+    'Ready HPE DL380 Servers',
+    0, 2, 3, 1,
+    '{
+        "showTrend": true,
+        "showProgress": true,
+        "color": "#059669"
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "HPE"},
+        {"field": "model", "operator": "contains", "value": "DL380"},
+        {"field": "status", "operator": "equals", "value": "Ready"}
+    ]'::jsonb
+),
+-- DC Analytics Widget 4: Dell PowerEdge IAAS Distribution
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Data Center Analytics' LIMIT 1),
+    'chart',
+    'Dell PowerEdge IAAS by DC',
+    3, 2, 6, 1,
+    '{
+        "type": "bar",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "dc_site",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "Dell"},
+        {"field": "model", "operator": "contains", "value": "PowerEdge"},
+        {"field": "allocation", "operator": "equals", "value": "IAAS"}
+    ]'::jsonb
+),
+-- DC Analytics Widget 5: Dell Network Equipment Status
+(
+    gen_random_uuid(),
+    (SELECT id FROM public.dashboards WHERE name = 'Data Center Analytics' LIMIT 1),
+    'chart',
+    'Dell Network Equipment Status',
+    9, 2, 3, 1,
+    '{
+        "type": "doughnut",
+        "showLegend": true
+    }'::jsonb,
+    '{
+        "table": "servers",
+        "groupBy": "status",
+        "aggregation": "count"
+    }'::jsonb,
+    '[
+        {"field": "brand", "operator": "equals", "value": "Dell"},
+        {"field": "device_type", "operator": "equals", "value": "Network"}
+    ]'::jsonb
+) ON CONFLICT DO NOTHING;
+
+-- Update statistics for PostgreSQL to optimize queries
+ANALYZE public.servers;
+ANALYZE public.dashboards;
+ANALYZE public.dashboard_widgets;
+
+-- ============================================================================
+-- 9. WIDGET DATA CACHING SYSTEM & SCHEMA FIXES
+-- ============================================================================
+
+-- Fix widget configurations that reference non-existent columns
+-- Update dashboard widgets that reference 'deployment_status' to use 'status' instead
+UPDATE public.dashboard_widgets 
+SET data_source = jsonb_set(data_source, '{groupBy}', '"status"'::jsonb)
+WHERE data_source->>'groupBy' = 'deployment_status';
+
+-- Also fix any filters that reference deployment_status
+UPDATE public.dashboard_widgets 
+SET filters = (
+    SELECT jsonb_agg(
+        CASE 
+            WHEN filter_item->>'field' = 'deployment_status' 
+            THEN jsonb_set(filter_item, '{field}', '"status"'::jsonb)
+            ELSE filter_item
+        END
+    )
+    FROM jsonb_array_elements(filters) AS filter_item
+)
+WHERE filters::text LIKE '%deployment_status%';
+
+-- Widget data cache table for storing pre-computed widget results
+-- This improves dashboard performance by avoiding real-time complex queries
+CREATE TABLE IF NOT EXISTS public.widget_data_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    widget_id UUID NOT NULL REFERENCES public.dashboard_widgets(id) ON DELETE CASCADE,
+    data JSONB NOT NULL,
+    computed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP + INTERVAL '1 hour'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for widget data cache
+CREATE INDEX IF NOT EXISTS idx_widget_data_cache_widget_id ON public.widget_data_cache(widget_id);
+CREATE INDEX IF NOT EXISTS idx_widget_data_cache_expires_at ON public.widget_data_cache(expires_at);
+
+-- Function to clean up expired widget cache entries
+CREATE OR REPLACE FUNCTION public.cleanup_expired_widget_cache()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM public.widget_data_cache 
+    WHERE expires_at < CURRENT_TIMESTAMP;
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    
+    RETURN deleted_count;
+END;
+$$;
+
+-- Function to refresh widget data cache
+CREATE OR REPLACE FUNCTION public.refresh_widget_cache(
+    p_widget_id UUID DEFAULT NULL,
+    p_expiry_hours INTEGER DEFAULT 1
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    widget_record RECORD;
+    computed_data JSONB;
+    result JSONB := '{"refreshed": 0, "errors": []}'::jsonb;
+    error_msg TEXT;
+BEGIN
+    -- If specific widget_id provided, refresh only that widget
+    IF p_widget_id IS NOT NULL THEN
+        SELECT * INTO widget_record 
+        FROM public.dashboard_widgets 
+        WHERE id = p_widget_id;
+        
+        IF NOT FOUND THEN
+            RETURN jsonb_build_object('error', 'Widget not found');
+        END IF;
+        
+        -- For now, store a simple timestamp as cache data
+        -- This can be expanded to compute actual widget data
+        computed_data := jsonb_build_object(
+            'cached_at', CURRENT_TIMESTAMP,
+            'widget_type', widget_record.widget_type,
+            'placeholder', true
+        );
+        
+        -- Upsert cache entry
+        INSERT INTO public.widget_data_cache (widget_id, data, expires_at)
+        VALUES (
+            p_widget_id, 
+            computed_data, 
+            CURRENT_TIMESTAMP + (p_expiry_hours || ' hours')::INTERVAL
+        )
+        ON CONFLICT (widget_id) DO UPDATE SET
+            data = EXCLUDED.data,
+            computed_at = CURRENT_TIMESTAMP,
+            expires_at = EXCLUDED.expires_at,
+            updated_at = CURRENT_TIMESTAMP;
+            
+        result := jsonb_set(result, '{refreshed}', '1'::jsonb);
+    ELSE
+        -- Refresh all widgets that need it (expired or missing cache)
+        FOR widget_record IN 
+            SELECT dw.* 
+            FROM public.dashboard_widgets dw
+            LEFT JOIN public.widget_data_cache wdc ON dw.id = wdc.widget_id
+            WHERE wdc.widget_id IS NULL 
+               OR wdc.expires_at < CURRENT_TIMESTAMP
+        LOOP
+            BEGIN
+                computed_data := jsonb_build_object(
+                    'cached_at', CURRENT_TIMESTAMP,
+                    'widget_type', widget_record.widget_type,
+                    'placeholder', true
+                );
+                
+                INSERT INTO public.widget_data_cache (widget_id, data, expires_at)
+                VALUES (
+                    widget_record.id, 
+                    computed_data, 
+                    CURRENT_TIMESTAMP + (p_expiry_hours || ' hours')::INTERVAL
+                )
+                ON CONFLICT (widget_id) DO UPDATE SET
+                    data = EXCLUDED.data,
+                    computed_at = CURRENT_TIMESTAMP,
+                    expires_at = EXCLUDED.expires_at,
+                    updated_at = CURRENT_TIMESTAMP;
+                    
+                result := jsonb_set(
+                    result, 
+                    '{refreshed}', 
+                    ((result->>'refreshed')::integer + 1)::text::jsonb
+                );
+            EXCEPTION WHEN OTHERS THEN
+                error_msg := SQLERRM;
+                result := jsonb_set(
+                    result,
+                    '{errors}',
+                    (result->'errors') || jsonb_build_array(
+                        jsonb_build_object(
+                            'widget_id', widget_record.id,
+                            'error', error_msg
+                        )
+                    )
+                );
+            END;
+        END LOOP;
+    END IF;
+    
+    RETURN result;
+END;
+$$;
+
+-- Enable Row Level Security on widget_data_cache
+ALTER TABLE public.widget_data_cache ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can only access cache for widgets in dashboards they can access
+CREATE POLICY "widget_cache_access" ON public.widget_data_cache FOR ALL
+USING (
+    EXISTS (
+        SELECT 1 FROM public.dashboard_widgets dw
+        JOIN public.dashboards d ON dw.dashboard_id = d.id
+        WHERE dw.id = widget_data_cache.widget_id
+        AND (
+            d.user_id = auth.uid()
+            OR d.is_public = true
+            OR EXISTS (
+                SELECT 1 FROM public.profiles p
+                JOIN public.user_roles ur ON p.id = ur.user_id
+                WHERE p.id = auth.uid()
+                AND ur.role IN ('super_admin', 'engineer')
+            )
+        )
+    )
+);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.widget_data_cache TO authenticated;
+GRANT EXECUTE ON FUNCTION public.cleanup_expired_widget_cache() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.refresh_widget_cache(UUID, INTEGER) TO authenticated;
+
+-- Update final statistics
+ANALYZE public.widget_data_cache;
