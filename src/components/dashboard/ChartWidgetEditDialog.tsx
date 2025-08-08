@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, ChangeEvent } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -65,63 +65,81 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
   }, [widget])
 
   const handleSave = async () => {
-    if (!widget) return
-    setIsLoading(true)
+    if (!widget) return;
+    setIsLoading(true);
     try {
-      // Only apply data_source, no filters for chart widget
-      let groupByValue: string | string[] = formData.data_source.groupBy
-      if (Array.isArray(groupByValue)) {
-        groupByValue = groupByValue.length === 1 ? groupByValue[0] : groupByValue
-      }
-      const mergedFormData = {
-        ...formData,
-        data_source: {
-          ...formData.data_source,
-          groupBy: groupByValue,
-        }
-      }
-      await onSave({
+      // Validate and default required fields
+      const safeWidget = {
         id: widget.id,
-        ...mergedFormData
-      })
+        title: formData.title || 'Untitled Widget',
+        position_x: typeof formData.position_x === 'number' ? formData.position_x : 0,
+        position_y: typeof formData.position_y === 'number' ? formData.position_y : 0,
+        width: typeof formData.width === 'number' ? formData.width : 4,
+        height: typeof formData.height === 'number' ? formData.height : 1,
+        config: {
+          type: formData.config?.type || 'bar',
+          showLegend: typeof formData.config?.showLegend === 'boolean' ? formData.config.showLegend : true,
+        },
+        data_source: {
+          table: formData.data_source?.table || 'servers',
+          aggregation: formData.data_source?.aggregation || 'count',
+          groupBy: Array.isArray(formData.data_source?.groupBy)
+            ? (formData.data_source.groupBy.length === 1 ? formData.data_source.groupBy[0] : formData.data_source.groupBy)
+            : (formData.data_source?.groupBy ? [formData.data_source.groupBy] : ['brand']),
+          filters: Array.isArray(formData.data_source?.filters) ? formData.data_source.filters : [],
+        },
+      };
+      // Remove any undefined fields recursively
+      const cleanObject = (obj: any) => {
+        if (Array.isArray(obj)) return obj.filter(v => v !== undefined);
+        if (obj && typeof obj === 'object') {
+          return Object.fromEntries(
+            Object.entries(obj)
+              .filter(([_, v]) => v !== undefined)
+              .map(([k, v]) => [k, cleanObject(v)])
+          );
+        }
+        return obj;
+      };
+      const finalWidget = cleanObject(safeWidget);
+      await onSave(finalWidget);
       toast({
         title: 'Success',
-        description: 'Chart widget updated successfully'
-      })
-      onOpenChange(false)
+        description: 'Chart widget updated successfully',
+      });
+      onOpenChange(false);
     } catch (error) {
-      console.error('Error updating chart widget:', error)
+      console.error('Error updating chart widget:', error);
       toast({
         title: 'Error',
         description: 'Failed to update chart widget',
-        variant: 'destructive'
-      })
+        variant: 'destructive',
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
-}
+
   const updateFormData = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+    setFormData((prev: typeof formData) => ({ ...prev, [field]: value }))
   }
 
   const updateConfig = (configKey: string, value: any) => {
-    setFormData(prev => ({
+    setFormData((prev: typeof formData) => ({
       ...prev,
       config: { ...prev.config, [configKey]: value }
     }))
   }
 
   const updateDataSource = (dsKey: string, value: any) => {
-    setFormData((prev: any) => ({
+    setFormData((prev: typeof formData) => ({
       ...prev,
       data_source: { ...prev.data_source, [dsKey]: value }
     }))
   }
 
-  // Add a breakdown field
   const addGroupByField = () => {
-    setFormData((prev: any) => ({
+    setFormData((prev: typeof formData) => ({
       ...prev,
       data_source: {
         ...prev.data_source,
@@ -130,13 +148,12 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     }))
   }
 
-  // Remove a breakdown field by index
   const removeGroupByField = (idx: number) => {
-    setFormData((prev: any) => ({
+    setFormData((prev: typeof formData) => ({
       ...prev,
       data_source: {
         ...prev.data_source,
-        groupBy: prev.data_source.groupBy.filter((_: any, i: any) => i !== idx)
+        groupBy: prev.data_source.groupBy.filter((_: any, i: number) => i !== idx)
       }
     }))
   }
@@ -161,7 +178,7 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
                 <Input
                   id="title"
                   value={formData.title}
-                  onChange={e => updateFormData('title', e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateFormData('title', e.target.value)}
                   placeholder="Widget title"
                 />
               </div>
@@ -188,7 +205,7 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
                 type="checkbox"
                 id="show_legend"
                 checked={formData.config.showLegend}
-                onChange={e => updateConfig('showLegend', e.target.checked)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => updateConfig('showLegend', e.target.checked)}
               />
               <Label htmlFor="show_legend">Show Legend</Label>
             </div>

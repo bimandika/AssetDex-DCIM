@@ -73,7 +73,14 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
         throw new Error('No authentication token available')
       }
       // Extract groupFields and filters from config
-      const groupFields = config.groupBy ? [config.groupBy] : (config.groupFields || ['brand', 'model', 'status']);
+      let groupFields: string[] = [];
+      if (Array.isArray(config.groupBy)) {
+        groupFields = config.groupBy;
+      } else if (typeof config.groupBy === 'string') {
+        groupFields = [config.groupBy];
+      } else if (Array.isArray(config.groupFields)) {
+        groupFields = config.groupFields;
+      }
       const filters = config.filters || [];
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000'}/functions/v1/chart-widget-data`, {
         method: 'POST',

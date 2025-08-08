@@ -89,13 +89,15 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
             .map(([field, value]) => ({ field, operator: 'equals', value }))
         ];
       }
+      // Remove server_filters from payload
+      const { server_filters, ...formDataWithoutServerFilters } = formData;
       const mergedFormData = {
-        ...formData,
+        ...formDataWithoutServerFilters,
         data_source: {
           ...formData.data_source,
           filters: mergedFilters
         }
-      }
+      };
       await onSave({
         id: widget.id,
         ...mergedFormData

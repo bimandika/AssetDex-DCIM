@@ -90,19 +90,23 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
 
   // Save dashboard changes
   const handleSaveDashboard = async () => {
-    if (!currentDashboard) return
-    
-    const success = await updateDashboard(currentDashboard.id, {
+    if (!currentDashboard || !currentDashboard.id || typeof currentDashboard.id !== 'string') return;
+
+    const dashboardPayload = {
       name: dashboardName,
-      updated_at: new Date().toISOString()
-    })
-    
+      updated_at: new Date().toISOString(),
+      widgets: currentDashboard.dashboard_widgets || []
+    };
+
+    // Include widgets array in payload
+    const success = await updateDashboard(currentDashboard.id, dashboardPayload);
+
     if (success) {
-      setEditMode(false)
+      setEditMode(false);
       toast({
         title: 'Success',
         description: 'Dashboard saved successfully',
-      })
+      });
     }
   }
 
@@ -213,8 +217,8 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
 
   // Handle widget update from edit dialog
   const handleUpdateWidget = async (widgetData: Partial<Widget>) => {
-    if (!editingWidget) return
-    await updateWidget(editingWidget.id, widgetData)
+    if (!editingWidget || !editingWidget.id || typeof editingWidget.id !== 'string') return;
+    await updateWidget(editingWidget.id, widgetData);
   }
 
   const renderWidget = (widget: Widget) => {

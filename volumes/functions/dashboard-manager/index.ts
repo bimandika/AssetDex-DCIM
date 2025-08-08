@@ -14,6 +14,26 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
 }
 
+// Defensive patch: Remove any id or *_id fields that are undefined or 'undefined' (string)
+function cleanUUIDFields(obj: any) {
+  for (const key in obj) {
+    if ((key.endsWith('id') || key === 'id')) {
+      // Remove if not a valid UUID (except dashboard_id, which may be required)
+      if (!isValidUUID(obj[key])) {
+        delete obj[key];
+      }
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      cleanUUIDFields(obj[key]);
+    }
+  }
+  return obj;
+}
+
+// Helper: Validate UUID format
+function isValidUUID(uuid: any) {
+  return typeof uuid === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(uuid);
+}
+
 // Dashboard management Edge Function
 export const handler = async (req: Request): Promise<Response> => {
   console.log('Dashboard manager: Request received', {
@@ -376,30 +396,61 @@ async function createDashboard(supabase: any, data: any, userId: string) {
     // Create widgets
     console.log('createDashboard: Creating widgets, count:', widgets.length)
     const widgetPromises = widgets.map(async (widget: any, index: number) => {
+      // Only allow whitelisted fields, never include id, created_at, updated_at
+      const insertObj: any = {
+        dashboard_id: dashboard.id,
+        title: widget.title ?? '',
+        widget_type: widget.type,
+        position_x: widget.position?.x || (index % 4) * 6,
+        position_y: widget.position?.y || Math.floor(index / 4) * 4,
+        width: widget.size?.width || 6,
+        height: widget.size?.height || 4,
+        config: widget.config || {},
+        data_source: widget.data_source || {},
+        filters: widget.filters || []
+      };
+      // Defensive clean for UUID fields
+      cleanUUIDFields(insertObj);
+      // Remove any undefined values
+      Object.keys(insertObj).forEach(key => {
+        if (insertObj[key] === undefined) {
+          delete insertObj[key];
+        }
+      });
+      // Explicitly remove 'id' if present
+      if ('id' in insertObj) {
+        delete insertObj.id;
+      }
+      // Validate required fields
+      if (!insertObj.dashboard_id || typeof insertObj.dashboard_id !== 'string') {
+        throw new Error('Widget insert error: dashboard_id is missing or invalid');
+      }
+      if (!insertObj.widget_type || typeof insertObj.widget_type !== 'string') {
+        throw new Error('Widget insert error: widget_type is missing or invalid');
+      }
+      if (!insertObj.title || typeof insertObj.title !== 'string') {
+        throw new Error('Widget insert error: title is missing or invalid');
+      }
+      if (typeof insertObj.position_x !== 'number') insertObj.position_x = 0;
+      if (typeof insertObj.position_y !== 'number') insertObj.position_y = 0;
+      if (typeof insertObj.width !== 'number') insertObj.width = 4;
+      if (typeof insertObj.height !== 'number') insertObj.height = 1;
+      if (!insertObj.config || typeof insertObj.config !== 'object') insertObj.config = { type: 'bar', showLegend: true };
+      if (!insertObj.data_source || typeof insertObj.data_source !== 'object') insertObj.data_source = { table: 'servers', aggregation: 'count', groupBy: 'status', filters: [] };
+      if (!Array.isArray(insertObj.filters)) insertObj.filters = [];
+      console.log('Dashboard manager: Widget insert object:', insertObj);
       const { data: newWidget, error: widgetError } = await supabase
         .from('dashboard_widgets')
-        .insert({
-          dashboard_id: dashboard.id,
-          title: widget.title,
-          widget_type: widget.type,
-          position_x: widget.position?.x || (index % 4) * 6,
-          position_y: widget.position?.y || Math.floor(index / 4) * 4,
-          width: widget.size?.width || 6,
-          height: widget.size?.height || 4,
-          config: widget.config || {},
-          data_source: widget.data_source || {},
-          filters: widget.filters || []
-        })
+        .insert(insertObj)
         .select()
-        .single()
+        .single();
 
       if (widgetError) {
-        console.error('createDashboard: Widget insert error:', widgetError)
-        throw widgetError
+        console.error('Dashboard manager: Widget insert error object:', widgetError);
+        throw widgetError;
       }
-
-      return newWidget
-    })
+      return newWidget;
+    });
 
     await Promise.all(widgetPromises)
     console.log('createDashboard: All widgets created successfully')
@@ -422,81 +473,125 @@ async function createDashboard(supabase: any, data: any, userId: string) {
 
 // Update dashboard
 async function updateDashboard(supabase: any, data: any, userId: string) {
-  const { id, name, description, layout_config, widgets } = data
+  // Fix: support both { action, payload } and direct payload
+  const payload = data.payload ?? data;
+  const {
+    id,
+    name,
+    description = '',
+    layout = {},
+    widgets
+  } = payload;
 
-  // Update dashboard
-  const { error: updateError } = await supabase
-    .from('dashboards')
-    .update({
-      name,
-      description,
-      layout_config,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', id)
-    .eq('user_id', userId)
+  // Extra debug logs for dashboard update
+  console.log('--- Backend Dashboard Update Debug ---');
+  console.log('Dashboard ID:', id);
+  console.log('User ID:', userId);
+  console.log('Dashboard update payload:', { id, name, description, layout });
 
-  if (updateError) throw updateError
+  try {
+    // Update dashboard
+    const { error: updateError } = await supabase
+      .from('dashboards')
+      .update({
+        name,
+        description,
+        layout,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .eq('user_id', userId);
 
-  // Update widgets if provided
-  if (widgets) {
-    // Delete existing widgets
-    await supabase
-      .from('dashboard_widgets')
-      .delete()
-      .eq('dashboard_id', id)
+    if (updateError) throw updateError;
 
-    // Recreate widgets (simpler than complex update logic)
-    const widgetPromises = widgets.map(async (widget: any, index: number) => {
-      const { data: newWidget, error: widgetError } = await supabase
+    // Update widgets if provided
+    if (widgets) {
+      // Delete existing widgets
+      await supabase
         .from('dashboard_widgets')
-        .insert({
+        .delete()
+        .eq('dashboard_id', id);
+
+      // Recreate widgets (simpler than complex update logic)
+      const widgetPromises = widgets.map(async (widget: any, index: number) => {
+        // Only allow whitelisted fields, never include id, created_at, updated_at
+        const insertObj: any = {
           dashboard_id: id,
-          title: widget.title,
-          type: widget.type,
-          chart_type: widget.chartType,
-          position_x: widget.position?.x || (index % 4) * 6,
-          position_y: widget.position?.y || Math.floor(index / 4) * 4,
-          width: widget.size?.width || 6,
-          height: widget.size?.height || 4,
-          config: widget.config || {}
-        })
-        .select()
-        .single()
+          title: widget.title ?? '',
+          widget_type: widget.widget_type ?? widget.type ?? 'chart',
+          position_x: widget.position_x ?? (widget.position?.x ?? (index % 4) * 6),
+          position_y: widget.position_y ?? (widget.position?.y ?? Math.floor(index / 4) * 4),
+          width: widget.width ?? (widget.size?.width ?? 6),
+          height: widget.height ?? (widget.size?.height ?? 4),
+          config: widget.config ?? {},
+          data_source: widget.data_source ?? {},
+          filters: widget.filters ?? []
+        };
+        // Defensive clean for UUID fields
+        cleanUUIDFields(insertObj);
+        // Remove any undefined values
+        Object.keys(insertObj).forEach(key => {
+          if (insertObj[key] === undefined) {
+            delete insertObj[key];
+          }
+        });
+        // Explicitly remove 'id' if present
+        if ('id' in insertObj) {
+          delete insertObj.id;
+        }
+        // Validate required fields
+        if (!insertObj.dashboard_id || typeof insertObj.dashboard_id !== 'string') {
+          throw new Error('Widget insert error: dashboard_id is missing or invalid');
+        }
+        if (!insertObj.widget_type || typeof insertObj.widget_type !== 'string') {
+          throw new Error('Widget insert error: widget_type is missing or invalid');
+        }
+        if (!insertObj.title || typeof insertObj.title !== 'string') {
+          throw new Error('Widget insert error: title is missing or invalid');
+        }
+        if (typeof insertObj.position_x !== 'number') insertObj.position_x = 0;
+        if (typeof insertObj.position_y !== 'number') insertObj.position_y = 0;
+        if (typeof insertObj.width !== 'number') insertObj.width = 4;
+        if (typeof insertObj.height !== 'number') insertObj.height = 1;
+        if (!insertObj.config || typeof insertObj.config !== 'object') insertObj.config = { type: 'bar', showLegend: true };
+        if (!insertObj.data_source || typeof insertObj.data_source !== 'object') insertObj.data_source = { table: 'servers', aggregation: 'count', groupBy: 'status', filters: [] };
+        if (!Array.isArray(insertObj.filters)) insertObj.filters = [];
+        // Extra debug logs for widget insert
+        console.log('--- Backend Widget Insert Debug ---');
+        console.log('Widget Insert Object:', JSON.stringify(insertObj, null, 2));
+        const { data: newWidget, error: widgetError } = await supabase
+          .from('dashboard_widgets')
+          .insert(insertObj)
+          .select()
+          .single();
 
-      if (widgetError) throw widgetError
+        if (widgetError) {
+          console.error('Dashboard manager: Widget insert error object:', widgetError);
+          throw widgetError;
+        }
+        return newWidget;
+      });
 
-      // Recreate data sources
-      if (widget.dataSources?.length > 0) {
-        const dataSourcePromises = widget.dataSources.map(async (ds: any) => {
-          return await supabase
-            .from('widget_data_sources')
-            .insert({
-              widget_id: newWidget.id,
-              table_name: ds.table,
-              query_config: {
-                groupBy: ds.groupBy,
-                selectFields: ds.selectFields || ['*']
-              },
-              aggregation_type: ds.aggregation,
-              filters: ds.filters || []
-            })
-        })
+      await Promise.all(widgetPromises);
+    }
 
-        await Promise.all(dataSourcePromises)
-      }
-
-      return newWidget
-    })
-
-    await Promise.all(widgetPromises)
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: 'Dashboard updated successfully' 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+    console.error('updateDashboard: Exception caught:', err);
+    return new Response(JSON.stringify({
+      success: false,
+      error: err.message || 'Unknown error',
+      details: err.stack || null
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
-
-  return new Response(JSON.stringify({ 
-    message: 'Dashboard updated successfully' 
-  }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-  })
 }
 
 // Delete dashboard
@@ -554,7 +649,10 @@ async function cloneDashboard(supabase: any, dashboardId: string | null, newName
 
 // Create widget for existing dashboard
 async function createWidget(supabase: any, data: any, userId: string) {
-  console.log('createWidget: Starting with data:', data, 'userId:', userId)
+  // Extra debug logs for widget creation
+  console.log('--- Backend Widget Create Debug ---');
+  console.log('Widget Create Data:', JSON.stringify(data, null, 2));
+  console.log('User ID:', userId);
   
   const { 
     dashboard_id, 
@@ -630,66 +728,46 @@ async function createWidget(supabase: any, data: any, userId: string) {
 
 // Update widget for existing dashboard
 async function updateWidget(supabase: any, data: any, userId: string) {
-  console.log('updateWidget: Starting with data:', data, 'userId:', userId)
-  
-  const { 
-    id,
-    title, 
-    widget_type, 
-    position_x, 
-    position_y, 
-    width, 
-    height, 
-    config, 
-    data_source, 
-    filters 
-  } = data
-
-  if (!id) {
-    throw new Error('Widget ID is required')
+  // Extra debug logs for widget update
+  console.log('--- Backend Widget Update Debug ---');
+  console.log('Widget Update Data:', JSON.stringify(data, null, 2));
+  console.log('User ID:', userId);
+  const { id, ...rest } = data;
+  if (!isValidUUID(id)) {
+    throw new Error('Widget update error: id is missing or not a valid UUID');
   }
-
   // Check if there's actually anything to update
-  const updateData: any = {}
-  if (title !== undefined) updateData.title = title
-  if (widget_type !== undefined) updateData.widget_type = widget_type
-  if (position_x !== undefined) updateData.position_x = position_x
-  if (position_y !== undefined) updateData.position_y = position_y
-  if (width !== undefined) updateData.width = width
-  if (height !== undefined) updateData.height = height
-  if (config !== undefined) updateData.config = config
-  if (data_source !== undefined) updateData.data_source = data_source
-  if (filters !== undefined) updateData.filters = filters
-
+  const updateData: any = {};
+  for (const key in rest) {
+    if (rest[key] !== undefined) {
+      updateData[key] = rest[key];
+    }
+  }
   // If no fields to update, just return the current widget
   if (Object.keys(updateData).length === 0) {
-    console.log('updateWidget: No fields to update, returning current widget')
-    
+    console.log('updateWidget: No fields to update, returning current widget');
     try {
       const { data: currentWidget, error: fetchError } = await supabase
         .from('dashboard_widgets')
         .select('*')
         .eq('id', id)
-        .single()
-
+        .single();
       if (fetchError) {
-        console.error('updateWidget: Widget fetch error:', fetchError)
-        throw new Error('Widget not found')
+        console.error('updateWidget: Widget fetch error:', fetchError);
+        throw new Error('Widget not found');
       }
-
       return new Response(JSON.stringify({ 
         success: true,
         data: currentWidget,
         message: 'Widget retrieved successfully (no updates needed)' 
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      });
     } catch (err) {
-      console.error('updateWidget: Exception in fetch:', err)
-      throw err
+      console.error('updateWidget: Exception in fetch:', err);
+      throw err;
     }
   }
-
   try {
     // First, get the widget and verify ownership via a simpler approach
     const { data: widget, error: widgetError } = await supabase
