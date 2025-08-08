@@ -69,24 +69,23 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
     try {
       const session = await supabase.auth.getSession()
       const token = session.data.session?.access_token
-      
       if (!token) {
         throw new Error('No authentication token available')
       }
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000'}/functions/v1/widget-data`, {
+      // Extract groupFields and filters from config
+      const groupFields = config.groupBy ? [config.groupBy] : (config.groupFields || ['brand', 'model', 'status']);
+      const filters = config.filters || [];
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000'}/functions/v1/chart-widget-data`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ groupFields, filters }),
       })
-
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-
       const result = await response.json()
       return result.success ? result.data : null
     } catch (err: any) {
@@ -107,46 +106,7 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
 
   const dataSource = widget.data_source as QueryConfig
 
-  // Load data
-  const loadData = async () => {
-    if (!dataSource) return
-    
-    setIsRefreshing(true)
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const result = await fetchWidgetData(dataSource)
-      if (result && result.labels && result.datasets) {
-        // Enhance data with colors
-        const enhancedData = {
-          ...result,
-          datasets: result.datasets.map((dataset: any, index: number) => ({
-            ...dataset,
-            backgroundColor: dataset.backgroundColor || chartColors,
-            borderColor: dataset.borderColor || chartBorderColors[index % chartBorderColors.length],
-            borderWidth: dataset.borderWidth || 1,
-          }))
-        }
-        setChartData(enhancedData)
-      } else {
-        setError('No data available')
-      }
-    } catch (err: any) {
-      console.error('Failed to load chart data:', err)
-      setError('Failed to load chart data')
-    } finally {
-      setIsRefreshing(false)
-      setIsLoading(false)
-    }
-  }
-
-  // Load data on mount and when data source changes
-  useEffect(() => {
-    loadData()
-  }, [dataSource])
-
-  // Chart options
+  // Chart options object (move outside loadData)
   const chartOptions = {
     responsive: chartConfig.responsive,
     maintainAspectRatio: chartConfig.maintainAspectRatio,
@@ -185,10 +145,87 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
     },
   }
 
+  // Load data
+  const loadData = async () => {
+    if (!dataSource) return
+
+    setIsRefreshing(true)
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const backendData = await fetchWidgetData(dataSource);
+      // Debug: show raw backend data
+      (window as any).lastChartWidgetRawData = backendData;
+      // If result is an array of objects, transform to Chart.js format
+      if (Array.isArray(backendData) && backendData.length > 0 && typeof backendData[0] === 'object') {
+        // Use first key as label, second as value
+        const labelKey = Object.keys(backendData[0]).find(k => k !== 'count') || Object.keys(backendData[0])[0];
+        const valueKey = 'count';
+        const labels = backendData.map((item: any) => item[labelKey]);
+        const data = backendData.map((item: any) => item[valueKey]);
+        const datasets = [{
+          label: labelKey,
+          data,
+          backgroundColor: chartColors,
+          borderColor: chartBorderColors[0],
+          borderWidth: 1,
+        }];
+        setChartData({ labels, datasets });
+      } else if (backendData && backendData.labels && backendData.datasets) {
+        // Enhance data with colors
+        const enhancedData = {
+          ...backendData,
+          datasets: backendData.datasets.map((dataset: any, index: number) => ({
+            ...dataset,
+            backgroundColor: dataset.backgroundColor || chartColors,
+            borderColor: dataset.borderColor || chartBorderColors[index % chartBorderColors.length],
+            borderWidth: dataset.borderWidth || 1,
+          }))
+        };
+        setChartData(enhancedData);
+      } else {
+        setError('No data available');
+      }
+    } catch (err: any) {
+      console.error('Failed to load chart data:', err);
+      setError('Failed to load chart data');
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
+  }
+
+  // Render chart based on type
+  // ...existing code...
+
+  // Export chart data
+  const exportData = () => {
+    if (!chartData) return
+    // Simple CSV export
+    const rows = [
+      ['Label', ...chartData.labels],
+      ...chartData.datasets.map((ds: any) => [ds.label, ...ds.data])
+    ]
+    const csvContent = rows.map(r => r.join(',')).join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${widget.title || 'chart-data'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Load data on mount
+  useEffect(() => {
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(widget.config), JSON.stringify(widget.data_source)])
+
   // Render chart based on type
   const renderChart = () => {
     if (!chartData) return null
-
     switch (chartConfig.type) {
       case 'line':
         return <Line data={chartData} options={chartOptions} />
@@ -202,58 +239,31 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
     }
   }
 
-  // Export chart data
-  const exportData = () => {
-    if (!chartData) return
-    
-    const csvContent = [
-      ['Label', 'Value'],
-      ...chartData.labels.map((label: string, index: number) => [
-        label,
-        chartData.datasets[0]?.data[index] || 0
-      ])
-    ].map(row => row.join(',')).join('\n')
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${widget.title.replace(/\s+/g, '_')}_data.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
-    <Card className="h-full">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{widget.title}</CardTitle>
-        <div className="flex items-center space-x-1">
-          {chartData?.total && (
-            <Badge variant="secondary" className="text-xs">
-              Total: {chartData.total.toLocaleString()}
-            </Badge>
-          )}
-          
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between p-4">
+        <CardTitle className="text-lg font-semibold">{widget.title || 'Chart Widget'}</CardTitle>
+        <div className="flex gap-2 items-center">
           <Button
             variant="ghost"
             size="sm"
             onClick={loadData}
-            disabled={isLoading || isRefreshing}
+            disabled={isRefreshing}
             className="h-8 w-8 p-0"
+            title="Refresh"
           >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={isRefreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
           </Button>
-          
           <Button
             variant="ghost"
             size="sm"
             onClick={exportData}
             disabled={!chartData}
             className="h-8 w-8 p-0"
+            title="Export CSV"
           >
             <Download className="h-4 w-4" />
           </Button>
-          
           {editMode && (
             <>
               <Button
@@ -261,6 +271,7 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
                 size="sm"
                 onClick={() => onUpdate && onUpdate()}
                 className="h-8 w-8 p-0"
+                title="Edit"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -269,6 +280,7 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
                 size="sm"
                 onClick={onDelete}
                 className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                title="Delete"
               >
                 ×
               </Button>
@@ -276,7 +288,6 @@ export const EnhancedChartWidget: React.FC<EnhancedChartWidgetProps> = ({
           )}
         </div>
       </CardHeader>
-      
       <CardContent className="p-4">
         <div className="h-64">
           {isLoading && !chartData ? (

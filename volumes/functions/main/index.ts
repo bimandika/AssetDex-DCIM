@@ -111,6 +111,12 @@ serve(async (req) => {
       const { handler } = await import('../widget-data/index.ts')
       return await handler(req)
     }
+
+    // Chart widget data endpoint
+    if (url.pathname === '/chart-widget-data' && ["GET", "POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../chart-widget-data/index.ts')
+      return await handler(req)
+    }
     
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,

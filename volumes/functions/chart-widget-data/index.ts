@@ -24,24 +24,65 @@ export const handler = async (req: Request): Promise<Response> => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !supabaseKey) {
+      console.error('Missing required environment variables', { supabaseUrl, supabaseKey });
       throw new Error('Missing required environment variables');
     }
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Accept POST with breakdown config
+    // Accept POST with breakdown config and filters
     if (req.method === 'POST') {
       const body = await req.json();
-      const groupFields = body.groupFields || ['brand', 'model', 'status'];
+      const allowedFields = ['brand', 'model', 'status', 'dc_site', 'building', 'floor', 'room', 'rack'];
+      let groupFields = body.groupFields || ['brand', 'model', 'status'];
+      const filters = body.filters || [];
+
+      // Validate groupFields
+      if (!Array.isArray(groupFields) || groupFields.length === 0) {
+        groupFields = ['brand', 'model', 'status'];
+      }
+      const invalidFields = groupFields.filter(f => !allowedFields.includes(f));
+      if (invalidFields.length > 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: `Invalid groupFields: ${invalidFields.join(', ')}. Allowed: ${allowedFields.join(', ')}` }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Compose select string for view
       const selectFields = groupFields.concat(['count']).join(',');
-      // Query the SQL view
-      const { data, error } = await supabaseClient
-        .from('server_grouped_counts')
-        .select(selectFields);
+      let query = supabaseClient.from('server_grouped_counts').select(selectFields);
+      // Apply filters (only those matching groupFields)
+      for (const filter of filters) {
+        if (!filter.field || !filter.operator) continue;
+        // Only apply filters for fields present in groupFields
+        if (!groupFields.includes(filter.field)) continue;
+        switch (filter.operator) {
+          case 'equals':
+            if (Array.isArray(filter.value)) {
+              query = query.in(filter.field, filter.value);
+            } else {
+              query = query.eq(filter.field, filter.value);
+            }
+            break;
+          case 'contains':
+            query = query.ilike(filter.field, `%${filter.value}%`);
+            break;
+          case 'in':
+            query = query.in(filter.field, Array.isArray(filter.value) ? filter.value : [filter.value]);
+            break;
+          default:
+            break;
+        }
+      }
+      const { data, error } = await query;
       if (error) {
-        throw error;
+        console.error('Supabase query error:', error);
+        return new Response(
+          JSON.stringify({ success: false, error: error.message || 'Supabase query error', details: error }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
       return new Response(
         JSON.stringify({ success: true, data }),
@@ -53,8 +94,9 @@ export const handler = async (req: Request): Promise<Response> => {
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Handler error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal server error' }),
+      JSON.stringify({ success: false, error: error.message || 'Internal server error', details: error }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

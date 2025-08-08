@@ -3534,3 +3534,18 @@ GRANT EXECUTE ON FUNCTION public.refresh_widget_cache(UUID, INTEGER) TO authenti
 
 -- Update final statistics
 ANALYZE public.widget_data_cache;
+
+-- Chart Widget Breakdown View: Grouped counts for servers by brand, model, status
+CREATE OR REPLACE VIEW server_grouped_counts AS
+SELECT
+  brand,
+  model,
+  status,
+  dc_site,
+  dc_building,
+  dc_floor,
+  dc_room,
+  rack,
+  COUNT(*) AS count
+FROM servers
+GROUP BY brand, model, status, dc_site, dc_building, dc_floor, dc_room, rack;
