@@ -59,31 +59,36 @@ export const handler = async (req: Request): Promise<Response> => {
       if (config.table && config.aggregation === 'count') {
         // Chain .select() first so filter methods are available
         let query = supabaseClient.from(config.table).select('id', { count: 'exact', head: true });
-        // Debug: log available methods on query object
-        console.log('Supabase query builder keys:', Object.keys(query));
-        console.log('Supabase query builder prototype:', Object.getPrototypeOf(query));
-        // Phase 1: Map plural and hierarchical filter fields to correct column names for servers table
+        // Map plural and hierarchical filter fields to correct column names for servers table
         const fieldMap = {
           models: 'model',
           allocations: 'allocation',
           environments: 'environment',
-          // Hierarchical Data Center Location mappings (use dc_ prefix to match schema)
           dc_sites: 'dc_site',
           dc_buildings: 'dc_building',
           dc_floors: 'dc_floor',
           dc_rooms: 'dc_room',
         };
+        // Only allow valid fields for servers table
+        const validFields = [
+          'model', 'allocation', 'environment', 'dc_site', 'dc_building', 'dc_floor', 'dc_room',
+          'status', 'type', 'location', 'brand', 'floor', 'region', 'capacity',
+        ];
         let mappedFilters: FilterConfig[] = [];
         if (Array.isArray(config.filters)) {
           for (const filter of config.filters) {
             let field = filter.field;
+            // Map field if needed
             if (config.table === 'servers' && fieldMap[field]) {
               field = fieldMap[field];
             }
-            mappedFilters.push({ ...filter, field });
+            // Only push valid fields
+            if (config.table !== 'servers' || validFields.includes(field)) {
+              mappedFilters.push({ ...filter, field });
+            }
           }
         }
-        // Phase 2: Apply Supabase filter methods (no reassignment)
+        // Apply Supabase filter methods
         for (const filter of mappedFilters) {
           if (!filter.field || !filter.operator) continue;
           switch (filter.operator) {
