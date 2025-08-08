@@ -43,6 +43,7 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
     server_filters: {} as ServerFilterConfig
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [filtersDirty, setFiltersDirty] = useState(false)
   const [filterValidation, setFilterValidation] = useState<FilterValidationResult | null>(null)
   // Example fields for each table
   const tableFields: Record<string, string[]> = {
@@ -75,16 +76,34 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
 
     setIsLoading(true)
     try {
+      // Merge both filters and server_filters into data_source.filters before saving
+      let mergedFilters: any[] = [];
+      if (Array.isArray(formData.filters) && formData.filters.length > 0) {
+        mergedFilters = [...formData.filters];
+      }
+      if (formData.server_filters && Object.keys(formData.server_filters).length > 0) {
+        mergedFilters = [
+          ...mergedFilters,
+          ...Object.entries(formData.server_filters)
+            .filter(([_, v]) => v != null && v !== '')
+            .map(([field, value]) => ({ field, operator: 'equals', value }))
+        ];
+      }
+      const mergedFormData = {
+        ...formData,
+        data_source: {
+          ...formData.data_source,
+          filters: mergedFilters
+        }
+      }
       await onSave({
         id: widget.id,
-        ...formData
+        ...mergedFormData
       })
-      
       toast({
         title: "Success",
         description: "Widget updated successfully"
       })
-      
       onOpenChange(false)
     } catch (error) {
       console.error('Error updating widget:', error)
@@ -130,6 +149,7 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
       ...prev,
       server_filters: serverFilters
     }))
+    setFiltersDirty(true)
   }
 
   const handleFilterValidation = (result: FilterValidationResult) => {
@@ -394,7 +414,8 @@ const WidgetEditDialog: React.FC<WidgetEditDialogProps> = ({
           {/* Server Selection - Only show for servers table or for metric/gauge/stat widgets, but not for chart/timeline */}
           {(formData.data_source.table === 'servers' && !(formData.widget_type === 'chart' || formData.widget_type === 'timeline')) || (formData.widget_type === 'metric' || formData.widget_type === 'gauge' || formData.widget_type === 'stat') ? (
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Server Selection</h3>
+              {/* Removed filter count text as requested */}
+              {/* Removed Apply Filters button as requested */}
               <ServerFilterComponent
                 filters={formData.server_filters}
                 onChange={updateServerFilters}

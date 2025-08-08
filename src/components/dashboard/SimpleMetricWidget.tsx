@@ -65,10 +65,10 @@ export const SimpleMetricWidget: React.FC<SimpleMetricWidgetProps> = ({
   // Load metric data based on widget configuration
   const loadData = async () => {
     setError(null)
-    
+
     try {
       const dataSource = widget.data_source as any
-      
+
       if (!dataSource) {
         throw new Error('No data source configured')
       }
@@ -80,12 +80,19 @@ export const SimpleMetricWidget: React.FC<SimpleMetricWidgetProps> = ({
         groupBy: dataSource.groupBy
       }
 
-      // Add server filters if this is a servers table and server_filters exist
-      if (dataSource.table === 'servers' && widget.server_filters) {
-        queryConfig.serverFilters = widget.server_filters
-      } else if (widget.filters?.length) {
-        // Use basic filters for non-server tables or legacy widgets
-        queryConfig.basicFilters = widget.filters.map((filter: any) => ({
+      // Merge all filters: widget.filters, data_source.filters, server_filters
+      let allFilters: any[] = []
+      if (Array.isArray(widget.filters)) {
+        allFilters = allFilters.concat(widget.filters)
+      }
+      if (Array.isArray(dataSource.filters)) {
+        allFilters = allFilters.concat(dataSource.filters)
+      }
+      if (Array.isArray(widget.server_filters)) {
+        allFilters = allFilters.concat(widget.server_filters)
+      }
+      if (allFilters.length > 0) {
+        queryConfig.basicFilters = allFilters.map((filter: any) => ({
           field: filter.field,
           operator: filter.operator || 'equals',
           value: filter.value
@@ -93,13 +100,13 @@ export const SimpleMetricWidget: React.FC<SimpleMetricWidgetProps> = ({
       }
 
       const result = await queryEnhancedData(queryConfig)
-      
+
       if (!result) {
         throw new Error('No data returned')
       }
 
       // Extract count from the response
-      const count = result.total || 0
+      const count = result.total ?? result.value ?? 0
 
       // Determine icon and color based on widget title and filters
       let icon = <Server className="h-6 w-6" />
@@ -187,7 +194,7 @@ export const SimpleMetricWidget: React.FC<SimpleMetricWidgetProps> = ({
         ) : metric ? (
           <div className="relative flex flex-col h-32">
             {/* Main number centered in upper area */}
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center" style={{ paddingTop: '30px', paddingBottom: '30px' }}>
               <div className="text-8xl font-bold">{formatNumber(metric.value)}</div>
             </div>
             

@@ -82,20 +82,22 @@ const StatWidget: React.FC<StatWidgetProps> = ({ widget, editMode, onUpdate = ()
 
   return (
     <Card className="h-full">
-      <CardHeader>
-        <CardTitle>{widget.title || 'Stat Widget'}</CardTitle>
+      <CardHeader className="relative">
+        <CardTitle className="tracking-tight text-sm font-medium">{widget.title || 'Stat Widget'}</CardTitle>
         {editMode && (
-          <WidgetActionBar onUpdate={onUpdate} onRefresh={loadData} onDelete={onDelete} />
+          <div className="absolute top-2 right-2 z-10">
+            <WidgetActionBar onUpdate={onUpdate} onRefresh={loadData} onDelete={onDelete} />
+          </div>
         )}
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-col items-center justify-center h-full">
+      <CardContent className="p-6 pt-0 flex items-center justify-center h-full" style={{ paddingBottom: '90px' }}>
+        <div className="flex flex-col items-center justify-center">
           {isLoading ? (
             <span className="text-2xl text-muted-foreground">Loading...</span>
           ) : error ? (
             <span className="text-red-500 text-sm">{error}</span>
           ) : (
-            <span className="text-4xl font-bold text-blue-600">{stat}</span>
+            <span className="text-8xl font-bold text-blue-600">{stat}</span>
           )}
         </div>
       </CardContent>

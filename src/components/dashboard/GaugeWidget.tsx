@@ -82,10 +82,12 @@ const GaugeWidget: React.FC<GaugeWidgetProps> = ({ widget, editMode, onUpdate = 
 
   return (
     <Card className="h-full">
-      <CardHeader>
-        <CardTitle>{widget.title || 'Gauge Widget'}</CardTitle>
+      <CardHeader className="relative">
+        <CardTitle className="tracking-tight text-sm font-medium">{widget.title || 'Gauge Widget'}</CardTitle>
         {editMode && (
-          <WidgetActionBar onUpdate={onUpdate} onRefresh={loadData} onDelete={onDelete} />
+          <div className="absolute top-2 right-2 z-10">
+            <WidgetActionBar onUpdate={onUpdate} onRefresh={loadData} onDelete={onDelete} />
+          </div>
         )}
       </CardHeader>
       <CardContent>

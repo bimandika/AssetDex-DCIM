@@ -1,4 +1,6 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.51.0'
+
 
 // Deno environment type declarations
 declare const Deno: {
@@ -38,489 +40,130 @@ interface FilterConfig {
 export const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
-
   try {
-    // Create a Supabase client with environment variables
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing required environment variables')
+      throw new Error('Missing required environment variables');
     }
-
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
-
-    const url = new URL(req.url)
-    const action = url.searchParams.get('action') || 'query'
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     if (req.method === 'POST') {
-      const body = await req.json()
-
-      if (action === 'query') {
-        // Handle nested config structure and normalize table name
-        let config: QueryConfig = body.config || body
-        
-        // Ensure table is always set for server data
-        if (!config.table) {
-          config.table = 'servers'
-        }
-        
-        console.log('Widget data: Received config:', JSON.stringify(config, null, 2))
-        console.log('Widget data: Table name:', config.table)
-        
-        // Map field names to actual database columns
-        config = normalizeConfig(config)
-        console.log('Widget data: Normalized config:', JSON.stringify(config, null, 2))
-        
-        // Use the database function for server data
-        if (config.table === 'servers') {
-          const { data, error } = await supabaseClient
-            .rpc('get_server_data', {
-              p_filters: config.filters || [],
-              p_group_by: config.groupBy || null,
-              p_aggregation: config.aggregation || 'count',
-              p_date_range: config.dateRange || {}
-            })
-
-          if (error) {
-            console.error('Widget data: Server query error:', error)
-            throw error
-          }
-
-          // Transform data for chart widgets
-          let transformedData = data || []
-          
-          // For chart widgets, transform to Chart.js format
-          if (config.groupBy) {
-            transformedData = {
-              labels: (data || []).map((item: any) => item.group_value),
-              datasets: [{
-                label: config.aggregation === 'count' ? 'Count' : config.aggregation?.toUpperCase(),
-                data: (data || []).map((item: any) => item.aggregated_value),
-                backgroundColor: [
-                  '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-                  '#06B6D4', '#F97316', '#84CC16', '#EC4899', '#6B7280'
-                ],
-                borderColor: [
-                  '#2563EB', '#DC2626', '#059669', '#D97706', '#7C3AED',
-                  '#0891B2', '#EA580C', '#65A30D', '#DB2777', '#4B5563'
-                ],
-                borderWidth: 1
-              }],
-              total: (data || []).reduce((sum: number, item: any) => sum + item.aggregated_value, 0)
+      const body = await req.json();
+      const config = body.config || body;
+      // Support count aggregation for any table
+      if (config.table && config.aggregation === 'count') {
+        // Chain .select() first so filter methods are available
+        let query = supabaseClient.from(config.table).select('id', { count: 'exact', head: true });
+        // Debug: log available methods on query object
+        console.log('Supabase query builder keys:', Object.keys(query));
+        console.log('Supabase query builder prototype:', Object.getPrototypeOf(query));
+        // Phase 1: Map plural and hierarchical filter fields to correct column names for servers table
+        const fieldMap = {
+          models: 'model',
+          allocations: 'allocation',
+          environments: 'environment',
+          // Hierarchical Data Center Location mappings (use dc_ prefix to match schema)
+          dc_sites: 'dc_site',
+          dc_buildings: 'dc_building',
+          dc_floors: 'dc_floor',
+          dc_rooms: 'dc_room',
+        };
+        let mappedFilters: FilterConfig[] = [];
+        if (Array.isArray(config.filters)) {
+          for (const filter of config.filters) {
+            let field = filter.field;
+            if (config.table === 'servers' && fieldMap[field]) {
+              field = fieldMap[field];
             }
-          }
-
-          return new Response(
-            JSON.stringify({ 
-              success: true, 
-              data: transformedData,
-              config: config
-            }),
-            {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            },
-          )
-        }
-
-        // For other tables, build query dynamically
-        else {
-          const result = await executeCustomQuery(supabaseClient, config)
-          return new Response(
-            JSON.stringify({ 
-              success: true, 
-              data: result,
-              config: config
-            }),
-            {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            },
-          )
-        }
-      }
-
-      else if (action === 'schema') {
-        // Get table schema information
-        const tableName = body.table || body.config?.table || 'servers'
-        const schema = await getTableSchema(supabaseClient, tableName)
-        
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            data: schema
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        )
-      }
-
-      else if (action === 'timeline') {
-        // Special timeline data query - always use servers table
-        let config: QueryConfig = { 
-          table: 'servers',
-          groupBy: 'created_at',
-          aggregation: 'count',
-          ...body.config,
-          ...body
-        }
-        
-        // Normalize field names
-        config = normalizeConfig(config)
-        console.log('Widget data: Timeline config:', JSON.stringify(config, null, 2))
-        
-        const timelineData = await getTimelineData(supabaseClient, config)
-        
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            data: timelineData,
-            config: config
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        )
-      }
-
-      else if (action === 'rack_utilization') {
-        // Handle rack utilization requests - always use servers table
-        let config: QueryConfig = { 
-          table: 'servers',
-          groupBy: 'rack',
-          aggregation: 'count',
-          filters: body.filters || [],
-          ...body.config,
-          ...body
-        }
-        
-        // Normalize field names
-        config = normalizeConfig(config)
-        console.log('Widget data: Rack utilization config:', JSON.stringify(config, null, 2))
-        
-        const { data, error } = await supabaseClient
-          .rpc('get_server_data', {
-            p_filters: config.filters || [],
-            p_group_by: config.groupBy || 'rack',
-            p_aggregation: config.aggregation || 'count',
-            p_date_range: config.dateRange || {}
-          })
-
-        if (error) {
-          console.error('Widget data: Rack utilization error:', error)
-          throw error
-        }
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            data: data || [],
-            config: config
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        )
-      }
-    }
-
-    // GET requests - Get available tables and fields
-    else if (req.method === 'GET') {
-      if (action === 'tables') {
-        const availableTables = {
-          servers: {
-            label: 'Servers',
-            fields: [
-              { name: 'hostname', type: 'text', label: 'Hostname' },
-              { name: 'brand', type: 'text', label: 'Brand' },
-              { name: 'device_type', type: 'enum', label: 'Device Type' },
-              { name: 'environment', type: 'enum', label: 'Environment' },
-              { name: 'dc_site', type: 'text', label: 'Site' },
-              { name: 'dc_building', type: 'text', label: 'Building' },
-              { name: 'dc_floor', type: 'text', label: 'Floor' },
-              { name: 'dc_room', type: 'text', label: 'Room' },
-              { name: 'rack_position', type: 'text', label: 'Rack Position' },
-              { name: 'deployment_date', type: 'date', label: 'Deployment Date' },
-              { name: 'installation_date', type: 'date', label: 'Installation Date' },
-              { name: 'server_status', type: 'enum', label: 'Status' },
-              { name: 'created_at', type: 'timestamp', label: 'Created At' }
-            ]
-          },
-          rack_metadata: {
-            label: 'Rack Metadata',
-            fields: [
-              { name: 'rack_name', type: 'text', label: 'Rack Name' },
-              { name: 'dc_site', type: 'text', label: 'Site' },
-              { name: 'dc_building', type: 'text', label: 'Building' },
-              { name: 'dc_floor', type: 'text', label: 'Floor' },
-              { name: 'dc_room', type: 'text', label: 'Room' },
-              { name: 'description', type: 'text', label: 'Description' }
-            ]
+            mappedFilters.push({ ...filter, field });
           }
         }
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            data: availableTables
-          }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        )
-      }
-    }
-
-    // Invalid action or method
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Invalid action or method'
-      }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
-
-  } catch (error) {
-    console.error('Widget data error:', error)
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message || 'Internal server error'
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
-  }
-}
-
-// Normalize field names to match actual database columns
-function normalizeConfig(config: QueryConfig): QueryConfig {
-  const fieldMapping: { [key: string]: string } = {
-    'server_status': 'status',
-    'deployment_status': 'status', // fallback to status
-    'server_brand': 'brand',
-    'device_types': 'device_type'
-  }
-  
-  // Normalize groupBy field
-  if (config.groupBy && fieldMapping[config.groupBy]) {
-    config.groupBy = fieldMapping[config.groupBy]
-  }
-  
-  // Normalize filter fields
-  if (config.filters) {
-    config.filters = config.filters.map(filter => ({
-      ...filter,
-      field: fieldMapping[filter.field] || filter.field
-    }))
-  }
-  
-  // Normalize selectFields
-  if (config.selectFields) {
-    config.selectFields = config.selectFields.map(field => 
-      fieldMapping[field] || field
-    )
-  }
-  
-  return config
-}
-
-// Execute custom query for non-server tables
-async function executeCustomQuery(supabaseClient: any, config: QueryConfig) {
-  let query = supabaseClient.from(config.table)
-
-  // Apply select fields
-  const selectFields = config.selectFields?.join(', ') || '*'
-  query = query.select(selectFields)
-
-  // Apply filters
-  if (config.filters?.length) {
-    for (const filter of config.filters) {
-      switch (filter.operator) {
-        case 'equals':
-          query = query.eq(filter.field, filter.value)
-          break
-        case 'contains':
-          query = query.ilike(filter.field, `%${filter.value}%`)
-          break
-        case 'in':
-          if (Array.isArray(filter.value)) {
-            query = query.in(filter.field, filter.value)
-          } else if (typeof filter.value === 'string') {
-            // Handle string representation of arrays
-            try {
-              const parsed = JSON.parse(filter.value)
-              if (Array.isArray(parsed)) {
-                query = query.in(filter.field, parsed)
+        // Phase 2: Apply Supabase filter methods (no reassignment)
+        for (const filter of mappedFilters) {
+          if (!filter.field || !filter.operator) continue;
+          switch (filter.operator) {
+            case 'equals':
+              if (Array.isArray(filter.value)) {
+                query = query.in(filter.field, filter.value);
               } else {
-                query = query.in(filter.field, [filter.value])
+                query = query.eq(filter.field, filter.value);
               }
-            } catch {
-              query = query.in(filter.field, [filter.value])
-            }
+              break;
+            case 'contains':
+              query = query.ilike(filter.field, `%${filter.value}%`);
+              break;
+            case 'in':
+              query = query.in(filter.field, Array.isArray(filter.value) ? filter.value : [filter.value]);
+              break;
+            case 'gt':
+              query = query.gt(filter.field, filter.value);
+              break;
+            case 'lt':
+              query = query.lt(filter.field, filter.value);
+              break;
+            case 'gte':
+              query = query.gte(filter.field, filter.value);
+              break;
+            case 'lte':
+              query = query.lte(filter.field, filter.value);
+              break;
+            default:
+              // Unknown operator, skip
+              break;
           }
-          break
-        case 'gt':
-          query = query.gt(filter.field, filter.value)
-          break
-        case 'lt':
-          query = query.lt(filter.field, filter.value)
-          break
-        case 'gte':
-          query = query.gte(filter.field, filter.value)
-          break
-        case 'lte':
-          query = query.lte(filter.field, filter.value)
-          break
+        }
+        // Query already has .select() chained above
+        const { count, error } = await query;
+        if (error) {
+          console.error('Widget data filter error:', error);
+          throw error;
+        }
+        // Return { value: count } for widget compatibility
+        return new Response(
+          JSON.stringify({ success: true, data: { value: count }, config }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-    }
-  }
-
-  // Apply date range filter
-  if (config.dateRange?.field && config.dateRange?.start && config.dateRange?.end) {
-    query = query
-      .gte(config.dateRange.field, config.dateRange.start)
-      .lte(config.dateRange.field, config.dateRange.end)
-  }
-
-  // Apply limit
-  if (config.limit) {
-    query = query.limit(config.limit)
-  }
-
-  const { data, error } = await query
-
-  if (error) throw error
-
-  // If groupBy is specified, process the data for aggregation
-  if (config.groupBy && data) {
-    return processGroupedData(data, config)
-  }
-
-  return data || []
-}
-
-// Process data for grouping and aggregation
-function processGroupedData(data: any[], config: QueryConfig) {
-  const grouped = data.reduce((acc, item) => {
-    const groupValue = item[config.groupBy!] || 'Unknown'
-    
-    if (!acc[groupValue]) {
-      acc[groupValue] = []
-    }
-    acc[groupValue].push(item)
-    
-    return acc
-  }, {})
-
-  return Object.entries(grouped).map(([group_value, items]) => {
-    const itemsArray = items as any[]
-    let aggregated_value = itemsArray.length // default to count
-    
-    if (config.aggregation === 'sum' && itemsArray.length > 0) {
-      // For sum, we'd need a numeric field - defaulting to count for now
-      aggregated_value = itemsArray.length
-    } else if (config.aggregation === 'avg' && itemsArray.length > 0) {
-      // For avg, we'd need a numeric field - defaulting to count for now
-      aggregated_value = itemsArray.length
-    }
-    
-    return {
-      group_value,
-      aggregated_value,
-      record_count: itemsArray.length
-    }
-  })
-}
-
-// Get table schema information
-async function getTableSchema(supabaseClient: any, tableName: string) {
-  // This is a simplified schema - in production, you might query information_schema
-  const schemas = {
-    servers: [
-      { column_name: 'id', data_type: 'uuid', is_nullable: false },
-      { column_name: 'hostname', data_type: 'text', is_nullable: false },
-      { column_name: 'brand', data_type: 'text', is_nullable: true },
-      { column_name: 'device_type', data_type: 'device_type', is_nullable: true },
-      { column_name: 'environment', data_type: 'environment_type', is_nullable: true },
-      { column_name: 'dc_site', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_building', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_floor', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_room', data_type: 'text', is_nullable: true },
-      { column_name: 'deployment_date', data_type: 'date', is_nullable: true },
-      { column_name: 'server_status', data_type: 'server_status', is_nullable: true },
-    ],
-    rack_metadata: [
-      { column_name: 'id', data_type: 'uuid', is_nullable: false },
-      { column_name: 'rack_name', data_type: 'text', is_nullable: false },
-      { column_name: 'dc_site', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_building', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_floor', data_type: 'text', is_nullable: true },
-      { column_name: 'dc_room', data_type: 'text', is_nullable: true },
-    ]
-  }
-
-  return schemas[tableName as keyof typeof schemas] || []
-}
-
-// Get timeline-specific data
-async function getTimelineData(supabaseClient: any, config: QueryConfig) {
-  // For timeline widgets, we need actual server records, not aggregated data
-  let query = supabaseClient
-    .from('servers')
-    .select('id, hostname, brand, model, status, created_at, updated_at, rack, dc_site')
-    .order('created_at', { ascending: false })
-    .limit(20) // Limit to recent 20 events
-
-  // Apply filters
-  if (config.filters?.length) {
-    for (const filter of config.filters) {
-      switch (filter.operator) {
-        case 'equals':
-          query = query.eq(filter.field, filter.value)
-          break
-        case 'gte':
-          query = query.gte(filter.field, filter.value)
-          break
-        case 'lte':
-          query = query.lte(filter.field, filter.value)
-          break
+      // Support sum aggregation
+      if (config.table && config.aggregation === 'sum' && config.field) {
+        const { data, error } = await supabaseClient
+          .from(config.table)
+          .select(`${config.field}`);
+        if (error) {
+          throw error;
+        }
+        const sum = Array.isArray(data) ? data.reduce((acc, row) => acc + (row[config.field] || 0), 0) : 0;
+        return new Response(
+          JSON.stringify({ success: true, data: { value: sum }, config }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
+      // Add more widget types/logic here as needed
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unsupported widget config' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // GET logic (e.g., schema discovery) can go here
+
+    return new Response(
+      JSON.stringify({ success: false, error: 'Invalid method' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Widget data error:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message || 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
-
-  const { data, error } = await query
-
-  if (error) throw error
-
-  // Transform server records into timeline events
-  return (data || []).map((server: any) => ({
-    id: server.id,
-    title: `Server ${server.hostname || 'Unknown'}`,
-    description: `${server.brand || ''} ${server.model || ''} - ${server.status || 'Unknown Status'}`.trim(),
-    timestamp: server.created_at,
-    category: 'server',
-    server_id: server.id,
-    server_name: server.hostname,
-    rack_name: server.rack,
-    room_name: server.dc_site
-  }))
 }
 
-// Main function that serves the handler
-if (Deno.serve) {
-  Deno.serve(handler)
-}
+// Start the Deno HTTP server
+serve(handler);
