@@ -24,6 +24,7 @@ import StatWidget from './StatWidget';
 import GaugeWidget from './GaugeWidget';
 import type { Widget } from '@/hooks/useDashboard'
 import { useNavigate } from 'react-router-dom'
+import ChartWidgetEditDialog from './ChartWidgetEditDialog'
 
 interface CustomDashboardProps {
   dashboardId?: string
@@ -520,13 +521,22 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
         </div>
       )}
       
-      {/* Widget Edit Dialog */}
-      <WidgetEditDialog
-        widget={editingWidget}
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        onSave={handleUpdateWidget}
-      />
+      {/* Widget Edit Dialogs: Chart uses ChartWidgetEditDialog, others use WidgetEditDialog */}
+      {editingWidget?.widget_type === 'chart' ? (
+        <ChartWidgetEditDialog
+          widget={editingWidget}
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onSave={handleUpdateWidget}
+        />
+      ) : (
+        <WidgetEditDialog
+          widget={editingWidget}
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onSave={handleUpdateWidget}
+        />
+      )}
     </div>
   )
 }

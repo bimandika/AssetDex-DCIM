@@ -397,6 +397,11 @@ async function createDashboard(supabase: any, data: any, userId: string) {
     console.log('createDashboard: Creating widgets, count:', widgets.length)
     const widgetPromises = widgets.map(async (widget: any, index: number) => {
       // Only allow whitelisted fields, never include id, created_at, updated_at
+      // Always ensure groupBy is an array
+      let dataSource = widget.data_source || {};
+      if (dataSource.groupBy && !Array.isArray(dataSource.groupBy)) {
+        dataSource.groupBy = [dataSource.groupBy];
+      }
       const insertObj: any = {
         dashboard_id: dashboard.id,
         title: widget.title ?? '',
@@ -406,7 +411,7 @@ async function createDashboard(supabase: any, data: any, userId: string) {
         width: widget.size?.width || 6,
         height: widget.size?.height || 4,
         config: widget.config || {},
-        data_source: widget.data_source || {},
+        data_source: dataSource,
         filters: widget.filters || []
       };
       // Defensive clean for UUID fields
@@ -515,6 +520,11 @@ async function updateDashboard(supabase: any, data: any, userId: string) {
       // Recreate widgets (simpler than complex update logic)
       const widgetPromises = widgets.map(async (widget: any, index: number) => {
         // Only allow whitelisted fields, never include id, created_at, updated_at
+        // Always ensure groupBy is an array
+        let dataSource = widget.data_source ?? {};
+        if (dataSource.groupBy && !Array.isArray(dataSource.groupBy)) {
+          dataSource.groupBy = [dataSource.groupBy];
+        }
         const insertObj: any = {
           dashboard_id: id,
           title: widget.title ?? '',
@@ -524,7 +534,7 @@ async function updateDashboard(supabase: any, data: any, userId: string) {
           width: widget.width ?? (widget.size?.width ?? 6),
           height: widget.height ?? (widget.size?.height ?? 4),
           config: widget.config ?? {},
-          data_source: widget.data_source ?? {},
+          data_source: dataSource,
           filters: widget.filters ?? []
         };
         // Defensive clean for UUID fields
@@ -688,6 +698,11 @@ async function createWidget(supabase: any, data: any, userId: string) {
       throw new Error('Access denied: You can only add widgets to your own dashboards')
     }
 
+    // Always ensure groupBy is an array
+    let ds = data_source || {};
+    if (ds.groupBy && !Array.isArray(ds.groupBy)) {
+      ds.groupBy = [ds.groupBy];
+    }
     // Create the widget
     const { data: newWidget, error: widgetError } = await supabase
       .from('dashboard_widgets')
@@ -700,7 +715,7 @@ async function createWidget(supabase: any, data: any, userId: string) {
         width: width || 6,
         height: height || 4,
         config: config || {},
-        data_source: data_source || {},
+        data_source: ds,
         filters: filters || []
       })
       .select()
@@ -740,7 +755,12 @@ async function updateWidget(supabase: any, data: any, userId: string) {
   const updateData: any = {};
   for (const key in rest) {
     if (rest[key] !== undefined) {
-      updateData[key] = rest[key];
+      // Always ensure groupBy is an array if updating data_source
+      if (key === 'data_source' && rest[key]?.groupBy && !Array.isArray(rest[key].groupBy)) {
+        updateData[key] = { ...rest[key], groupBy: [rest[key].groupBy] };
+      } else {
+        updateData[key] = rest[key];
+      }
     }
   }
   // If no fields to update, just return the current widget

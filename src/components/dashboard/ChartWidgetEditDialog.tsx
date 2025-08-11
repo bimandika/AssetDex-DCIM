@@ -13,6 +13,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import type { Widget } from '@/hooks/useDashboard'
+import { getTableFields } from '@/utils/schemaMeta';
+import FilterDropdown from './FilterDropdown';
+import { useEnumContext } from '@/contexts/EnumContext';
 
 interface ChartWidgetEditDialogProps {
   widget: Widget | null
@@ -21,8 +24,6 @@ interface ChartWidgetEditDialogProps {
   onSave: (widgetData: Partial<Widget>) => Promise<void>
 }
 
-const chartFields = ['brand', 'model', 'status', 'type', 'location', 'brand']
-
 const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
   widget,
   open,
@@ -30,6 +31,46 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
   onSave
 }) => {
   const { toast } = useToast()
+  const { enums } = useEnumContext();
+
+  // Helper to get default label for each filter
+  const getDefaultFilterLabel = (field: string): string => {
+    const labels: Record<string, string> = {
+      device_type: 'All Device Types',
+      environment: 'All Environments',
+      brand: 'All Brands',
+      model: 'All Models',
+      allocation: 'All Allocations',
+      operating_system: 'All OS',
+      dc_site: 'All Sites',
+      dc_building: 'All Buildings',
+      rack: 'All Racks',
+      status: 'All Status',
+    };
+    return labels[field] || 'All';
+  };
+
+  // Helper to get enum options for a field
+  const getEnumOptions = (field: string): string[] | undefined => {
+    const mapping: Record<string, string> = {
+      status: 'status',
+      device_type: 'deviceTypes',
+      allocation: 'allocationTypes',
+      environment: 'environmentTypes',
+      brand: 'brands',
+      model: 'models',
+      operating_system: 'osTypes',
+      dc_site: 'sites',
+      dc_building: 'buildings',
+      rack: 'racks',
+    };
+    const enumKey = mapping[field];
+    if (enumKey && enums[enumKey]) {
+      return enums[enumKey];
+    }
+    return undefined;
+  };
+
   const [formData, setFormData] = useState({
     title: '',
     position_x: 0,
@@ -37,7 +78,7 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     width: 4,
     height: 1,
     config: { type: 'bar', showLegend: true },
-    data_source: { table: 'servers', aggregation: 'count', groupBy: ['brand'], filters: [] },
+    data_source: { table: 'servers', aggregation: 'count', groupBy: ['model'], filters: {} },
   })
   const [isLoading, setIsLoading] = useState(false)
 
@@ -58,7 +99,9 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
             : widget.data_source?.groupBy
               ? [widget.data_source.groupBy]
               : ['brand'],
-          filters: widget.data_source?.filters || [],
+          filters: (widget.data_source?.filters && typeof widget.data_source.filters === 'object')
+            ? widget.data_source.filters
+            : {},
         },
       })
     }
@@ -68,6 +111,13 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     if (!widget) return;
     setIsLoading(true);
     try {
+      // Transform filters object to array for backend compatibility
+      let filtersArray: Array<{ field: string, value: any }> = [];
+      if (formData.data_source?.filters && typeof formData.data_source.filters === 'object') {
+        filtersArray = Object.entries(formData.data_source.filters)
+          .filter(([_, value]) => value && value !== getDefaultFilterLabel(_))
+          .map(([field, value]) => ({ field, value }));
+      }
       // Validate and default required fields
       const safeWidget = {
         id: widget.id,
@@ -84,9 +134,9 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
           table: formData.data_source?.table || 'servers',
           aggregation: formData.data_source?.aggregation || 'count',
           groupBy: Array.isArray(formData.data_source?.groupBy)
-            ? (formData.data_source.groupBy.length === 1 ? formData.data_source.groupBy[0] : formData.data_source.groupBy)
+            ? formData.data_source.groupBy
             : (formData.data_source?.groupBy ? [formData.data_source.groupBy] : ['brand']),
-          filters: Array.isArray(formData.data_source?.filters) ? formData.data_source.filters : [],
+          filters: filtersArray,
         },
       };
       // Remove any undefined fields recursively
@@ -214,35 +264,35 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
           <div className="space-y-4">
             <h3 className="text-lg font-medium">Breakdown Fields</h3>
             <div className="space-y-2">
-              <div style={{ color: 'red', fontWeight: 'bold' }}>DEBUG: groupBy = {JSON.stringify(formData.data_source.groupBy)}</div>
               <Label>Group By</Label>
-              {(formData.data_source.groupBy.length === 0 ? ['brand'] : formData.data_source.groupBy).map((field: any, idx: any, arr: any[]) => (
-                <div key={idx} className="flex items-center gap-2 mb-2">
-                  <Select
-                    value={field}
-                    onValueChange={(value: any) => {
-                      const newFields = [...arr]
-                      newFields[idx] = value
-                      updateDataSource('groupBy', newFields)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {chartFields.map((f: any) => (
-                        <SelectItem key={f} value={f}>{f}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {arr.length > 1 && (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => removeGroupByField(idx)}>-</Button>
-                  )}
-                  {/* Always show the + button on the last field, even if only one field */}
-                  {idx === arr.length - 1 && (
-                    <Button type="button" size="sm" variant="ghost" onClick={addGroupByField}>Add Field +</Button>
-                  )}
-                </div>
+              <Select
+                multiple
+                value={formData.data_source.groupBy}
+                onValueChange={values => updateDataSource('groupBy', values)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['device_type', 'environment', 'brand', 'model', 'allocation', 'operating_system', 'dc_site', 'dc_building', 'rack', 'status'].map(field => (
+                    <SelectItem key={field} value={field}>{field}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Filters</Label>
+              {['device_type', 'environment', 'brand', 'model', 'allocation', 'operating_system', 'dc_site', 'dc_building', 'rack', 'status'].map(field => (
+                <FilterDropdown
+                  key={field}
+                  field={field}
+                  value={formData.data_source.filters?.[field] || getDefaultFilterLabel(field)}
+                  onChange={value => {
+                    const newFilters = { ...formData.data_source.filters, [field]: value };
+                    updateDataSource('filters', newFilters);
+                  }}
+                  options={[getDefaultFilterLabel(field), ...(getEnumOptions(field) || [])]}
+                />
               ))}
             </div>
           </div>
