@@ -34,7 +34,7 @@ export const handler = async (req: Request): Promise<Response> => {
     // Accept POST with breakdown config and filters
     if (req.method === 'POST') {
       const body = await req.json();
-      const allowedFields = ['brand', 'model', 'status', 'dc_site', 'building', 'floor', 'room', 'rack'];
+      const allowedFields = ['brand', 'model', 'status', 'dc_site', 'building', 'floor', 'room', 'rack', 'allocation', 'device_type', 'environment', 'operating_system'];
       let groupFields = body.groupFields || ['brand', 'model', 'status'];
       // Accept filters as array or object
       let filtersRaw = body.filters || [];

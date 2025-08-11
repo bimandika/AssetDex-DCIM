@@ -111,13 +111,6 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     if (!widget) return;
     setIsLoading(true);
     try {
-      // Transform filters object to array for backend compatibility
-      let filtersArray: Array<{ field: string, value: any }> = [];
-      if (formData.data_source?.filters && typeof formData.data_source.filters === 'object') {
-        filtersArray = Object.entries(formData.data_source.filters)
-          .filter(([_, value]) => value && value !== getDefaultFilterLabel(_))
-          .map(([field, value]) => ({ field, value }));
-      }
       // Validate and default required fields
       const safeWidget = {
         id: widget.id,
@@ -136,7 +129,9 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
           groupBy: Array.isArray(formData.data_source?.groupBy)
             ? formData.data_source.groupBy
             : (formData.data_source?.groupBy ? [formData.data_source.groupBy] : ['brand']),
-          filters: filtersArray,
+          filters: (formData.data_source?.filters && typeof formData.data_source.filters === 'object')
+            ? formData.data_source.filters
+            : {},
         },
       };
       // Remove any undefined fields recursively
