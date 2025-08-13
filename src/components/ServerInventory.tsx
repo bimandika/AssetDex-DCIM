@@ -1323,18 +1323,50 @@ const ServerInventory = () => {
                         <div className="grid grid-cols-2 gap-4 mt-4">
                           <div className="space-y-2">
                             <Label htmlFor="dc_floor">DC Floor</Label>
-                            <Input
-                              id="dc_floor"
-                              placeholder="1"
-                              {...form.register('dc_floor')}
+                            <Controller
+                              name="dc_floor"
+                              control={form.control}
+                              render={({ field }) => (
+                                <Select
+                                  value={field.value || ''}
+                                  onValueChange={field.onChange}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select floor" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {enums?.floors?.map((floor) => (
+                                      <SelectItem key={floor} value={floor}>
+                                        {floor}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
                             />
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="dc_room">DC Room</Label>
-                            <Input
-                              id="dc_room"
-                              placeholder="Room A"
-                              {...form.register('dc_room')}
+                            <Controller
+                              name="dc_room"
+                              control={form.control}
+                              render={({ field }) => (
+                                <Select
+                                  value={field.value || ''}
+                                  onValueChange={field.onChange}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select room" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {enums?.rooms?.map((room) => (
+                                      <SelectItem key={room} value={room}>
+                                        {room}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
                             />
                           </div>
                         </div>
