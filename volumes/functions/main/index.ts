@@ -88,10 +88,15 @@ serve(async (req) => {
       return await handler(req)
     }
 
-    // Update rack description endpoint (for Supabase Edge Function call)
-    if (url.pathname === '/update-rack-description' && req.method === 'POST') {
-      const { handler } = await import('../update-rack-description/index.ts')
-      return await handler(req)
+
+    // Server position history endpoints (payload-based)
+    if (url.pathname === '/servers/position-history' && req.method === 'POST') {
+      const { handler } = await import('../get-server-history/index.ts');
+      return await handler(req);
+    }
+    if (url.pathname === '/servers/move' && req.method === 'POST') {
+      const { default: handler } = await import('../server-position-history/index.ts');
+      return await handler(req);
     }
 
     // Update rack description endpoint - matches PUT /api/racks/{rackId}/description

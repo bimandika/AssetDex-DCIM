@@ -180,6 +180,28 @@ CREATE TABLE public.servers (
     CONSTRAINT valid_warranty CHECK (warranty IS NULL OR warranty >= CURRENT_DATE)
 );
 
+-- Server Position History Table
+CREATE TABLE IF NOT EXISTS public.server_position_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  server_id UUID NOT NULL REFERENCES public.servers(id) ON DELETE CASCADE,
+  previous_rack TEXT,
+  previous_unit TEXT,
+  previous_room TEXT,
+  previous_floor TEXT,
+  previous_building TEXT,
+  previous_site TEXT,
+  new_rack TEXT,
+  new_unit TEXT,
+  new_room TEXT,
+  new_floor TEXT,
+  new_building TEXT,
+  new_site TEXT,
+  changed_by UUID NOT NULL REFERENCES auth.users(id),
+  changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  notes TEXT
+);
+-- Function: Log server position changes
+
 -- ==================================================
 -- FILTER PREFERENCES SYSTEM
 -- ==================================================
