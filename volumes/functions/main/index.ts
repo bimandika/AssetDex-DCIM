@@ -98,6 +98,11 @@ serve(async (req) => {
       const { default: handler } = await import('../server-position-history/index.ts');
       return await handler(req);
     }
+    // Add compatibility for Supabase Edge Functions
+    if (url.pathname === '/server-position-history' && req.method === 'POST') {
+      const { default: handler } = await import('../server-position-history/index.ts');
+      return await handler(req);
+    }
 
     // Update rack description endpoint - matches PUT /api/racks/{rackId}/description
     if (url.pathname.match(/^\/api\/racks\/[^\/]+\/description$/) && req.method === 'PUT') {

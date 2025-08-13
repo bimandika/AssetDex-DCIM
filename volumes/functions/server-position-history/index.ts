@@ -19,8 +19,11 @@ export default async function handler(req: Request) {
 
   const url = new URL(req.url);
 
-  // POST /servers/move
-  if (url.pathname === "/servers/move" && req.method === "POST") {
+  // Accept POST at either root or /servers/move for compatibility
+  const isRootPost = (url.pathname === "/" || url.pathname === "/server-position-history") && req.method === "POST";
+  const isMovePost = url.pathname === "/servers/move" && req.method === "POST";
+
+  if (isRootPost || isMovePost) {
     let body;
     try {
       body = await req.json();

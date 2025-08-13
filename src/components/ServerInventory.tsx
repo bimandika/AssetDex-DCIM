@@ -670,6 +670,12 @@ const ServerInventory = () => {
       };
 
       if (editingServer) {
+        // Detect position change
+        const positionFields = ['rack', 'unit', 'dc_room', 'dc_floor', 'dc_building', 'dc_site'];
+        const positionChanged = positionFields.some(
+          field => serverData[field] !== editingServer[field]
+        );
+
         // Update existing server
         const { error } = await supabase
           .from('servers')
@@ -677,6 +683,24 @@ const ServerInventory = () => {
           .eq('id', editingServer.id);
 
         if (error) throw error;
+
+        // If position changed, call backend function to log history
+        if (positionChanged) {
+          await supabase.functions.invoke('server-position-history', {
+            method: 'POST',
+            body: {
+              serverId: editingServer.id,
+              rack: serverData.rack,
+              unit: serverData.unit,
+              dc_room: serverData.dc_room,
+              dc_floor: serverData.dc_floor,
+              dc_building: serverData.dc_building,
+              dc_site: serverData.dc_site,
+              notes: serverData.notes,
+              changed_by: user?.id
+            }
+          });
+        }
 
         toast({
           title: 'Server updated',
