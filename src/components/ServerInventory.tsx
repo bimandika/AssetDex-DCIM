@@ -29,6 +29,7 @@ import { generateDynamicValidationSchema, generateDefaultValues, transformFormDa
 import { useFilterableColumns } from "@/hooks/useFilterableColumns";
 import FilterManagerDialog from "@/components/FilterManagerDialog";
 import RackAvailabilityChecker from "./RackAvailabilityChecker";
+import ServerPositionHistory from "./ServerPositionHistory";
 
 // Import types from enums
 import type {
@@ -1523,6 +1524,10 @@ const ServerInventory = () => {
                             className="mt-2"
                             rows={3}
                           />
+                          {/* Position History Section */}
+                          {editingServer?.id && (
+                            <ServerPositionHistory serverId={editingServer.id} />
+                          )}
                         </div>
                       </CardContent>
                     </Card>
