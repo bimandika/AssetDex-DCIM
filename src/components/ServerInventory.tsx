@@ -30,6 +30,7 @@ import { useFilterableColumns } from "@/hooks/useFilterableColumns";
 import FilterManagerDialog from "@/components/FilterManagerDialog";
 import RackAvailabilityChecker from "./RackAvailabilityChecker";
 import ServerPositionHistory from "./ServerPositionHistory";
+import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 
 // Import types from enums
 import type {
@@ -127,6 +128,15 @@ const ServerInventory = () => {
   const { toast } = useToast();
   const { formSchema, isLoading: isSchemaLoading, error: schemaError, refetch: refetchSchema } = useDynamicFormSchema();
 
+  // Hierarchical filters for location
+  const {
+    hierarchyData,
+    filters: locationFilters,
+    updateFilter: updateLocationFilter,
+    resetFilters: resetLocationFilters,
+    loading: locationLoading,
+  } = useHierarchicalFilter();
+
   // Debug: Log enums when they change
   useEffect(() => {
     console.log('ServerInventory: Current enums:', enums);
@@ -205,6 +215,12 @@ const ServerInventory = () => {
     return { ...coreDefaults, ...formSchema.defaultValues };
   }, [enums, formSchema.defaultValues]);
 
+  // Initialize form for server management with react-hook-form
+  const form = useForm({
+    resolver: zodResolver(combinedValidationSchema()),
+    defaultValues: getCombinedDefaultValues(),
+  });
+
   // Helper to determine available units in a rack
   const getAvailableUnits = useCallback((selectedRack: string | null, currentServerId: string | null, servers: Server[], requiredHeight = 1): string[] => {
     if (!selectedRack) return [];
@@ -226,20 +242,21 @@ const ServerInventory = () => {
     });
 
     // Filter available units that have enough consecutive space
-    return (enums?.units || []).filter(unit => {
+    let available = (enums?.units || []).filter(unit => {
       const startUnit = parseInt(unit.substring(1));
       for (let i = 0; i < requiredHeight; i++) {
         if (occupied.has(`U${startUnit + i}`)) return false;
       }
       return true;
     });
-  }, [enums?.units]);
 
-  // Initialize form for server management with react-hook-form
-  const form = useForm({
-    resolver: zodResolver(combinedValidationSchema()),
-    defaultValues: getCombinedDefaultValues(),
-  });
+    // If the suggested unit (from RackAvailabilityChecker) is not in enums.units, add it temporarily
+    // This ensures the dropdown can always select the suggested unit
+    if (form.getValues('unit') && !available.includes(form.getValues('unit'))) {
+      available = [...available, form.getValues('unit')];
+    }
+    return available;
+  }, [enums?.units, form]);
 
   // Watch form values for real-time rack availability checking
   const watchedRack = useWatch({ control: form.control, name: 'rack' });
@@ -1277,14 +1294,18 @@ const ServerInventory = () => {
                               control={form.control}
                               render={({ field }) => (
                                 <Select
-                                  value={field.value}
-                                  onValueChange={field.onChange}
+                                  value={locationFilters.dc_site}
+                                  onValueChange={(val) => {
+                                    updateLocationFilter('dc_site', val);
+                                    field.onChange(val);
+                                  }}
+                                  disabled={locationLoading}
                                 >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Select site" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {enums?.sites?.map((site) => (
+                                    {hierarchyData.sites?.map((site) => (
                                       <SelectItem key={site} value={site}>
                                         {site}
                                       </SelectItem>
@@ -1301,14 +1322,18 @@ const ServerInventory = () => {
                               control={form.control}
                               render={({ field }) => (
                                 <Select
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
+                                  value={locationFilters.dc_building}
+                                  onValueChange={(val) => {
+                                    updateLocationFilter('dc_building', val);
+                                    field.onChange(val);
+                                  }}
+                                  disabled={!locationFilters.dc_site || locationLoading}
                                 >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Select building" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {enums?.buildings?.map((building) => (
+                                    {hierarchyData.buildings?.map((building) => (
                                       <SelectItem key={building} value={building}>
                                         {building}
                                       </SelectItem>
@@ -1328,14 +1353,18 @@ const ServerInventory = () => {
                               control={form.control}
                               render={({ field }) => (
                                 <Select
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
+                                  value={locationFilters.dc_floor}
+                                  onValueChange={(val) => {
+                                    updateLocationFilter('dc_floor', val);
+                                    field.onChange(val);
+                                  }}
+                                  disabled={!locationFilters.dc_building || locationLoading}
                                 >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Select floor" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {enums?.floors?.map((floor) => (
+                                    {hierarchyData.floors?.map((floor) => (
                                       <SelectItem key={floor} value={floor}>
                                         {floor}
                                       </SelectItem>
@@ -1352,14 +1381,18 @@ const ServerInventory = () => {
                               control={form.control}
                               render={({ field }) => (
                                 <Select
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
+                                  value={locationFilters.dc_room}
+                                  onValueChange={(val) => {
+                                    updateLocationFilter('dc_room', val);
+                                    field.onChange(val);
+                                  }}
+                                  disabled={!locationFilters.dc_floor || locationLoading}
                                 >
                                   <SelectTrigger>
                                     <SelectValue placeholder="Select room" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {enums?.rooms?.map((room) => (
+                                    {hierarchyData.rooms?.map((room) => (
                                       <SelectItem key={room} value={room}>
                                         {room}
                                       </SelectItem>
@@ -1453,6 +1486,7 @@ const ServerInventory = () => {
                               excludeServerId={editingServer?.id}
                               onSuggestionApply={(position: number) => {
                                 form.setValue('unit', `U${position}`);
+                                // Do NOT close dialog or submit form here
                               }}
                               className="w-full"
                             />
