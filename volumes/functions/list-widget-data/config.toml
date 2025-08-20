@@ -1,0 +1,7 @@
+# Enable CORS and JWT verification for list-widget-data function
+[functions.list-widget-data]
+cors = true
+verify_jwt = true
+allowed_origins = ["*"]
+allowed_headers = ["Authorization", "Content-Type", "apikey", "x-client-info"]
+allowed_methods = ["POST", "OPTIONS"]

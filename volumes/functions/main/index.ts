@@ -122,6 +122,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // List widget data endpoint
+    if (url.pathname === '/list-widget-data' && ["POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../list-widget-data/index.ts')
+      return await handler(req)
+    }
+
     // Chart widget data endpoint
     if (url.pathname === '/chart-widget-data' && ["GET", "POST", "OPTIONS"].includes(req.method)) {
       const { handler } = await import('../chart-widget-data/index.ts')
