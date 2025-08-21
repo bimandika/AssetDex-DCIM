@@ -2245,7 +2245,7 @@ GRANT EXECUTE ON FUNCTION public.get_all_racks() TO authenticated;
 CREATE TYPE public.dashboard_status AS ENUM ('active', 'archived', 'draft');
 
 -- Widget types enum  
-CREATE TYPE public.widget_type AS ENUM ('metric', 'chart', 'table', 'timeline', 'stat', 'gauge');
+CREATE TYPE public.widget_type AS ENUM ('metric', 'chart', 'table', 'timeline', 'stat', 'gauge', 'list');
 
 -- Chart types enum
 CREATE TYPE public.chart_type AS ENUM ('bar', 'line', 'pie', 'area', 'timeline');

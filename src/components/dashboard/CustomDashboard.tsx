@@ -20,8 +20,10 @@ import { TimelineWidget } from './TimelineWidget'
 import { ServerMetricWidget } from './ServerMetricWidget'
 import { SimpleMetricWidget } from './SimpleMetricWidget'
 import WidgetEditDialog from './WidgetEditDialog'
+import ListWidgetEditDialog from './ListWidgetEditDialog';
 import StatWidget from './StatWidget';
 import GaugeWidget from './GaugeWidget';
+import ListWidget from './ListWidget';
 import type { Widget } from '@/hooks/useDashboard'
 import { useNavigate } from 'react-router-dom'
 import ChartWidgetEditDialog from './ChartWidgetEditDialog'
@@ -243,6 +245,8 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
         return <StatWidget {...commonProps} />;
       case 'gauge':
         return <GaugeWidget {...commonProps} />;
+      case 'list':
+        return <ListWidget {...commonProps} />;
       default:
         return (
           <Card className="h-full">
@@ -488,6 +492,9 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
             <Button variant="outline" size="sm" onClick={() => handleAddWidget('gauge')}>
               Gauge Widget
             </Button>
+            <Button variant="outline" size="sm" onClick={() => handleAddWidget('list')}>
+              List Widget
+            </Button>
           </div>
         </div>
       )}
@@ -523,20 +530,30 @@ const CustomDashboard: React.FC<CustomDashboardProps> = ({ dashboardId }) => {
       
       {/* Widget Edit Dialogs: Chart uses ChartWidgetEditDialog, others use WidgetEditDialog */}
       {editingWidget?.widget_type === 'chart' ? (
-        <ChartWidgetEditDialog
-          widget={editingWidget}
-          open={showEditDialog}
-          onOpenChange={setShowEditDialog}
-          onSave={handleUpdateWidget}
-        />
-      ) : (
-        <WidgetEditDialog
-          widget={editingWidget}
-          open={showEditDialog}
-          onOpenChange={setShowEditDialog}
-          onSave={handleUpdateWidget}
-        />
-      )}
+  <ChartWidgetEditDialog
+    widget={editingWidget}
+    open={showEditDialog}
+    onOpenChange={setShowEditDialog}
+    onSave={handleUpdateWidget}
+  />
+ ) : editingWidget?.widget_type === 'list' ? (
+    <ListWidgetEditDialog
+      initialTitle={editingWidget.title}
+      initialColumns={editingWidget.config?.columns || ['hostname', 'ip_address']}
+      initialHeight={editingWidget.config?.height || 400}
+      open={showEditDialog}
+      onOpenChange={setShowEditDialog}
+      onSave={handleUpdateWidget}
+      onCancel={() => setShowEditDialog(false)}
+    />
+  ) : (
+    <WidgetEditDialog
+      widget={editingWidget}
+      open={showEditDialog}
+      onOpenChange={setShowEditDialog}
+      onSave={handleUpdateWidget}
+    />
+  )}
     </div>
   )
 }
