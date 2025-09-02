@@ -1,22 +1,39 @@
 # List Widget Implementation Plan
 
+## Goal
+Create a reusable List Widget component that displays all rows from the fixed 'server' table, showing two user-chosen columns. The widget should be scrollable and configurable, with backend support for efficient data retrieval. The widget title is configurable and used for display. The user can select any two columns from the 'server' table to display.
 
+---
 
 ## 1. Frontend (React)
+
+### Component: `ListWidget`
+Props:
+  - `title`: string (widget title)
   - `columns`: string[] (1-3 columns to display, user-selectable; default is 1 column)
+  - `height`: number (height in px or vh for scrollable area)
 - Features:
   - Fetches all rows for the fixed table/columns using React Query.
   - Displays a scrollable list (e.g., using a Card with fixed height and overflow-y: auto).
   - Shows each row with 1-3 columns (e.g., left/right or stacked).
   - Handles loading, error, and empty states.
   - Allows user to select 1-3 columns from the 'server' table via dropdowns or settings.
+
+### UI/UX
+- Use shadcn/ui or Tailwind for styling.
+- Card or Panel container, with header (title, column selectors), scrollable body.
 - Responsive for mobile/desktop.
+
+---
 
 
 ## 2. Backend (Supabase Edge Function)
 
 ### New Edge Function: `list-widget-data`
 Existing backend functions (`widget-data`, `chart-widget-data`) do not support fetching arbitrary columns for list widgets. A new Edge Function is required.
+
+**API Endpoint:** `/list-widget-data`
+
 **Input:**
 - `columns`: string[] (required, e.g. `["hostname", "ip_address"]`)
 - `filters`: object (optional, for future extensibility)
@@ -31,8 +48,14 @@ Existing backend functions (`widget-data`, `chart-widget-data`) do not support f
 - Support pagination and filtering if needed.
 - Return data as JSON array.
 
+**Security:**
+- Only allow permitted columns to be queried.
 
 **Example Request:**
+```json
+{
+  "columns": ["hostname", "ip_address"],
+  "limit": 100,
   "offset": 0
 }
 ```

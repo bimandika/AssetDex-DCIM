@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useServerEnums } from "@/hooks/useServerEnums";
 import { useEnumColors } from "@/hooks/useEnumColors";
 import BulkImport from "@/components/property-management/BulkImport";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 export interface ServerProperty {
   id?: string;
@@ -64,6 +65,16 @@ export const EXCLUDED_COLUMNS = [
 ];
 
 const ServerProperties = () => {
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({});
+  const [editingProperty, setEditingProperty] = useState(null);
+  useUrlState('serverProps_page', page, setPage);
+  useUrlState('serverProps_filters', filters, setFilters);
+  useAutoSave({ editingProperty }, 'serverProperties_editor');
+  useRestoreForm('serverProperties_editor', (data) => {
+    if (data.editingProperty) setEditingProperty(data.editingProperty);
+  });
+
   const { columns: tableColumns, error, refetch: refreshSchema } = useTableSchema('servers');
   const [properties, setProperties] = useState<ServerProperty[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);

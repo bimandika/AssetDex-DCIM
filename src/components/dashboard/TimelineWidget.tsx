@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, Settings, Calendar, Server, Building } from 'lucide
 import { format, isToday, isYesterday, parseISO } from 'date-fns'
 import { supabase } from '@/integrations/supabase/client'
 import type { Widget } from '@/hooks/useDashboard'
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave'
 
 export interface TimelineEvent {
   id: string
@@ -82,6 +83,11 @@ export const TimelineWidget: React.FC<TimelineWidgetProps> = ({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [page, setPage] = useState(1)
+  const [filters, setFilters] = useState({})
+
+  useUrlState(`${widget.id}_page`, page, setPage)
+  useUrlState(`${widget.id}_filters`, filters, setFilters)
 
   // Direct fetch to widget-data function
   const fetchTimelineData = async (): Promise<TimelineEvent[]> => {

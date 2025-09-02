@@ -1,7 +1,8 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Building } from "lucide-react";
+import { useState } from "react";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface RackInfo {
   id: string;
@@ -25,6 +26,13 @@ interface RackVisualizationProps {
 }
 
 const RackVisualization = ({ racks }: RackVisualizationProps) => {
+  const [viewMode, setViewMode] = useState('grid');
+  const [selectedRacks, setSelectedRacks] = useState([]);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  useUrlState('rackViz_viewMode', viewMode, setViewMode);
+  useUrlState('rackViz_selectedRacks', selectedRacks, setSelectedRacks);
+  useUrlState('rackViz_zoomLevel', zoomLevel, setZoomLevel);
+
   const mockServers = [
     { name: "WEB-01", status: "Active", units: "40-41" },
     { name: "WEB-02", status: "Active", units: "38-39" },

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAutoSave, useRestoreForm } from '@/hooks/useAutoSave';
 
 interface ChangePasswordDialogProps {
   open: boolean;
@@ -18,6 +19,14 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
   const [isLoading, setIsLoading] = useState(false);
   const { updatePassword } = useAuth();
   const { toast } = useToast();
+
+  // Auto-save and restore form state
+  useAutoSave({ currentPassword, newPassword, confirmPassword }, 'changePasswordForm');
+  useRestoreForm('changePasswordForm', (data) => {
+    if (data.currentPassword) setCurrentPassword(data.currentPassword);
+    if (data.newPassword) setNewPassword(data.newPassword);
+    if (data.confirmPassword) setConfirmPassword(data.confirmPassword);
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

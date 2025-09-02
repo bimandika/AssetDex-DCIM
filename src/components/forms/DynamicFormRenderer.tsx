@@ -1,5 +1,5 @@
-import React from 'react';
-import { Control, FieldErrors } from 'react-hook-form';
+import React, { useEffect } from 'react';
+import { Control, FieldErrors, UseFormSetValue } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { DynamicFormFieldRenderer } from './DynamicFormField';
@@ -8,6 +8,7 @@ import { DynamicFormField } from '@/hooks/useDynamicFormSchema';
 interface DynamicFormRendererProps {
   fields: DynamicFormField[];
   control: Control<any>;
+  setValue: UseFormSetValue<any>;
   errors: FieldErrors;
   className?: string;
   showCategories?: boolean;
@@ -17,11 +18,39 @@ interface DynamicFormRendererProps {
 export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
   fields,
   control,
+  setValue,
   errors,
   className = '',
   showCategories = true,
   columnsPerRow = 2,
 }) => {
+  // Auto-save form data every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const values: Record<string, any> = {};
+      fields.forEach(field => {
+        values[field.key] = control.getValues()[field.key];
+      });
+      localStorage.setItem('form_dynamicFormRenderer', JSON.stringify(values));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [fields, control]);
+
+  // Restore form data on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('form_dynamicFormRenderer');
+    if (saved && saved !== "undefined") {
+      try {
+        const values = JSON.parse(saved);
+        Object.entries(values).forEach(([key, value]) => {
+          setValue(key, value);
+        });
+      } catch (error) {
+        console.warn('Failed to restore form data:', error);
+      }
+    }
+  }, [setValue]);
+
   if (!fields.length) {
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -30,7 +59,6 @@ export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
     );
   }
 
-  // Group fields by category if showCategories is true
   const groupedFields = showCategories 
     ? fields.reduce((acc, field) => {
         const category = field.category || 'Additional';
@@ -97,7 +125,6 @@ export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
     <div className={className}>
       {Object.entries(groupedFields)
         .sort(([a], [b]) => {
-          // Sort categories with 'Additional' first, then alphabetically
           if (a === 'Additional') return -1;
           if (b === 'Additional') return 1;
           return a.localeCompare(b);
@@ -108,3 +135,5 @@ export const DynamicFormRenderer: React.FC<DynamicFormRendererProps> = ({
     </div>
   );
 };
+
+export default DynamicFormRenderer;

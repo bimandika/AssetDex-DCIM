@@ -110,8 +110,8 @@ const ListWidgetEditDialog: React.FC<ListWidgetEditDialogProps> = ({
   const handleSave = () => {
     onSave({
       title,
-      config: { columns },
-      height,
+      columns,
+      height: typeof height === 'string' ? parseInt(height) : height,
       filters
     });
     onOpenChange(false);

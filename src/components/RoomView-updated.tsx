@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 type ViewMode = 'physical' | 'logical';
 
@@ -45,6 +46,9 @@ const RoomView = ({ onRackClick }: RoomViewProps) => {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
+  useUrlState('roomViewUpdated_page', currentPage, setCurrentPage);
+  useUrlState('roomViewUpdated_mode', viewMode, setViewMode);
+
   const racksPerPage = 12;
 
   // Use hierarchical filter hook but only up to room level

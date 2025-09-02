@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { supabase } from '@/integrations/supabase/client'
-import { ServerFilterConfig, EnhancedQueryConfig } from '@/types/filterTypes'
+import { ServerFilterConfig } from '@/types/filterTypes'
 
 export interface Dashboard {
   id: string
@@ -20,7 +20,7 @@ export interface Dashboard {
 export interface Widget {
   id: string
   dashboard_id: string
-  widget_type: 'metric' | 'chart' | 'table' | 'timeline' | 'stat' | 'gauge'
+  widget_type: 'metric' | 'chart' | 'table' | 'timeline' | 'stat' | 'gauge' | 'list'
   title: string
   position_x: number
   position_y: number

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Controller, Control, FieldError } from 'react-hook-form';
+import React, { useEffect } from 'react';
+import { Controller, Control, FieldError, useFormContext } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,6 +26,27 @@ export const DynamicFormFieldRenderer: React.FC<DynamicFormFieldProps> = ({
   error,
   className = '',
 }) => {
+  const { setValue } = useFormContext();
+
+  // Auto-save field value to localStorage on change
+  useEffect(() => {
+    // No cleanup needed for register; it does not return an unsubscribe method
+    return () => {};
+  }, [control, field.key]);
+
+  // Restore field value from localStorage on mount
+  useEffect(() => {
+    const key = `form_field_${field.key}`;
+    const saved = localStorage.getItem(key);
+    if (saved && saved !== "undefined") {
+      try {
+        setValue(field.key, JSON.parse(saved));
+      } catch (e) {
+        // Optionally log or ignore
+      }
+    }
+  }, [setValue, field.key]);
+
   const renderField = () => {
     switch (field.type) {
       case 'text':

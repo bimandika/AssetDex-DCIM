@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertTriangle, CheckCircle, Info, Lightbulb } from 'lucide-react';
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface ServerInRack {
   id: string;
@@ -47,6 +48,12 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
 }) => {
   const { checkAvailability, loading, error } = useRackAvailability();
   const [result, setResult] = useState<AvailabilityResult | null>(null);
+  const [searchState, setSearchState] = useState({});
+  const [filters, setFilters] = useState({});
+
+  useAutoSave(searchState, 'rackAvailability_search');
+  useRestoreForm('rackAvailability_search', setSearchState);
+  useUrlState('rackAvailability_filters', filters, setFilters);
 
   useEffect(() => {
     const checkSpace = async () => {

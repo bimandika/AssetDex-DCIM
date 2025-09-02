@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RackVisualization from "./datacenter/RackVisualization";
 import ServerSearch from "./datacenter/ServerSearch";
 import { useToast } from "@/hooks/use-toast";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface RackInfo {
   id: string;
@@ -66,8 +67,16 @@ interface DataCenterViewProps {
 }
 
 const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
+  const [selectedSite, setSelectedSite] = useState('');
+  const [selectedBuilding, setSelectedBuilding] = useState('');
+  const [selectedFloor, setSelectedFloor] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState('');
+  useUrlState('dc_site', selectedSite, setSelectedSite);
+  useUrlState('dc_building', selectedBuilding, setSelectedBuilding);
+  useUrlState('dc_floor', selectedFloor, setSelectedFloor);
+  useUrlState('dc_room', selectedRoom, setSelectedRoom);
+
   const [selectedDataCenter, setSelectedDataCenter] = useState("DC-East");
-  const [selectedFloor, setSelectedFloor] = useState<number | "all">("all");
   const [filterBy, setFilterBy] = useState<"all" | "status" | "utilization">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "Normal" | "Warning" | "Critical">("all");
   const [utilizationFilter, setUtilizationFilter] = useState<number>(0);
@@ -77,7 +86,6 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
 
   const filteredRacks = mockRacks.filter(rack => {
     if (rack.location !== selectedDataCenter) return false;
-    if (selectedFloor !== "all" && rack.floor !== selectedFloor) return false;
     if (filterBy === "status" && statusFilter !== "all" && rack.status !== statusFilter) return false;
     if (filterBy === "utilization" && (rack.occupied / rack.capacity * 100) < utilizationFilter) return false;
     if (searchTerm && !rack.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;

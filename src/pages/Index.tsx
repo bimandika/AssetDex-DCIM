@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,65 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Tab mapping for URL paths
+  const pathToTab: Record<string, string> = {
+    '/': 'dashboard',
+    '/dashboard': 'dashboard',
+    '/serverinventory': 'servers',
+    '/servers': 'servers',
+    '/rackview': 'rackview',
+    '/racks': 'rackview',
+    '/roomview': 'roomview',
+    '/rooms': 'roomview',
+    '/datacenter': 'datacenter',
+    '/reports': 'reports',
+    '/properties': 'properties',
+    '/users': 'users',
+    '/usermanagement': 'users'
+  };
+
+  const tabToPath: Record<string, string> = {
+    'dashboard': '/',
+    'servers': '/serverinventory',
+    'rackview': '/rackview',
+    'roomview': '/roomview',
+    'datacenter': '/datacenter',
+    'reports': '/reports',
+    'properties': '/properties',
+    'users': '/users'
+  };
+
+  // Determine active tab from URL
+  const getActiveTabFromUrl = () => {
+    return pathToTab[location.pathname] || 'dashboard';
+  };
+
+  const [activeTab, setActiveTab] = useState(getActiveTabFromUrl());
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState("DCIMS");
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const { hasRole } = useAuth();
   const { toast } = useToast();
+
+  // Sync activeTab with URL changes
+  useEffect(() => {
+    const newTab = getActiveTabFromUrl();
+    if (newTab !== activeTab) {
+      setActiveTab(newTab);
+    }
+  }, [location.pathname]);
+
+  // Handle tab change - update URL
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    const newPath = tabToPath[newTab] || '/';
+    if (location.pathname !== newPath) {
+      navigate(newPath, { replace: true });
+    }
+  };
 
   // Check if user has write permissions (engineer or super_admin)
   const canWrite = hasRole('engineer');
@@ -62,7 +116,7 @@ const Index = () => {
 
   const handleViewRack = (rackId: string) => {
     setSelectedRackId(rackId);
-    setActiveTab("rackview");
+    handleTabChange("rackview");
   };
 
   return (
@@ -111,13 +165,13 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-8' : 'grid-cols-7'} lg:w-[${isAdmin ? '800px' : '700px'}] bg-white border border-slate-200 shadow-sm`}>
             <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <LayoutDashboard className="h-4 w-4" />
               <span className="hidden sm:inline">Dashboard</span>
             </TabsTrigger>
-            <TabsTrigger value="inventory" className="flex items-center space-x-2">
+            <TabsTrigger value="servers" className="flex items-center space-x-2">
               <Server className="h-4 w-4" />
               <span className="hidden sm:inline">Inventory</span>
             </TabsTrigger>
@@ -157,7 +211,7 @@ const Index = () => {
             <Dashboard />
           </TabsContent>
 
-          <TabsContent value="inventory" className="space-y-6">
+          <TabsContent value="servers" className="space-y-6">
             <ServerInventory />
           </TabsContent>
 

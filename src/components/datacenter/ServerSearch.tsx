@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Server, MapPin, Filter, Download } from "lucide-react";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface ServerRecord {
   id: string;
@@ -53,6 +53,13 @@ const mockServers: ServerRecord[] = [
 ];
 
 const ServerSearch = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState({});
+  const [page, setPage] = useState(1);
+  useUrlState('serverSearch_query', searchQuery, setSearchQuery);
+  useUrlState('serverSearch_filters', filters, setFilters);
+  useUrlState('serverSearch_page', page, setPage);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");

@@ -16,6 +16,7 @@ import {
 import { useWidgetData } from '@/hooks/useWidgetData'
 import { EnhancedQueryConfig } from '@/types/filterTypes'
 import type { Widget } from '@/hooks/useDashboard'
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave'
 
 interface SimpleMetricWidgetProps {
   widget: Widget
@@ -58,6 +59,11 @@ export const SimpleMetricWidget: React.FC<SimpleMetricWidgetProps> = ({
   onDelete,
   editMode = false
 }) => {
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({});
+  useUrlState(`${widget.id}_page`, page, setPage);
+  useUrlState(`${widget.id}_filters`, filters, setFilters);
+
   const [metric, setMetric] = useState<MetricData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { queryEnhancedData, isLoading } = useWidgetData()

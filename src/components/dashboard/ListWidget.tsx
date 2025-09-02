@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,14 +59,40 @@ const ListWidget: React.FC<ListWidgetProps> = ({ widget, editMode, onUpdate = ()
   const [error, setError] = useState<string | null>(null);
 
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const savedPage = params.get(`${widget.id}_page`);
+    return savedPage ? parseInt(savedPage) : 1;
+  });
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const savedPerPage = params.get(`${widget.id}_perPage`);
+    return savedPerPage ? parseInt(savedPerPage) : 10;
+  });
+
+  useEffect(() => {
+    loadData();
+    setCurrentPage(1); // Reset to first page on filter/config change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widget.data_source, widget.config, JSON.stringify(filters)]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set(`${widget.id}_page`, currentPage.toString());
+    params.set(`${widget.id}_perPage`, itemsPerPage.toString());
+    const newSearch = params.toString();
+    const newUrl = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [currentPage, itemsPerPage, widget.id]);
+
+  const safeFilters: Record<string, string> =
+    Array.isArray(filters) ? {} : (filters as Record<string, string>);
 
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchListWidgetData(widget, columns, filters);
+      const result = await fetchListWidgetData(widget, columns, safeFilters);
       setData(result || []);
     } catch (err: any) {
       setError(err.message);
@@ -75,12 +100,6 @@ const ListWidget: React.FC<ListWidgetProps> = ({ widget, editMode, onUpdate = ()
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    loadData();
-    setCurrentPage(1); // Reset to first page on filter/config change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widget.data_source, widget.config, JSON.stringify(filters)]);
 
   // Calculate pagination
   const totalPages = Math.ceil(data.length / itemsPerPage);

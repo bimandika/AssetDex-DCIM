@@ -1,7 +1,7 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface PositionHistory {
   id: string;
@@ -21,6 +21,10 @@ interface Props {
 const ServerPositionHistory = ({ serverId }: Props) => {
   const [history, setHistory] = useState<PositionHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({});
+  useUrlState('positionHistory_page', page, setPage);
+  useUrlState('positionHistory_filters', filters, setFilters);
 
   useEffect(() => {
     const fetchHistory = async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -385,6 +385,35 @@ const BulkImport = () => {
       });
     }
   }, [toast]);
+
+  // Auto-save bulk import state to localStorage every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      localStorage.setItem('bulkImport_state', JSON.stringify({
+        fileName: file?.name || null,
+        isImporting,
+        importResults,
+        validationResults,
+      }));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [file, isImporting, importResults, validationResults]);
+
+  // Restore bulk import state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('bulkImportState');
+    if (saved && saved !== "undefined") {
+      try {
+        const state = JSON.parse(saved);
+        // Only restore non-file state (file cannot be restored from localStorage)
+        if (state.isImporting !== undefined) setIsImporting(state.isImporting);
+        if (state.importResults) setImportResults(state.importResults);
+        if (state.validationResults) setValidationResults(state.validationResults);
+      } catch (e) {
+        // Optionally log or ignore
+      }
+    }
+  }, []);
 
   return (
     <div className="w-full px-0 md:px-8 py-8">

@@ -13,9 +13,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import type { Widget } from '@/hooks/useDashboard'
-import { getTableFields } from '@/utils/schemaMeta';
 import FilterDropdown from './FilterDropdown';
 import { useEnumContext } from '@/contexts/EnumContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 interface ChartWidgetEditDialogProps {
   widget: Widget | null
@@ -32,6 +32,8 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
 }) => {
   const { toast } = useToast()
   const { enums } = useEnumContext();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Helper to get default label for each filter
   const getDefaultFilterLabel = (field: string): string => {
@@ -71,7 +73,20 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     return undefined;
   };
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    title: string;
+    position_x: number;
+    position_y: number;
+    width: number;
+    height: number;
+    config: { type: string; showLegend: boolean };
+    data_source: {
+      table: string;
+      aggregation: string;
+      groupBy: string[];
+      filters: Record<string, string>;
+    };
+  }>({
     title: '',
     position_x: 0,
     position_y: 0,
@@ -135,7 +150,7 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
         },
       };
       // Remove any undefined fields recursively
-      const cleanObject = (obj: any) => {
+      const cleanObject = (obj: any): unknown => {
         if (Array.isArray(obj)) return obj.filter(v => v !== undefined);
         if (obj && typeof obj === 'object') {
           return Object.fromEntries(
@@ -147,7 +162,7 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
         return obj;
       };
       const finalWidget = cleanObject(safeWidget);
-      await onSave(finalWidget);
+      await onSave(finalWidget as Partial<Widget>);
       toast({
         title: 'Success',
         description: 'Chart widget updated successfully',
@@ -183,25 +198,55 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
     }))
   }
 
-  const addGroupByField = () => {
-    setFormData((prev: typeof formData) => ({
-      ...prev,
-      data_source: {
-        ...prev.data_source,
-        groupBy: [...prev.data_source.groupBy, 'brand']
-      }
-    }))
-  }
 
-  const removeGroupByField = (idx: number) => {
-    setFormData((prev: typeof formData) => ({
-      ...prev,
-      data_source: {
-        ...prev.data_source,
-        groupBy: prev.data_source.groupBy.filter((_: any, i: number) => i !== idx)
-      }
-    }))
-  }
+
+  // Helper to parse query params for dialog state
+  const parseDialogParams = (search: string) => {
+    const params = new URLSearchParams(search);
+    return {
+      groupBy: params.get('cw_groupBy') ? params.get('cw_groupBy')!.split(',') : undefined,
+      table: params.get('cw_table') || undefined,
+      aggregation: params.get('cw_agg') || undefined,
+      filters: (() => {
+        const obj: Record<string, string> = {};
+        for (const [key, value] of params.entries()) {
+          if (key.startsWith('cw_filter_')) obj[key.replace('cw_filter_', '')] = value;
+        }
+        return obj;
+      })(),
+    };
+  };
+
+  // On open, restore dialog state from URL
+  useEffect(() => {
+    if (open) {
+      const { groupBy, table, aggregation, filters } = parseDialogParams(location.search);
+      setFormData(prev => ({
+        ...prev,
+        data_source: {
+          ...prev.data_source,
+          groupBy: groupBy || prev.data_source.groupBy,
+          table: table || prev.data_source.table,
+          aggregation: aggregation || prev.data_source.aggregation,
+          filters: Object.keys(filters).length > 0 ? filters : prev.data_source.filters,
+        },
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Update URL when dialog state changes and dialog is open
+  useEffect(() => {
+    if (!open) return;
+    const params = new URLSearchParams(location.search);
+    params.set('cw_groupBy', formData.data_source.groupBy.join(','));
+    params.set('cw_table', String(formData.data_source.table));
+    params.set('cw_agg', String(formData.data_source.aggregation));
+    Object.entries(formData.data_source.filters || {}).forEach(([key, value]) => {
+      params.set(`cw_filter_${key}`, String(value));
+    });
+    navigate({ search: params.toString() }, { replace: true });
+  }, [formData.data_source, open, location.search, navigate]);
 
   if (!widget) return null
 
@@ -261,9 +306,8 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
             <div className="space-y-2">
               <Label>Group By</Label>
               <Select
-                multiple
-                value={formData.data_source.groupBy}
-                onValueChange={values => updateDataSource('groupBy', values)}
+                value={formData.data_source.groupBy.join(',')}
+                onValueChange={value => updateDataSource('groupBy', value.split(','))}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -281,9 +325,9 @@ const ChartWidgetEditDialog: React.FC<ChartWidgetEditDialogProps> = ({
                 <FilterDropdown
                   key={field}
                   field={field}
-                  value={formData.data_source.filters?.[field] || getDefaultFilterLabel(field)}
+                  value={String(formData.data_source.filters?.[field] || getDefaultFilterLabel(field))}
                   onChange={value => {
-                    const newFilters = { ...formData.data_source.filters, [field]: value };
+                    const newFilters = { ...formData.data_source.filters, [field]: String(value) };
                     updateDataSource('filters', newFilters);
                   }}
                   options={[getDefaultFilterLabel(field), ...(getEnumOptions(field) || [])]}

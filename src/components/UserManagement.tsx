@@ -11,6 +11,7 @@ import { Users, Shield, Edit, Search, UserPlus, AlertCircle, Mail, Trash2, Loade
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, Enums } from "@/integrations/supabase/types";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface UserProfile extends Tables<"profiles"> {
   user_roles: {
@@ -22,6 +23,8 @@ const UserManagement = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({});
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [newRole, setNewRole] = useState<Enums<"user_role"> | "">("");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -44,6 +47,16 @@ const UserManagement = () => {
     { value: "engineer", label: "Engineer", description: "Can view and edit servers and properties" },
     { value: "super_admin", label: "Super Admin", description: "Full access including user management" }
   ];
+
+  useUrlState('userMgmt_page', page, setPage);
+  useUrlState('userMgmt_filters', filters, setFilters);
+  useUrlState('userMgmt_search', searchTerm, setSearchTerm);
+  useAutoSave({ editingUser, newUserEmail, newUserRole }, 'userManagement_form');
+  useRestoreForm('userManagement_form', (data) => {
+    if (data.editingUser) setEditingUser(data.editingUser);
+    if (data.newUserEmail) setNewUserEmail(data.newUserEmail);
+    if (data.newUserRole) setNewUserRole(data.newUserRole);
+  });
 
   useEffect(() => {
     fetchUsers();

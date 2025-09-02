@@ -4,12 +4,19 @@ import { Progress } from "@/components/ui/progress";
 import { TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area } from "recharts";
 import { Widget, DataSource, DataFilter } from "./DashboardBuilder";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
+import { useState } from "react";
 
 interface DashboardWidgetProps {
   widget: Widget;
 }
 
 const DashboardWidget = ({ widget }: DashboardWidgetProps) => {
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({});
+  useUrlState(`${widget.id}_page`, page, setPage);
+  useUrlState(`${widget.id}_filters`, filters, setFilters);
+
   // Generate mock data based on widget configuration
   const generateMockData = (dataSources: DataSource[]) => {
     if (!dataSources || dataSources.length === 0) return { value: 0 };

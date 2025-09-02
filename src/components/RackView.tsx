@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useRackData, ViewMode } from "@/hooks/useRackData";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
@@ -12,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Database, Eye, Monitor, Info, Edit3, RotateCcw } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface RackViewProps {
   onEditServer?: (serverId: string) => void;
@@ -19,11 +19,15 @@ interface RackViewProps {
 
 const RackView = ({ onEditServer }: RackViewProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
+  const [selectedRack, setSelectedRack] = useState<string>("");
+
+  useUrlState('rackView_mode', viewMode, setViewMode);
+  useUrlState('rackView_selectedRack', selectedRack, setSelectedRack);
+
   const [rackDescription, setRackDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [selectedRack, setSelectedRack] = useState<string>("");
 
   // Use hierarchical filter hook
   const { hierarchyData, filters, loading: filterLoading, defaultRack, updateFilter, resetFilters } = useHierarchicalFilter();

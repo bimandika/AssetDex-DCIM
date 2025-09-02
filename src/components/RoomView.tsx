@@ -9,6 +9,7 @@ import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, 
 import { debugServerData, getLogicalViewStats } from "@/utils/debugRoomView";
 import { EnumColorManager } from "@/components/EnumColorManager";
 import { EnumColorDemo } from "@/components/EnumColorDemo";
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 type ViewMode = 'physical' | 'logical';
 
@@ -44,6 +45,8 @@ interface ServerInfo {
 const RoomView = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("physical");
+  useUrlState('roomView_page', currentPage, setCurrentPage);
+  useUrlState('roomView_mode', viewMode, setViewMode);
   const [showColorManager, setShowColorManager] = useState(false);
   const racksPerPage = 12;
 
@@ -1046,4 +1049,3 @@ const RoomView = () => {
 };
 
 export default RoomView;
- 

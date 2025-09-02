@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -79,6 +79,28 @@ const ServerForm: React.FC<ServerFormProps> = ({
   const watchedRack = form.watch('rack');
   const watchedPosition = form.watch('position');
   const watchedUnitHeight = form.watch('unitHeight');
+
+  // Auto-save form data to localStorage every 5 seconds
+  useEffect(() => {
+    const formId = mode === 'edit' && excludeServerId ? `serverForm_edit_${excludeServerId}` : `serverForm_${mode}`;
+    const timer = setInterval(() => {
+      localStorage.setItem(`form_${formId}`, JSON.stringify(form.getValues()));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [form, mode, excludeServerId]);
+
+  // Restore form data from localStorage on mount
+  useEffect(() => {
+    const formId = mode === 'edit' && excludeServerId ? `serverForm_edit_${excludeServerId}` : `serverForm_${mode}`;
+    const saved = localStorage.getItem('form_serverForm');
+    if (saved && saved !== "undefined") {
+      try {
+        form.reset(JSON.parse(saved));
+      } catch (e) {
+        // Optionally log or ignore
+      }
+    }
+  }, [form, mode, excludeServerId]);
 
   return (
     <Card className="w-full max-w-2xl mx-auto">

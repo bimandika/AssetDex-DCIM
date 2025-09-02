@@ -9,6 +9,7 @@ import { Trash2, Plus, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useEnumColors, EnumColor } from '@/hooks/useEnumColors';
 import { ColorPicker } from '@/components/ui/ColorPicker';
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 interface EnumColorManagerProps {
   enumType?: 'allocation_type' | 'model_type';
@@ -28,6 +29,14 @@ const ENUM_VALUES = {
 };
 
 export function EnumColorManager({ enumType, availableValues, onColorChange }: EnumColorManagerProps) {
+  const [colorScheme, setColorScheme] = useState('custom');
+  const [theme, setTheme] = useState('dark');
+  const [editingColors, setEditingColors] = useState({});
+  useUrlState('enumColor_scheme', colorScheme, setColorScheme);
+  useUrlState('enumColor_theme', theme, setTheme);
+  useAutoSave(editingColors, 'enumColorManager_editing');
+  useRestoreForm('enumColorManager_editing', setEditingColors);
+
   const {
     colors,
     loading,

@@ -1,7 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEnumColors } from '@/hooks/useEnumColors';
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
+import { useState } from 'react';
 
 export function EnumColorDemo() {
+  const [demoState, setDemoState] = useState({});
+  useAutoSave(demoState, 'enumColorDemo_state');
+  useRestoreForm('enumColorDemo_state', setDemoState);
+
   const { getColor: getAllocationColor, loading: allocationLoading } = useEnumColors('allocation_type');
   const { getColor: getModelColor, loading: modelLoading } = useEnumColors('model_type');
 

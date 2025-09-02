@@ -25,20 +25,20 @@ import { cn } from "@/lib/utils";
 // Import dynamic form components and hooks
 import { useDynamicFormSchema } from "@/hooks/useDynamicFormSchema";
 import { DynamicFormRenderer } from "@/components/forms/DynamicFormRenderer";
-import { generateDynamicValidationSchema, generateDefaultValues, transformFormDataForSubmission } from "@/utils/dynamicValidation";
+import { transformFormDataForSubmission } from "@/utils/dynamicValidation";
 import { useFilterableColumns } from "@/hooks/useFilterableColumns";
 import FilterManagerDialog from "@/components/FilterManagerDialog";
 import RackAvailabilityChecker from "./RackAvailabilityChecker";
 import ServerPositionHistory from "./ServerPositionHistory";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
+import { AnyZodObject } from "zod";
 
 // Import types from enums
 import type {
   ServerStatus,
   DeviceType,
   EnvironmentType,
-  AllocationType,
-  ServerEnums
+  AllocationType
 } from '@/types/enums';
 
 interface Server {
@@ -124,7 +124,7 @@ const ServerInventory = () => {
 
   // Get dynamic enums, auth, and form schema
   const { enums, addEnumValue, refreshEnums } = useServerEnums();
-  const { user, hasRole } = useAuth();
+  const { hasRole } = useAuth();
   const { toast } = useToast();
   const { formSchema, isLoading: isSchemaLoading, error: schemaError, refetch: refetchSchema } = useDynamicFormSchema();
 
@@ -133,7 +133,6 @@ const ServerInventory = () => {
     hierarchyData,
     filters: locationFilters,
     updateFilter: updateLocationFilter,
-    resetFilters: resetLocationFilters,
     loading: locationLoading,
   } = useHierarchicalFilter();
 
@@ -184,7 +183,12 @@ const ServerInventory = () => {
     }
 
     const dynamicSchema = formSchema.validationSchema;
-    return coreServerSchema.merge(dynamicSchema);
+    // Only merge if dynamicSchema is a ZodObject (AnyZodObject)
+    if (dynamicSchema && dynamicSchema instanceof z.ZodObject) {
+      return mergeSchemas(coreServerSchema, dynamicSchema);
+    }
+    // Fallback to coreServerSchema if not a ZodObject
+    return coreServerSchema;
   }, [formSchema]);
 
   // Generate combined default values (core + dynamic)
@@ -252,8 +256,9 @@ const ServerInventory = () => {
 
     // If the suggested unit (from RackAvailabilityChecker) is not in enums.units, add it temporarily
     // This ensures the dropdown can always select the suggested unit
-    if (form.getValues('unit') && !available.includes(form.getValues('unit'))) {
-      available = [...available, form.getValues('unit')];
+    const unitValue = form.getValues('unit');
+    if (unitValue && typeof unitValue === 'string' && !available.includes(unitValue)) {
+      available = [...available, unitValue];
     }
     return available;
   }, [enums?.units, form]);
@@ -324,9 +329,6 @@ const ServerInventory = () => {
   useEffect(() => {
     if (!isSchemaLoading && formSchema.fields.length >= 0) {
       // Update form resolver with new combined schema
-      const newResolver = zodResolver(combinedValidationSchema());
-      form.resolver = newResolver;
-      
       // Reset form with new default values if not editing
       if (!editingServer) {
         const defaultValues = getCombinedDefaultValues();
@@ -359,18 +361,19 @@ const ServerInventory = () => {
           rack: editingServer.rack || null,
           unit: editingServer.unit || null,
           unit_height: editingServer.unit_height || 1,
-          allocation: editingServer.allocation || null,
+          allocation: editingServer.allocation ?? undefined,
           status: editingServer.status || 'Active',
           device_type: editingServer.device_type || 'Server',
           warranty: editingServer.warranty || '',
           notes: editingServer.notes || '',
-          environment: editingServer.environment || null,
+          environment: editingServer.environment ?? undefined,
         };
 
         // Add dynamic properties
         formSchema.fields.forEach(field => {
-          if (editingServer[field.key] !== undefined) {
-            serverData[field.key] = editingServer[field.key];
+          if (editingServer[field.key as keyof typeof editingServer] !== undefined) {
+            // Use type assertion for dynamic field access
+            (serverData as any)[field.key] = (editingServer as any)[field.key];
           }
         });
 
@@ -651,7 +654,24 @@ const ServerInventory = () => {
       const { data: { user } } = await supabase.auth.getUser();
 
       // Transform form data for submission (handles dynamic properties)
-      const transformedData = transformFormDataForSubmission(values, formSchema.fields);
+      const propertyDefinitions: import('@/hooks/usePropertyDefinitions').PropertyDefinition[] = formSchema.fields.map((field: any) => ({
+        id: field.id ?? '',
+        key: field.key ?? '',
+        display_name: field.display_name ?? field.name ?? '',
+        property_type: field.property_type ?? field.type ?? '',
+        inherits: field.inherits ?? false,
+        initialValue: field.initialValue ?? '',
+        name: field.name ?? field.display_name ?? '',
+        syntax: field.syntax ?? '',
+        options: field.options ?? [],
+        required: field.required ?? false,
+        category: field.category ?? '',
+        description: field.description ?? '',
+        default: field.default ?? '',
+        // Add other properties as needed to match PropertyDefinition
+      }));
+
+      const transformedData = transformFormDataForSubmission(values, propertyDefinitions);
 
       // Prepare server data for Supabase insert/update
       const serverData = {
@@ -688,9 +708,9 @@ const ServerInventory = () => {
 
       if (editingServer) {
         // Detect position change
-        const positionFields = ['rack', 'unit', 'dc_room', 'dc_floor', 'dc_building', 'dc_site'];
+        const positionFields = ['rack', 'unit', 'dc_room', 'dc_floor', 'dc_building', 'dc_site'] as const;
         const positionChanged = positionFields.some(
-          field => serverData[field] !== editingServer[field]
+          field => (serverData as any)[field] !== (editingServer as any)[field]
         );
 
         // Update existing server
@@ -1632,8 +1652,9 @@ const ServerInventory = () => {
                           control={form.control}
                           errors={form.formState.errors}
                           showCategories={true}
-                          columnsPerRow={2}
-                        />
+                          columnsPerRow={2} setValue={function <TFieldName extends string = string>(name: TFieldName, value: TFieldName extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? /*elided*/ any : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : TFieldName extends string | number | symbol ? any : TFieldName extends `${number}` ? unknown : never, options?: Partial<{ shouldValidate: boolean; shouldDirty: boolean; shouldTouch: boolean; }> | undefined): void {
+                            throw new Error('Function not implemented.');
+                          } }                        />
                       </>
                     )}
 
@@ -2014,5 +2035,10 @@ const ServerInventory = () => {
     </Card>
   );
 };
+
+// Merge function for Zod schemas
+function mergeSchemas(coreServerSchema: AnyZodObject, dynamicSchema: AnyZodObject) {
+  return coreServerSchema.merge(dynamicSchema);
+}
 
 export default ServerInventory;

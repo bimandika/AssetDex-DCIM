@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +44,35 @@ const Reports = () => {
   const [selectedDataCenter, setSelectedDataCenter] = useState("all");
   const [dateRange, setDateRange] = useState("30");
   const [exportFormat, setExportFormat] = useState("csv");
+
+  // Auto-save report parameters to localStorage every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      localStorage.setItem('reports_state', JSON.stringify({
+        reportType,
+        selectedDataCenter,
+        dateRange,
+        exportFormat,
+      }));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [reportType, selectedDataCenter, dateRange, exportFormat]);
+
+  // Restore report parameters from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('reportParams');
+    if (saved && saved !== "undefined") {
+      try {
+        const state = JSON.parse(saved);
+        if (state.reportType) setReportType(state.reportType);
+        if (state.selectedDataCenter) setSelectedDataCenter(state.selectedDataCenter);
+        if (state.dateRange) setDateRange(state.dateRange);
+        if (state.exportFormat) setExportFormat(state.exportFormat);
+      } catch (e) {
+        // Optionally log or ignore
+      }
+    }
+  }, []);
 
   const handleExportReport = () => {
     console.log(`Exporting ${reportType} report as ${exportFormat} for last ${dateRange} days`);

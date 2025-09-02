@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
 import type { Widget } from '@/hooks/useDashboard'
+import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave'
 
 interface ServerMetricWidgetProps {
   widget: Widget
@@ -74,6 +75,11 @@ export const ServerMetricWidget: React.FC<ServerMetricWidgetProps> = ({
   onDelete,
   editMode = false
 }) => {
+  const [page, setPage] = useState(1)
+  const [filters, setFilters] = useState({})
+  useUrlState(`${widget.id}_page`, page, setPage)
+  useUrlState(`${widget.id}_filters`, filters, setFilters)
+
   const [metrics, setMetrics] = useState<MetricData[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
