@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -13,10 +12,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { User, LogOut, KeyRound } from "lucide-react";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
 
 const UserMenu = () => {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { user, profile, userRole, signOut } = useAuth();
+  const { logDataOperation } = useActivityLogger();
 
   if (!user || !profile) {
     return null;
@@ -48,6 +49,12 @@ const UserMenu = () => {
     }
   };
 
+  const handleSignOut = async (e: any) => {
+    e.preventDefault();
+    await logDataOperation("LOGOUT", "users", user?.id, { email: user?.email });
+    await signOut();
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -75,7 +82,7 @@ const UserMenu = () => {
           Change Password
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={signOut}>
+        <DropdownMenuItem onSelect={handleSignOut}>
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
         </DropdownMenuItem>

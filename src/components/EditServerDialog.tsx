@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 
 interface ServerRecord {
   id: string;
@@ -35,6 +35,7 @@ interface EditServerDialogProps {
 const EditServerDialog = ({ isOpen, onClose, server, onSave }: EditServerDialogProps) => {
   const [editedServer, setEditedServer] = useState<ServerRecord | null>(null);
   const { toast } = useToast();
+  const { logDataOperation } = useActivityLogger();
 
   useEffect(() => {
     if (server) {
@@ -50,6 +51,10 @@ const EditServerDialog = ({ isOpen, onClose, server, onSave }: EditServerDialogP
         variant: "destructive"
       });
       return;
+    }
+
+    if (editedServer && server) {
+      logDataOperation('update', 'server', editedServer.id, { oldValues: server, newValues: editedServer });
     }
 
     onSave(editedServer);

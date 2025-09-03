@@ -134,6 +134,18 @@ serve(async (req) => {
       return await handler(req)
     }
     
+    // Activity logs endpoint
+    if (url.pathname === '/activity-logs' && req.method === 'GET') {
+      const { handler } = await import('../activity-logs/index.ts')
+      return await handler(req)
+    }
+
+    // Activity metrics endpoint
+    if (url.pathname === '/activity-metrics' && req.method === 'GET') {
+      const { handler } = await import('../activity-metrics/index.ts')
+      return await handler(req)
+    }
+    
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
       headers: { 'Content-Type': 'application/json' }

@@ -21,7 +21,6 @@ import { useServerEnums } from "@/hooks/useServerEnums";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-
 // Import dynamic form components and hooks
 import { useDynamicFormSchema } from "@/hooks/useDynamicFormSchema";
 import { DynamicFormRenderer } from "@/components/forms/DynamicFormRenderer";
@@ -40,6 +39,7 @@ import type {
   EnvironmentType,
   AllocationType
 } from '@/types/enums';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 
 interface Server {
   id: string;
@@ -121,7 +121,7 @@ const ServerInventory = () => {
   const [isAddRackDialogOpen, setIsAddRackDialogOpen] = useState(false);
   const [isAddingRack, setIsAddingRack] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
-
+const { logDataOperation } = useActivityLogger();
   // Get dynamic enums, auth, and form schema
   const { enums, addEnumValue, refreshEnums } = useServerEnums();
   const { hasRole } = useAuth();
@@ -721,6 +721,9 @@ const ServerInventory = () => {
 
         if (error) throw error;
 
+        // Log server update
+        logDataOperation('update', 'server', editingServer.id, { oldValues: editingServer, newValues: serverData });
+
         // If position changed, call backend function to log history
         if (positionChanged) {
           await supabase.functions.invoke('server-position-history', {
@@ -747,12 +750,12 @@ const ServerInventory = () => {
         // Create new server
         const { error } = await supabase
           .from('servers')
-          .insert([{
-            ...serverData,
-            created_at: new Date().toISOString()
-          }]);
+          .insert([{ ...serverData, created_at: new Date().toISOString() }]);
 
         if (error) throw error;
+
+        // Log server creation
+        logDataOperation('create', 'server', serverData.id, { newValues: serverData });
 
         toast({
           title: 'Server created',
@@ -791,6 +794,9 @@ const ServerInventory = () => {
     // Confirmation dialog (using browser's confirm for simplicity, consider custom modal for better UX)
     if (!confirm("Are you sure you want to delete this server?")) return;
 
+    // Fetch server object before deletion for logging
+    const deletedServer = servers.find(s => s.id === id);
+
     try {
       const { error } = await supabase
         .from('servers')
@@ -798,6 +804,11 @@ const ServerInventory = () => {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Log server deletion
+      if (deletedServer) {
+        logDataOperation('delete', 'server', deletedServer.id, { oldValues: deletedServer });
+      }
 
       toast({
         title: "Success",
@@ -1647,21 +1658,21 @@ const ServerInventory = () => {
                       <>
                         <Separator />
                         <DynamicFormRenderer
-                          key={`dynamic-form-${formSchema.fields.map(f => f.key + ':' + (f.options?.length || 0)).join('-')}`} // Force re-render when field options change
+                          key={`dynamic-form-${formSchema.fields.map(f => f.key + ':' + (f.options?.length || 0)).join('-')}`}
                           fields={formSchema.fields}
                           control={form.control}
                           errors={form.formState.errors}
                           showCategories={true}
-                          columnsPerRow={2} setValue={function <TFieldName extends string = string>(name: TFieldName, value: TFieldName extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? R extends `${infer K}.${infer R}` ? K extends string | number | symbol ? R extends string ? /*elided*/ any : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : R extends string | number | symbol ? any : R extends `${number}` ? unknown : never : never : K extends `${number}` ? never : never : TFieldName extends string | number | symbol ? any : TFieldName extends `${number}` ? unknown : never, options?: Partial<{ shouldValidate: boolean; shouldDirty: boolean; shouldTouch: boolean; }> | undefined): void {
-                            throw new Error('Function not implemented.');
-                          } }                        />
+                          columnsPerRow={2}
+                          setValue={form.setValue}
+                        />
                       </>
                     )}
-
-                    <DialogFooter className="mt-6">
+                    <DialogFooter>
                       <Button
                         type="button"
                         variant="outline"
+                        disabled={isLoading}
                         onClick={() => {
                           setIsAddDialogOpen(false);
                           resetForm();

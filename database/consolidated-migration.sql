@@ -1977,6 +1977,76 @@ $$;
 -- 7. UTILITY FUNCTIONS
 -- ============================================================================
 
+-- Function to get activity logs with username from profiles
+CREATE OR REPLACE FUNCTION get_activity_logs(
+    p_user_id UUID DEFAULT NULL,
+    p_category TEXT DEFAULT NULL,
+    p_severity TEXT DEFAULT NULL,
+    p_date_from TIMESTAMPTZ DEFAULT NULL,
+    p_date_to TIMESTAMPTZ DEFAULT NULL,
+    p_limit INTEGER DEFAULT 100,
+    p_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+    id UUID,
+    "timestamp" TIMESTAMPTZ,
+    user_id UUID,
+    username TEXT,
+    category TEXT,
+    action TEXT,
+    resource_type TEXT,
+    resource_id TEXT,
+    details JSONB,
+    severity TEXT,
+    tags TEXT[],
+    correlation_id TEXT,
+    created_at TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT activity_logs.id, activity_logs."timestamp", activity_logs.user_id, profiles.username, activity_logs.category, activity_logs.action, activity_logs.resource_type, activity_logs.resource_id, activity_logs.details, activity_logs.severity, activity_logs.tags, activity_logs.correlation_id, activity_logs.created_at
+    FROM activity_logs
+    LEFT JOIN profiles ON activity_logs.user_id = profiles.id
+    WHERE (p_user_id IS NULL OR activity_logs.user_id = p_user_id)
+      AND (p_category IS NULL OR activity_logs.category = p_category)
+      AND (p_severity IS NULL OR activity_logs.severity = p_severity)
+      AND (p_date_from IS NULL OR activity_logs."timestamp" >= p_date_from)
+      AND (p_date_to IS NULL OR activity_logs."timestamp" <= p_date_to)
+    ORDER BY activity_logs."timestamp" DESC
+    LIMIT p_limit OFFSET p_offset;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get aggregated activity metrics
+CREATE OR REPLACE FUNCTION get_activity_metrics(
+    p_date_from TIMESTAMPTZ DEFAULT NULL,
+    p_date_to TIMESTAMPTZ DEFAULT NULL,
+    p_user_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+    total_activities INTEGER,
+    unique_users INTEGER,
+    error_count INTEGER,
+    avg_response_time NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        COUNT(*) AS total_activities,
+        COUNT(DISTINCT user_id) AS unique_users,
+        COUNT(*) FILTER (WHERE severity = 'error') AS error_count,
+        AVG(response_time_ms) AS avg_response_time
+    FROM activity_logs
+    WHERE (p_date_from IS NULL OR "timestamp" >= p_date_from)
+      AND (p_date_to IS NULL OR "timestamp" <= p_date_to)
+      AND (p_user_id IS NULL OR user_id = p_user_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION get_activity_logs(UUID, TEXT, TEXT, TIMESTAMPTZ, TIMESTAMPTZ, INTEGER, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_activity_metrics(TIMESTAMPTZ, TIMESTAMPTZ, UUID) TO authenticated;
+
 -- Function to get all enum values for the application (dynamically discovers all enums)
 CREATE OR REPLACE FUNCTION public.get_enum_values()
 RETURNS json
@@ -3417,3 +3487,137 @@ VALUES (
 ANALYZE public.servers;
 ANALYZE public.dashboards;
 ANALYZE public.dashboard_widgets;
+
+-- ============================================================================
+-- Activity Logging: Primary Log Table
+-- ============================================================================
+CREATE TABLE activity_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    user_id UUID REFERENCES auth.users(id),
+    session_id TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    -- Activity Classification
+    category TEXT NOT NULL, -- 'data'
+    action TEXT NOT NULL,   -- 'create', 'update', 'delete'
+    resource_type TEXT,     -- 'server', 'dashboard', 'user', 'rack', etc.
+    resource_id TEXT,       -- ID of the affected resource
+    -- Context and Details
+    details JSONB,          -- Flexible structure for activity-specific data
+    metadata JSONB,         -- Additional context (browser, device, location)
+    -- Request/Response Info
+    request_method TEXT,    -- GET, POST, PUT, DELETE
+    request_url TEXT,       -- Full request URL
+    request_body JSONB,     -- Request payload (sanitized)
+    response_status INTEGER, -- HTTP status code
+    response_time_ms INTEGER, -- Response time in milliseconds
+    -- Security and Tracking
+    severity TEXT DEFAULT 'info', -- 'info', 'warning', 'error', 'critical'
+    tags TEXT[],            -- Searchable tags
+    correlation_id TEXT,    -- Link related activities
+    -- Indexing
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    indexed_at TIMESTAMPTZ
+);
+
+-- Indexes for performance
+CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX idx_activity_logs_timestamp ON activity_logs(timestamp);
+CREATE INDEX idx_activity_logs_category_action ON activity_logs(category, action);
+CREATE INDEX idx_activity_logs_resource ON activity_logs(resource_type, resource_id);
+CREATE INDEX idx_activity_logs_severity ON activity_logs(severity);
+CREATE INDEX idx_activity_logs_tags ON activity_logs USING GIN(tags);
+CREATE INDEX idx_activity_logs_details ON activity_logs USING GIN(details);
+
+-- Grant necessary permissions to authenticator and authenticated roles for activity_logs
+GRANT INSERT, SELECT ON public.activity_logs TO authenticator;
+GRANT INSERT, SELECT ON public.activity_logs TO authenticated;
+
+-- =========================================================================
+-- Activity Logging: Automatic Data Change Triggers
+-- =========================================================================
+
+-- Function to log data changes
+CREATE OR REPLACE FUNCTION log_data_changes()
+RETURNS TRIGGER AS $$
+DECLARE
+    user_email TEXT;
+BEGIN
+    IF TG_TABLE_NAME = 'user_roles' THEN
+        -- Get the user_id from NEW or OLD row
+        user_email := (
+            SELECT email FROM auth.users
+            WHERE id = COALESCE(NEW.user_id, OLD.user_id)
+            LIMIT 1
+        );
+        INSERT INTO public.activity_logs (
+            user_id,
+            category,
+            action,
+            resource_type,
+            resource_id,
+            details
+        ) VALUES (
+            auth.uid(),
+            'data',
+            TG_OP,
+            TG_TABLE_NAME,
+            COALESCE(NEW.id::text, OLD.id::text),
+            jsonb_build_object(
+                'old_values', to_jsonb(OLD),
+                'new_values', to_jsonb(NEW),
+                'changed_fields', (
+                    SELECT array_agg(key)
+                    FROM jsonb_object_keys(to_jsonb(NEW)) AS key
+                    WHERE to_jsonb(NEW) ->> key IS DISTINCT FROM to_jsonb(OLD) ->> key
+                ),
+                'user_email', user_email
+            )
+        );
+    ELSE
+        -- Default logging for other tables
+        INSERT INTO public.activity_logs (
+            user_id,
+            category,
+            action,
+            resource_type,
+            resource_id,
+            details
+        ) VALUES (
+            auth.uid(),
+            'data',
+            TG_OP,
+            TG_TABLE_NAME,
+            COALESCE(NEW.id::text, OLD.id::text),
+            jsonb_build_object(
+                'old_values', to_jsonb(OLD),
+                'new_values', to_jsonb(NEW),
+                'changed_fields', (
+                    SELECT array_agg(key)
+                    FROM jsonb_object_keys(to_jsonb(NEW)) AS key
+                    WHERE to_jsonb(NEW) ->> key IS DISTINCT FROM to_jsonb(OLD) ->> key
+                )
+            )
+        );
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Apply triggers to key tables
+CREATE TRIGGER servers_activity_log
+    AFTER INSERT OR UPDATE OR DELETE ON servers
+    FOR EACH ROW EXECUTE FUNCTION log_data_changes();
+
+CREATE TRIGGER users_activity_log
+    AFTER INSERT OR UPDATE OR DELETE ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION log_data_changes();
+
+CREATE TRIGGER dashboard_widgets_activity_log
+    AFTER INSERT OR UPDATE OR DELETE ON dashboard_widgets
+    FOR EACH ROW EXECUTE FUNCTION log_data_changes();
+
+CREATE TRIGGER user_roles_activity_log
+AFTER INSERT OR UPDATE OR DELETE ON public.user_roles
+FOR EACH ROW EXECUTE FUNCTION log_data_changes();

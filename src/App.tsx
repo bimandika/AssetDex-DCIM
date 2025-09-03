@@ -128,6 +128,14 @@ const App = () => (
                     </ProtectedRoute>
                   } 
                 />
+                <Route 
+                  path="/activitylogs" 
+                  element={
+                    <ProtectedRoute requiredRole="super_admin">
+                      <Index />
+                    </ProtectedRoute>
+                  } 
+                />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

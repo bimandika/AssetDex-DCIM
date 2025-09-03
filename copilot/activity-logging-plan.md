@@ -605,3 +605,91 @@ logDataOperation('update', 'property_definition', propertyId, {
 4. **Completeness**: Full audit trail for all asset changes
 5. **Compliance**: Pass all data governance audits
 6. **Traceability**: Complete change history for every asset
+
+# DCIM Activity Logging Plan (Updated September 2, 2025)
+
+## 1. Primary Log Table: activity_logs
+- **Status:** Implemented in `consolidated-migration.sql` (end of file)
+- **Schema:**
+  - Table: `activity_logs`
+  - Fields: id (UUID, PK), timestamp, user_id (FK to auth.users), session_id, ip_address, user_agent, category, action, resource_type, resource_id, details (JSONB), metadata (JSONB), request_method, request_url, request_body (JSONB), response_status, response_time_ms, severity, tags (TEXT[]), correlation_id, created_at, indexed_at
+- **Indexes:**
+  - user_id, timestamp, category+action, resource_type+resource_id, severity, tags (GIN), details (GIN)
+- **Location:** Confirmed present at the end of migration file
+
+## 2. Next Steps
+- Metrics table: Pending
+- Triggers for automatic logging: Pending
+- Frontend/backend integration: Pending
+- Validation: Run migration and verify table creation
+
+## 3. Compliance & Audit Coverage
+- All required fields for audit, compliance, and accountability are present
+- Indexes for search/performance are implemented
+- Ready for integration with DCIM app
+
+## 4. Backend API Endpoints for Activity Logging (NEW)
+
+### Endpoints
+- **GET /activity-logs**: Query activity logs with filters and pagination
+  - Handler: `/volumes/functions/activity-logs/index.ts`
+  - Calls SQL function: `get_activity_logs`
+  - Query params: `user_id`, `offset`, `limit`
+- **GET /activity-metrics**: Query aggregated activity metrics
+  - Handler: `/volumes/functions/activity-metrics/index.ts`
+  - Calls SQL function: `get_activity_metrics`
+  - Query params: `date_from`, `user_id`
+
+### Routing Integration
+- Routing added in `/volumes/functions/main/index.ts`:
+  ```typescript
+  if (url.pathname === '/activity-logs' && req.method === 'GET') {
+    const { handler } = await import('../activity-logs/index.ts')
+    return await handler(req)
+  }
+  if (url.pathname === '/activity-metrics' && req.method === 'GET') {
+    const { handler } = await import('../activity-metrics/index.ts')
+    return await handler(req)
+  }
+  ```
+
+### Example Usage
+- **Fetch logs:**
+  ```js
+  fetch('/activity-logs?user_id=...&offset=0&limit=50')
+  ```
+- **Fetch metrics:**
+  ```js
+  fetch('/activity-metrics?date_from=2025-08-01&user_id=...')
+  ```
+
+### Next Steps
+- Frontend integration: Use these endpoints for admin log viewers, metrics dashboards, and export features
+- Access control: Restrict endpoints to authorized users (add authentication/authorization checks)
+
+---
+
+_Last update: September 2, 2025. Backend API endpoints for activity logs and metrics are now implemented and ready for integration._
+
+## 5. Frontend Logging Flow (UPDATED)
+
+### How It Works
+- The frontend uses a custom hook (e.g., `useActivityLogger`) to capture user actions (create, update, delete, etc.).
+- The hook builds a log entry with details: user ID, action, resource type, resource ID, changed data, timestamp, metadata, etc.
+- The hook sends this log entry to the backend via a POST request (e.g., `fetch('/activity-logs', { method: 'POST', body: ... })`).
+- The backend receives the log entry and inserts it into the `activity_logs` table (requires POST handler).
+
+### Example (React)
+```typescript
+const { logDataOperation } = useActivityLogger();
+
+logDataOperation('update', 'server', serverId, {
+  changedFields: ['status'],
+  oldValues: { status: 'active' },
+  newValues: { status: 'maintenance' }
+});
+```
+
+### Recommendation
+- Add a POST `/activity-logs` endpoint to the backend to accept log entries from the frontend.
+- This ensures all meaningful user actions are tracked and stored for audit/compliance.
