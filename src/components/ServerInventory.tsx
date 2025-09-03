@@ -122,7 +122,6 @@ const ServerInventory = () => {
   const [isAddRackDialogOpen, setIsAddRackDialogOpen] = useState(false);
   const [isAddingRack, setIsAddingRack] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
-  const [suggestedUnits, setSuggestedUnits] = useState<Set<string>>(new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [serverToDelete, setServerToDelete] = useState<string | null>(null);
 const { logDataOperation } = useActivityLogger();
@@ -329,23 +328,15 @@ const { logDataOperation } = useActivityLogger();
       preserveUnit
     );
     
-    // Add any suggested units that are still relevant for the current rack
-    const finalUnits = [...units];
-    suggestedUnits.forEach(suggestedUnit => {
-      if (!finalUnits.includes(suggestedUnit)) {
-        finalUnits.push(suggestedUnit);
-      }
-    });
-    
     // Sort numerically
-    finalUnits.sort((a, b) => {
+    units.sort((a, b) => {
       const numA = parseInt(a.substring(1));
       const numB = parseInt(b.substring(1));
       return numA - numB;
     });
     
-    console.log('Calculated available units:', finalUnits);
-    setAvailableUnits(finalUnits);
+    console.log('Calculated available units:', units);
+    setAvailableUnits(units);
 
     // Only reset unit if current selection is no longer valid AND we're not editing a server
     // When editing, preserve the server's current unit
@@ -353,7 +344,7 @@ const { logDataOperation } = useActivityLogger();
       console.log('Resetting unit because not editing and current unit not available');
       form.setValue('unit', units[0] || null);
     }
-  }, [form, getAvailableUnits, editingServer?.id, editingServer?.unit, servers, suggestedUnits]);
+  }, [form, getAvailableUnits, editingServer?.id, editingServer?.unit, servers]);
 
   // Dedicated effect to ensure editing server's unit is always available
   useEffect(() => {
@@ -381,7 +372,7 @@ const { logDataOperation } = useActivityLogger();
 
   // Clear suggested units when rack changes
   useEffect(() => {
-    setSuggestedUnits(new Set());
+    // Suggested units feature is disabled
   }, [form.watch('rack')]);
 
   // Helper to show unit range in dropdown
@@ -396,7 +387,6 @@ const { logDataOperation } = useActivityLogger();
     const defaultValues = getCombinedDefaultValues();
     form.reset(defaultValues);
     setEditingServer(null);
-    setSuggestedUnits(new Set());
     setWarrantyDate(undefined);
   }, [form, getCombinedDefaultValues]);
 
@@ -1639,18 +1629,12 @@ const { logDataOperation } = useActivityLogger();
                               position={parseInt(watchedUnit?.replace('U', '') || '1')}
                               unitHeight={watchedUnitHeight || 1}
                               excludeServerId={editingServer?.id}
-                              onSuggestionApply={(position: number) => {
-                                const suggestedUnit = `U${position}`;
-                                
-                                // Add to suggested units set
-                                setSuggestedUnits(prev => new Set([...prev, suggestedUnit]));
-                                
-                                // Set the form value
-                                form.setValue('unit', suggestedUnit);
-                                
-                                // Force form to trigger validation
-                                form.trigger('unit');
-                              }}
+                              // Temporarily disabled suggestion feature due to auto-submission issues
+                              // onSuggestionApply={(position: number) => {
+                              //   const suggestedUnit = `U${position}`;
+                              //   setSuggestedUnits(prev => new Set([...prev, suggestedUnit]));
+                              //   form.setValue('unit', suggestedUnit);
+                              // }}
                               className="w-full"
                             />
                           </div>

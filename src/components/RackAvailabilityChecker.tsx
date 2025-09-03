@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRackAvailability } from '@/hooks/useRackAvailability';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Loader2, AlertTriangle, CheckCircle, Info, Lightbulb } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 
 interface ServerInRack {
   id: string;
@@ -33,7 +32,6 @@ interface RackAvailabilityCheckerProps {
   position: number;
   unitHeight: number;
   excludeServerId?: string;
-  onSuggestionApply?: (position: number) => void;
   className?: string;
 }
 
@@ -42,7 +40,6 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
   position,
   unitHeight,
   excludeServerId,
-  onSuggestionApply,
   className = ''
 }) => {
   const { checkAvailability, loading, error } = useRackAvailability();
@@ -96,7 +93,7 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
     return null;
   }
 
-  const { available, conflictingServers, availableSpaces, suggestion } = result;
+  const { available, conflictingServers, availableSpaces } = result;
 
   return (
     <div className={`space-y-1.5 ${className}`}>
@@ -122,8 +119,8 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
         </div>
       </Alert>
 
-      {/* Suggestion - Compact Design */}
-      {!available && suggestion && (
+      {/* Suggestion - Temporarily disabled */}
+      {/* !available && suggestion && (
         <Alert className="py-1.5 px-3 bg-blue-50 border-blue-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -144,7 +141,7 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
             )}
           </div>
         </Alert>
-      )}
+      ) */}
 
       {/* Available Spaces - Inline and Compact */}
       {availableSpaces && availableSpaces.length > 0 && (
@@ -155,6 +152,7 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
             <div className="flex flex-wrap gap-1">
               {availableSpaces
                 .filter((space: AvailableSpace) => space.size >= unitHeight)
+                .sort((a, b) => Math.min(a.startUnit, a.endUnit) - Math.min(b.startUnit, b.endUnit)) // Sort by lowest unit number
                 .slice(0, 4) // Show up to 4 spaces
                 .map((space: AvailableSpace, index: number) => (
                   <Badge 
@@ -162,7 +160,7 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
                     variant="secondary" 
                     className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 border-green-200"
                   >
-                    U{space.startUnit}-U{space.endUnit}
+                    U{Math.min(space.startUnit, space.endUnit)}-U{Math.max(space.startUnit, space.endUnit)}
                   </Badge>
                 ))}
               {availableSpaces.filter((space: AvailableSpace) => space.size >= unitHeight).length > 4 && (

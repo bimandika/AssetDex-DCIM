@@ -1,5 +1,6 @@
 // Activity logging hook for frontend
 import { useAuth } from './useAuth'
+import { supabase } from '@/integrations/supabase/client'
 
 export interface ActivityLogEntry {
   category: string;
@@ -33,10 +34,9 @@ export const useActivityLogger = () => {
       }
     };
     try {
-      await fetch('/activity-logs', {
+      await supabase.functions.invoke('activity-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(activityData)
+        body: activityData
       });
     } catch (error) {
       // Optionally handle local fallback
