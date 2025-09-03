@@ -88,17 +88,17 @@ export const handler = async (req: Request) => {
     // Check for conflicts with requested position
     const requestedUnits = new Set<number>()
     for (let i = 0; i < unitHeight; i++) {
-      requestedUnits.add(position - i)
+      requestedUnits.add(position + i)
     }
 
-    console.log(`🎯 Requested units: ${Array.from(requestedUnits).sort((a, b) => b - a).join(', ')}`)
+    console.log(`🎯 Requested units: ${Array.from(requestedUnits).sort((a, b) => a - b).join(', ')}`)
 
     // Find conflicting servers
     const conflictingServers: ServerInRack[] = []
     servers.forEach(server => {
       const serverUnits = new Set<number>()
       for (let i = 0; i < server.unit_height; i++) {
-        serverUnits.add(server.unit - i)
+        serverUnits.add(server.unit + i)
       }
       
       // Check for overlap
@@ -113,7 +113,7 @@ export const handler = async (req: Request) => {
     const occupiedUnits = new Set<number>()
     servers.forEach(server => {
       for (let i = 0; i < server.unit_height; i++) {
-        occupiedUnits.add(server.unit - i)
+        occupiedUnits.add(server.unit + i)
       }
     })
 

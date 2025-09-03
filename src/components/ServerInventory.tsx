@@ -243,6 +243,7 @@ const { logDataOperation } = useActivityLogger();
     rackServers.forEach(server => {
       const startUnit = parseInt(server.unit?.substring(1) || '0');
       const height = server.unit_height || 1;
+      // Units go upward from the starting position (U1 with 2U = U1, U2)
       for (let i = 0; i < height; i++) {
         occupied.add(`U${startUnit + i}`);
       }
@@ -251,8 +252,12 @@ const { logDataOperation } = useActivityLogger();
     // Filter available units that have enough consecutive space
     let available = (enums?.units || []).filter(unit => {
       const startUnit = parseInt(unit.substring(1));
+      // Check if there's enough upward consecutive space
       for (let i = 0; i < requiredHeight; i++) {
-        if (occupied.has(`U${startUnit + i}`)) return false;
+        const checkUnit = startUnit + i;
+        // Make sure we don't go above U42
+        if (checkUnit > 42) return false;
+        if (occupied.has(`U${checkUnit}`)) return false;
       }
       return true;
     });
@@ -304,9 +309,9 @@ const { logDataOperation } = useActivityLogger();
 
   // Effect to update available units when rack or height changes in the server form
   useEffect(() => {
-    const currentRack = form.getValues('rack');
-    const currentHeight = form.getValues('unit_height');
-    const currentUnit = form.getValues('unit');
+    const currentRack = watchedRack;
+    const currentHeight = watchedUnitHeight;
+    const currentUnit = watchedUnit;
     
     console.log('Available units effect triggered:', {
       currentRack,
@@ -344,7 +349,7 @@ const { logDataOperation } = useActivityLogger();
       console.log('Resetting unit because not editing and current unit not available');
       form.setValue('unit', units[0] || null);
     }
-  }, [form, getAvailableUnits, editingServer?.id, editingServer?.unit, servers]);
+  }, [watchedRack, watchedUnitHeight, watchedUnit, getAvailableUnits, editingServer?.id, editingServer?.unit, servers, form]);
 
   // Dedicated effect to ensure editing server's unit is always available
   useEffect(() => {
@@ -439,7 +444,9 @@ const { logDataOperation } = useActivityLogger();
         console.log('Server data for form reset:', {
           rack: serverData.rack,
           unit: serverData.unit,
-          unit_height: serverData.unit_height
+          unit_height: serverData.unit_height,
+          editingServerRack: editingServer.rack,
+          defaultValuesRack: defaultValues.rack
         });
 
         // Add dynamic properties
