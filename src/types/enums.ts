@@ -29,7 +29,7 @@ export const defaultServerEnums: ServerEnums = {
   allocationTypes: ['IAAS', 'PAAS', 'SAAS', 'Load Balancer', 'Database'],
   environmentTypes: ['Production', 'Testing', 'Pre-Production', 'Development'],
   racks: Array.from({ length: 31 }, (_, i) => `RACK-${String(i + 1).padStart(2, '0')}`),
-  units: Array.from({ length: 54 }, (_, i) => `U${i + 1}`),
+  units: Array.from({ length: 42 }, (_, i) => `U${i + 1}`),
   brands: ['Dell', 'HPE', 'Cisco', 'Juniper', 'NetApp', 'Huawei', 'Inspur', 'Kaytus', 'ZTE', 'Meta Brain'],
   models: [
     'PowerEdge R740', 'PowerEdge R750', 'PowerEdge R750xd', 'PowerVault ME4',

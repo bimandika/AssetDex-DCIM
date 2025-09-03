@@ -454,27 +454,78 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const updatePassword = async (currentPassword: string, newPassword: string) => {
     try {
       setError(null);
-      // First, reauthenticate the user
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user?.email || '',
-        password: currentPassword,
-      });
-
-      if (authError) {
-        return { error: new Error('Current password is incorrect') };
+      
+      // Get current session to ensure we're authenticated
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !currentSession) {
+        return { error: new Error('No active session. Please log in again.') };
       }
 
-      // Update the password
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
+      // Validate password length
+      if (newPassword.length < 6) {
+        return { error: new Error('New password must be at least 6 characters long') };
+      }
+
+      // Use our custom backend function for password change
+      const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/change-password` : 
+        'http://localhost:8000/functions/v1/change-password';
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentSession.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword
+        })
       });
 
-      if (error) throw error;
+      const responseData = await response.json();
 
-      toast({
-        title: "Success",
-        description: "Your password has been updated successfully.",
-      });
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Failed to update password');
+      }
+
+      // After successful password change, we need to refresh the session
+      // because the password change invalidates the current session
+      try {
+        // Force a new login with the new password to get fresh tokens
+        const { data: newAuthData, error: refreshError } = await supabase.auth.signInWithPassword({
+          email: user?.email || '',
+          password: newPassword,
+        });
+
+        if (refreshError) {
+          console.warn('Password updated but session refresh failed:', refreshError);
+          // Don't throw error here - password was successfully changed
+          toast({
+            title: "Success",
+            description: "Password updated successfully. Please sign in again if needed.",
+          });
+        } else {
+          // Update the session state with fresh tokens
+          if (newAuthData.session) {
+            setSession(newAuthData.session);
+            setUser(newAuthData.user);
+          }
+          
+          toast({
+            title: "Success",
+            description: "Your password has been updated successfully.",
+          });
+        }
+      } catch (refreshError) {
+        console.warn('Session refresh after password change failed:', refreshError);
+        toast({
+          title: "Success",
+          description: "Password updated successfully. Please sign in again if needed.",
+        });
+      }
 
       return { error: null };
     } catch (error: any) {

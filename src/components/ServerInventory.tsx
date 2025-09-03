@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Edit, Trash2, Search, Filter, CalendarIcon, RotateCcw } from "lucide-react";
@@ -121,6 +122,9 @@ const ServerInventory = () => {
   const [isAddRackDialogOpen, setIsAddRackDialogOpen] = useState(false);
   const [isAddingRack, setIsAddingRack] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
+  const [suggestedUnits, setSuggestedUnits] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [serverToDelete, setServerToDelete] = useState<string | null>(null);
 const { logDataOperation } = useActivityLogger();
   // Get dynamic enums, auth, and form schema
   const { enums, addEnumValue, refreshEnums } = useServerEnums();
@@ -226,7 +230,7 @@ const { logDataOperation } = useActivityLogger();
   });
 
   // Helper to determine available units in a rack
-  const getAvailableUnits = useCallback((selectedRack: string | null, currentServerId: string | null, servers: Server[], requiredHeight = 1): string[] => {
+  const getAvailableUnits = useCallback((selectedRack: string | null, currentServerId: string | null, servers: Server[], requiredHeight = 1, preserveUnit?: string): string[] => {
     if (!selectedRack) return [];
 
     // Get all servers in the same rack (excluding current server if editing)
@@ -254,14 +258,20 @@ const { logDataOperation } = useActivityLogger();
       return true;
     });
 
-    // If the suggested unit (from RackAvailabilityChecker) is not in enums.units, add it temporarily
-    // This ensures the dropdown can always select the suggested unit
-    const unitValue = form.getValues('unit');
-    if (unitValue && typeof unitValue === 'string' && !available.includes(unitValue)) {
-      available = [...available, unitValue];
+    // Always include the unit we want to preserve (for editing servers)
+    if (preserveUnit && !available.includes(preserveUnit)) {
+      available = [...available, preserveUnit];
     }
+
+    // Sort units numerically (U1, U2, U3... U42) instead of alphabetically
+    available.sort((a, b) => {
+      const numA = parseInt(a.substring(1));
+      const numB = parseInt(b.substring(1));
+      return numA - numB;
+    });
+
     return available;
-  }, [enums?.units, form]);
+  }, [enums?.units]);
 
   // Watch form values for real-time rack availability checking
   const watchedRack = useWatch({ control: form.control, name: 'rack' });
@@ -295,20 +305,84 @@ const { logDataOperation } = useActivityLogger();
 
   // Effect to update available units when rack or height changes in the server form
   useEffect(() => {
+    const currentRack = form.getValues('rack');
+    const currentHeight = form.getValues('unit_height');
+    const currentUnit = form.getValues('unit');
+    
+    console.log('Available units effect triggered:', {
+      currentRack,
+      currentUnit,
+      currentHeight,
+      editingServer: editingServer?.id,
+      editingServerUnit: editingServer?.unit,
+      editingServerRack: editingServer?.rack
+    });
+    
+    // When editing a server, preserve their current unit in the available list
+    const preserveUnit = editingServer?.unit || undefined;
+    
     const units = getAvailableUnits(
-      form.getValues('rack'),
+      currentRack,
       editingServer?.id || null,
       servers,
-      form.getValues('unit_height')
+      currentHeight,
+      preserveUnit
     );
-    setAvailableUnits(units);
+    
+    // Add any suggested units that are still relevant for the current rack
+    const finalUnits = [...units];
+    suggestedUnits.forEach(suggestedUnit => {
+      if (!finalUnits.includes(suggestedUnit)) {
+        finalUnits.push(suggestedUnit);
+      }
+    });
+    
+    // Sort numerically
+    finalUnits.sort((a, b) => {
+      const numA = parseInt(a.substring(1));
+      const numB = parseInt(b.substring(1));
+      return numA - numB;
+    });
+    
+    console.log('Calculated available units:', finalUnits);
+    setAvailableUnits(finalUnits);
 
-    // Reset unit if current selection is no longer valid
-    const currentUnit = form.getValues('unit');
-    if (currentUnit && !units.includes(currentUnit)) {
+    // Only reset unit if current selection is no longer valid AND we're not editing a server
+    // When editing, preserve the server's current unit
+    if (!editingServer && currentUnit && !units.includes(currentUnit)) {
+      console.log('Resetting unit because not editing and current unit not available');
       form.setValue('unit', units[0] || null);
     }
-  }, [form, getAvailableUnits, editingServer?.id, servers]);
+  }, [form, getAvailableUnits, editingServer?.id, editingServer?.unit, servers, suggestedUnits]);
+
+  // Dedicated effect to ensure editing server's unit is always available
+  useEffect(() => {
+    if (editingServer && editingServer.unit && editingServer.rack) {
+      console.log('Ensuring editing server unit is available:', {
+        serverUnit: editingServer.unit,
+        serverRack: editingServer.rack,
+        currentAvailableUnits: availableUnits
+      });
+      
+      // If the editing server's unit is not in the available units, add it
+      if (!availableUnits.includes(editingServer.unit)) {
+        const updatedUnits = [...availableUnits, editingServer.unit];
+        // Sort numerically
+        updatedUnits.sort((a, b) => {
+          const numA = parseInt(a.substring(1));
+          const numB = parseInt(b.substring(1));
+          return numA - numB;
+        });
+        console.log('Adding editing server unit to available units:', updatedUnits);
+        setAvailableUnits(updatedUnits);
+      }
+    }
+  }, [editingServer, availableUnits]);
+
+  // Clear suggested units when rack changes
+  useEffect(() => {
+    setSuggestedUnits(new Set());
+  }, [form.watch('rack')]);
 
   // Helper to show unit range in dropdown
   const getUnitRange = (startUnit: string, height: number) => {
@@ -322,6 +396,7 @@ const { logDataOperation } = useActivityLogger();
     const defaultValues = getCombinedDefaultValues();
     form.reset(defaultValues);
     setEditingServer(null);
+    setSuggestedUnits(new Set());
     setWarrantyDate(undefined);
   }, [form, getCombinedDefaultValues]);
 
@@ -343,6 +418,8 @@ const { logDataOperation } = useActivityLogger();
       const defaultValues = getCombinedDefaultValues();
       
       if (editingServer) {
+        console.log('Populating form for editing server:', editingServer);
+        
         // If editing, merge server data with defaults
         const serverData = {
           ...defaultValues,
@@ -368,6 +445,12 @@ const { logDataOperation } = useActivityLogger();
           notes: editingServer.notes || '',
           environment: editingServer.environment ?? undefined,
         };
+
+        console.log('Server data for form reset:', {
+          rack: serverData.rack,
+          unit: serverData.unit,
+          unit_height: serverData.unit_height
+        });
 
         // Add dynamic properties
         formSchema.fields.forEach(field => {
@@ -657,18 +740,18 @@ const { logDataOperation } = useActivityLogger();
       const propertyDefinitions: import('@/hooks/usePropertyDefinitions').PropertyDefinition[] = formSchema.fields.map((field: any) => ({
         id: field.id ?? '',
         key: field.key ?? '',
-        display_name: field.display_name ?? field.name ?? '',
-        property_type: field.property_type ?? field.type ?? '',
-        inherits: field.inherits ?? false,
-        initialValue: field.initialValue ?? '',
         name: field.name ?? field.display_name ?? '',
-        syntax: field.syntax ?? '',
-        options: field.options ?? [],
+        display_name: field.display_name ?? field.name ?? '',
+        property_type: field.property_type ?? field.type ?? 'text',
+        description: field.description ?? null,
+        category: field.category ?? null,
         required: field.required ?? false,
-        category: field.category ?? '',
-        description: field.description ?? '',
-        default: field.default ?? '',
-        // Add other properties as needed to match PropertyDefinition
+        default_value: field.default ?? null,
+        options: field.options ?? null,
+        active: true,
+        sort_order: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }));
 
       const transformedData = transformFormDataForSubmission(values, propertyDefinitions);
@@ -748,14 +831,18 @@ const { logDataOperation } = useActivityLogger();
         });
       } else {
         // Create new server
-        const { error } = await supabase
+        const { data: newServerData, error } = await supabase
           .from('servers')
-          .insert([{ ...serverData, created_at: new Date().toISOString() }]);
+          .insert([{ ...serverData, created_at: new Date().toISOString() }])
+          .select()
+          .single();
 
         if (error) throw error;
 
-        // Log server creation
-        logDataOperation('create', 'server', serverData.id, { newValues: serverData });
+        // Log server creation with the new server ID
+        if (newServerData) {
+          logDataOperation('create', 'server', newServerData.id, { newValues: serverData });
+        }
 
         toast({
           title: 'Server created',
@@ -791,17 +878,23 @@ const { logDataOperation } = useActivityLogger();
       return;
     }
 
-    // Confirmation dialog (using browser's confirm for simplicity, consider custom modal for better UX)
-    if (!confirm("Are you sure you want to delete this server?")) return;
+    // Open confirmation dialog
+    setServerToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  // Handler for confirming deletion
+  const confirmDelete = async () => {
+    if (!serverToDelete) return;
 
     // Fetch server object before deletion for logging
-    const deletedServer = servers.find(s => s.id === id);
+    const deletedServer = servers.find(s => s.id === serverToDelete);
 
     try {
       const { error } = await supabase
         .from('servers')
         .delete()
-        .eq('id', id);
+        .eq('id', serverToDelete);
 
       if (error) throw error;
 
@@ -822,6 +915,10 @@ const { logDataOperation } = useActivityLogger();
         description: "Failed to delete server",
         variant: "destructive",
       });
+    } finally {
+      // Reset dialog state
+      setDeleteConfirmOpen(false);
+      setServerToDelete(null);
     }
   };
 
@@ -1441,23 +1538,39 @@ const { logDataOperation } = useActivityLogger();
                             <Controller
                               name="rack"
                               control={form.control}
-                              render={({ field }) => (
-                                <Select
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select rack" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {enums?.racks?.map((rack) => (
-                                      <SelectItem key={rack} value={rack}>
-                                        {rack}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
+                              render={({ field }) => {
+                                // Debug: Log rack field state and available racks
+                                console.log('Rack field render:', {
+                                  fieldValue: field.value,
+                                  availableRacks: enums?.racks,
+                                  editingServerRack: editingServer?.rack,
+                                  isEditingServerRackInList: enums?.racks?.includes(editingServer?.rack || '')
+                                });
+                                
+                                // Ensure editing server's rack is available in options
+                                let availableRacks = enums?.racks || [];
+                                if (editingServer?.rack && !availableRacks.includes(editingServer.rack)) {
+                                  availableRacks = [...availableRacks, editingServer.rack].sort();
+                                }
+                                
+                                return (
+                                  <Select
+                                    value={field.value || ''}
+                                    onValueChange={field.onChange}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select rack" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableRacks.map((rack) => (
+                                        <SelectItem key={rack} value={rack}>
+                                          {rack}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                );
+                              }}
                             />
                           </div>
                           <div className="space-y-2">
@@ -1465,24 +1578,35 @@ const { logDataOperation } = useActivityLogger();
                             <Controller
                               name="unit"
                               control={form.control}
-                              render={({ field }) => (
-                                <Select
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
-                                  disabled={!form.getValues('rack')}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select unit" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableUnits.map((unit) => (
-                                      <SelectItem key={unit} value={unit}>
-                                        {unit}{getUnitRange(unit, form.getValues('unit_height') || 1)}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              )}
+                              render={({ field }) => {
+                                // Debug: Log unit field state
+                                console.log('Unit field render:', {
+                                  fieldValue: field.value,
+                                  availableUnits: availableUnits,
+                                  editingServerUnit: editingServer?.unit,
+                                  isEditingServerUnitInList: availableUnits.includes(editingServer?.unit || ''),
+                                  rackValue: form.getValues('rack')
+                                });
+                                
+                                return (
+                                  <Select
+                                    value={field.value || ''}
+                                    onValueChange={field.onChange}
+                                    disabled={!form.getValues('rack')}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select unit" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableUnits.map((unit) => (
+                                        <SelectItem key={unit} value={unit}>
+                                          {unit}{getUnitRange(unit, form.getValues('unit_height') || 1)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                );
+                              }}
                             />
                           </div>
                           <div className="space-y-2">
@@ -1516,8 +1640,16 @@ const { logDataOperation } = useActivityLogger();
                               unitHeight={watchedUnitHeight || 1}
                               excludeServerId={editingServer?.id}
                               onSuggestionApply={(position: number) => {
-                                form.setValue('unit', `U${position}`);
-                                // Do NOT close dialog or submit form here
+                                const suggestedUnit = `U${position}`;
+                                
+                                // Add to suggested units set
+                                setSuggestedUnits(prev => new Set([...prev, suggestedUnit]));
+                                
+                                // Set the form value
+                                form.setValue('unit', suggestedUnit);
+                                
+                                // Force form to trigger validation
+                                form.trigger('unit');
                               }}
                               className="w-full"
                             />
@@ -2043,6 +2175,33 @@ const { logDataOperation } = useActivityLogger();
           </div>
         </div>
       </CardContent>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the server
+              and remove all of its data from our servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setDeleteConfirmOpen(false);
+              setServerToDelete(null);
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

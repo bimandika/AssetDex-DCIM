@@ -88,6 +88,11 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Change password endpoint
+    if (url.pathname === '/change-password' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+      const { handler } = await import('../change-password/index.ts')
+      return await handler(req)
+    }
 
     // Server position history endpoints (payload-based)
     if (url.pathname === '/servers/position-history' && req.method === 'POST') {
