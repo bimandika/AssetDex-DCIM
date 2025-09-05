@@ -18,6 +18,7 @@ import SettingsDialog from "@/components/SettingsDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import ActivityLogsViewer from "@/components/admin/ActivityLogsViewer";
+import DeviceGlossaryList from "@/components/device-glossary/DeviceGlossaryList";
 
 const Index = () => {
   const location = useLocation();
@@ -38,7 +39,8 @@ const Index = () => {
     '/properties': 'properties',
     '/users': 'users',
     '/usermanagement': 'users',
-    '/activitylogs': 'activitylogs'
+    '/activitylogs': 'activitylogs',
+    '/device-glossary': 'glossary'
   };
 
   const tabToPath: Record<string, string> = {
@@ -50,7 +52,8 @@ const Index = () => {
     'reports': '/reports',
     'properties': '/properties',
     'users': '/users',
-    'activitylogs': '/activitylogs'
+    'activitylogs': '/activitylogs',
+    'glossary': '/device-glossary'
   };
 
   // Determine active tab from URL
@@ -168,7 +171,7 @@ const Index = () => {
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className={`grid w-full ${isAdmin && canWrite ? 'grid-cols-9' : isAdmin ? 'grid-cols-8' : canWrite ? 'grid-cols-7' : 'grid-cols-6'} lg:w-[${isAdmin && canWrite ? '900px' : isAdmin ? '800px' : canWrite ? '700px' : '600px'}] bg-white border border-slate-200 shadow-sm`}>
+          <TabsList className={`grid w-full ${isAdmin && canWrite ? 'grid-cols-10' : isAdmin ? 'grid-cols-9' : canWrite ? 'grid-cols-8' : 'grid-cols-7'} lg:w-[${isAdmin && canWrite ? '1000px' : isAdmin ? '900px' : canWrite ? '800px' : '700px'}] bg-white border border-slate-200 shadow-sm`}>
             <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <LayoutDashboard className="h-4 w-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -214,6 +217,10 @@ const Index = () => {
                 <span className="hidden sm:inline">Activity Logs</span>
               </TabsTrigger>
             )}
+            <TabsTrigger value="glossary" className="flex items-center space-x-2">
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">Glossary</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
@@ -257,6 +264,10 @@ const Index = () => {
               <ActivityLogsViewer />
             </TabsContent>
           )}
+
+          <TabsContent value="glossary" className="space-y-6">
+            <DeviceGlossaryList />
+          </TabsContent>
         </Tabs>
       </main>
     </div>

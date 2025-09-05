@@ -152,15 +152,15 @@ export const DynamicFormFieldRenderer: React.FC<DynamicFormFieldProps> = ({
             control={control}
             render={({ field: controllerField }) => (
               <Select
-                value={controllerField.value || ''}
-                onValueChange={controllerField.onChange}
+                value={controllerField.value ? controllerField.value : '__none__'}
+                onValueChange={(value) => controllerField.onChange(value === '__none__' ? null : value)}
               >
                 <SelectTrigger className={cn(error && 'border-red-500')}>
                   <SelectValue placeholder={field.placeholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {!field.required && (
-                    <SelectItem value="">
+                    <SelectItem value="__none__">
                       <span className="text-muted-foreground">None</span>
                     </SelectItem>
                   )}

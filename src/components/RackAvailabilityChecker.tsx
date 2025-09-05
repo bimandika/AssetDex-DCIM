@@ -152,7 +152,6 @@ const RackAvailabilityChecker: React.FC<RackAvailabilityCheckerProps> = ({
             <div className="flex flex-wrap gap-1">
               {availableSpaces
                 .filter((space: AvailableSpace) => space.size >= unitHeight)
-                .sort((a, b) => Math.min(a.startUnit, a.endUnit) - Math.min(b.startUnit, b.endUnit)) // Sort by lowest unit number
                 .slice(0, 4) // Show up to 4 spaces
                 .map((space: AvailableSpace, index: number) => (
                   <Badge 

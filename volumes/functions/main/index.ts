@@ -151,6 +151,72 @@ serve(async (req) => {
       return await handler(req)
     }
     
+    // Device Glossary endpoints
+    if (url.pathname === '/device-glossary' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-glossary/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Glossary comparison endpoint
+    if (url.pathname === '/device-glossary/compare' && req.method === 'GET') {
+      const handler = await import('../device-glossary/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Glossary complete specs endpoint
+    if (url.pathname.match(/^\/device-glossary\/[^\/]+\/complete-specs$/) && req.method === 'GET') {
+      const handler = await import('../device-glossary/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Glossary compatibility endpoint
+    if (url.pathname.match(/^\/device-glossary\/[^\/]+\/compatibility$/) && req.method === 'GET') {
+      const handler = await import('../device-glossary/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device CPU Specs endpoints
+    if (url.pathname === '/device-cpu-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-cpu-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Memory Specs endpoints
+    if (url.pathname === '/device-memory-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-memory-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Storage Specs endpoints
+    if (url.pathname === '/device-storage-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-storage-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Network Specs endpoints
+    if (url.pathname === '/device-network-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-network-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Power Specs endpoints
+    if (url.pathname === '/device-power-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-power-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Management Specs endpoints
+    if (url.pathname === '/device-management-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-management-specs/index.ts')
+      return await handler.default(req)
+    }
+    
+    // Device Compatibility endpoints
+    if (url.pathname === '/device-compatibility' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
+      const handler = await import('../device-compatibility/index.ts')
+      return await handler.default(req)
+    }
+    
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
       headers: { 'Content-Type': 'application/json' }

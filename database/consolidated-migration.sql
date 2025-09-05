@@ -755,7 +755,7 @@ INSERT INTO public.servers (
 
 (gen_random_uuid(), 'SN2023S003', 'backup-stor-01', 'Dell', 'PowerVault ME4', '192.168.3.12', '10.0.0.9', 'Storage OS 2.1',
  'DC-East', 'Building-A', '1', '401',
- 'PAAS', 'Production', 'Active', 'Storage', 'RACK-02', 'U15', 4, '2026-12-31', 'Backup storage array',
+ 'PAAS', 'Production', 'Active', 'Storage', 'RACK-02', 'U29', 4, '2026-12-31', 'Backup storage array',
  (SELECT id FROM auth.users WHERE email = 'admin@localhost.com' LIMIT 1), now(), now()),
 
 -- Network Devices (10-12)
@@ -3568,3 +3568,180 @@ CREATE TRIGGER dashboard_widgets_activity_log
 CREATE TRIGGER user_roles_activity_log
 AFTER INSERT OR UPDATE OR DELETE ON public.user_roles
 FOR EACH ROW EXECUTE FUNCTION log_data_changes();
+
+
+-- Device Glossary Schema Migration
+
+-- 1. Device Glossary Table
+CREATE TABLE IF NOT EXISTS device_glossary (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_model VARCHAR(100) NOT NULL UNIQUE,
+    device_type VARCHAR(50) NOT NULL, -- 'Server', 'Storage', 'Network', 'Power'
+    manufacturer VARCHAR(100) NOT NULL,
+    year INTEGER,
+    unit_height VARCHAR(10),
+    status VARCHAR(20) DEFAULT 'Active',
+    description TEXT,
+    datasheet_url VARCHAR(500),
+    image_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 2. CPU Specs Table
+CREATE TABLE IF NOT EXISTS device_cpu_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    cpu_model VARCHAR(200),
+    cpu_generation VARCHAR(50),
+    physical_cores INTEGER,
+    logical_cores INTEGER,
+    cpu_quantity INTEGER,
+    base_frequency_ghz DECIMAL(4,2),
+    boost_frequency_ghz DECIMAL(4,2),
+    cpu_architecture VARCHAR(20),
+    tdp_watts INTEGER,
+    l1_cache_kb INTEGER,
+    l2_cache_mb INTEGER,
+    l3_cache_mb INTEGER,
+    instruction_sets TEXT[],
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 3. Memory Specs Table
+CREATE TABLE IF NOT EXISTS device_memory_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    total_capacity_gb INTEGER,
+    memory_type VARCHAR(20),
+    memory_frequency_mhz INTEGER,
+    module_count INTEGER,
+    module_capacity_gb INTEGER,
+    ecc_support BOOLEAN DEFAULT false,
+    maximum_capacity_gb INTEGER,
+    memory_channels INTEGER,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 4. Storage Specs Table
+CREATE TABLE IF NOT EXISTS device_storage_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    storage_slot_number INTEGER,
+    storage_model VARCHAR(100),
+    storage_type VARCHAR(20),
+    capacity_gb INTEGER,
+    interface_type VARCHAR(20),
+    hot_plug_support BOOLEAN DEFAULT false,
+    drive_form_factor VARCHAR(20),
+    performance_tier VARCHAR(20),
+    warranty_years INTEGER,
+    quantity INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 5. Network Specs Table
+CREATE TABLE IF NOT EXISTS device_network_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    nic_slot_number INTEGER,
+    nic_type VARCHAR(20),
+    nic_manufacturer VARCHAR(50),
+    nic_model VARCHAR(100),
+    port_type VARCHAR(50),
+    port_speed_gbps INTEGER,
+    port_quantity INTEGER,
+    connector_type VARCHAR(20),
+    is_management_port BOOLEAN DEFAULT false,
+    supported_modules TEXT[],
+    driver_support TEXT[],
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 6. Power Specs Table
+CREATE TABLE IF NOT EXISTS device_power_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    psu_slot_number INTEGER,
+    max_power_watts INTEGER,
+    power_cable_type VARCHAR(20),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 7. Management Specs Table
+CREATE TABLE IF NOT EXISTS device_management_specs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    management_type VARCHAR(50),
+    remote_console_support BOOLEAN DEFAULT false,
+    power_control_support BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 8. Compatibility Table
+CREATE TABLE IF NOT EXISTS device_compatibility (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    compatible_with UUID REFERENCES device_glossary(id) ON DELETE CASCADE,
+    compatibility_type VARCHAR(50),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ##### Sample Data Glossarary ####
+-- Device Glossary Entries
+INSERT INTO device_glossary (id, device_model, manufacturer, device_type, year, unit_height, status, description)
+VALUES
+  (gen_random_uuid(), 'PF72P4M6.32', 'Intel', 'Server', 2023, '2U', 'Active', 'High-performance 2U rackmount server with dual Xeon processors'),
+  (gen_random_uuid(), 'DL380Gen10Plus', 'HPE', 'Server', 2022, '2U', 'Active', 'HPE DL380 Gen10 Plus server, scalable enterprise platform'),
+  (gen_random_uuid(), 'PowerEdgeR750', 'Dell', 'Server', 2024, '2U', 'Active', 'Dell PowerEdge R750, next-gen compute and storage'),
+  (gen_random_uuid(), 'QFX5120-48Y', 'Juniper', 'Network', 2023, '1U', 'Active', 'Juniper QFX5120-48Y 25/100GbE switch'),
+  (gen_random_uuid(), 'APC-SRT2200XLI', 'APC', 'Power', 2021, 'Tower', 'Active', 'APC Smart-UPS SRT 2200VA, high-efficiency UPS');
+
+  -- CPU Specs
+INSERT INTO device_cpu_specs (id, device_id, cpu_model, cpu_generation, physical_cores, logical_cores, cpu_quantity, base_frequency_ghz, boost_frequency_ghz, cpu_architecture, tdp_watts)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 'Intel Xeon Platinum 8358×2', '7th Gen', 32, 64, 2, 2.6, 3.2, 'x86_64', 250),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 'Intel Xeon Gold 6338×2', '3rd Gen', 32, 64, 2, 2.0, 3.1, 'x86_64', 205),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 'Intel Xeon Silver 4314×2', '3rd Gen', 24, 48, 2, 2.4, 3.4, 'x86_64', 135);
+
+  -- Memory Specs
+INSERT INTO device_memory_specs (id, device_id, total_capacity_gb, memory_type, memory_frequency_mhz, module_count, module_capacity_gb, ecc_support, maximum_capacity_gb, memory_channels)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 1024, 'DDR4', 3200, 32, 32, true, 2048, 8),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 512, 'DDR4', 2933, 16, 32, true, 1024, 8),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 768, 'DDR4', 3200, 24, 32, true, 1536, 8);
+
+  -- Storage Specs
+INSERT INTO device_storage_specs (id, device_id, storage_slot_number, storage_model, storage_type, capacity_gb, interface_type, hot_plug_support, drive_form_factor, performance_tier, warranty_years, quantity)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 1, 'Samsung PM1633a', 'SATA_SSD', 480, 'SATA', true, '2.5"', 'Enterprise', 5, 1),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 1, 'Intel DC P4610', 'NVME_SSD', 960, 'NVMe', true, 'M.2', 'Datacenter', 5, 1),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 1, 'WD Gold WD4003FRYZ', 'SATA_HDD', 4000, 'SATA', true, '3.5"', 'Enterprise', 5, 1);
+
+  -- Network Specs
+INSERT INTO device_network_specs (id, device_id, nic_slot_number, nic_type, nic_manufacturer, nic_model, port_type, port_speed_gbps, port_quantity, connector_type, is_management_port)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 0, 'Onboard', 'Intel', 'I350-AM4', 'RJ45', 1, 4, 'RJ45', false),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 1, 'PCIe', 'Broadcom', 'BCM57414', 'SFP+', 10, 2, 'SFP+', false),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 2, 'PCIe', 'Mellanox', 'ConnectX-6 Dx', 'SFP28', 25, 2, 'SFP28', false);
+
+  -- Power Specs
+INSERT INTO device_power_specs (id, device_id, psu_slot_number, max_power_watts, power_cable_type)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 1, 1300, 'C13'),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 1, 800, 'C13'),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 1, 1400, 'C19');
+
+  -- Management Specs
+INSERT INTO device_management_specs (id, device_id, management_type, remote_console_support, power_control_support)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), 'IPMI', true, true),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 'iLO', true, true),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 'iDRAC', true, true);
+
+  -- Compatibility
+INSERT INTO device_compatibility (id, device_id, compatible_with, compatibility_type, notes)
+VALUES
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'PF72P4M6.32'), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), 'memory', 'Compatible DDR4 modules'),
+  (gen_random_uuid(), (SELECT id FROM device_glossary WHERE device_model = 'DL380Gen10Plus'), (SELECT id FROM device_glossary WHERE device_model = 'PowerEdgeR750'), 'storage', 'NVMe SSDs supported');
