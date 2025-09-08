@@ -197,6 +197,30 @@ serve(async (req) => {
     if (url.pathname === '/device-network-specs' && ["GET", "POST", "PUT", "DELETE"].includes(req.method)) {
       const handler = await import('../device-network-specs/index.ts')
       return await handler.default(req)
+    }   
+
+    // Power usage endpoint
+    if (url.pathname === '/power-usage' && req.method === 'GET') {
+      const { handler } = await import('../power-usage/index.ts')
+     return await handler(req)
+    }
+    
+    // PSU Power Estimation endpoint
+    if (url.pathname === '/estimate-power-from-psu' && req.method === 'POST') {
+      const { handler } = await import('../estimate-power-from-psu/index.ts')
+      return await handler(req)
+    }
+    
+    // Auto Power Assignment endpoint
+    if (url.pathname === '/assign-power-estimation' && req.method === 'POST') {
+      const { handler } = await import('../assign-power-estimation/index.ts')
+      return await handler(req)
+    }
+    
+    // Power Data Overview endpoint
+    if (url.pathname === '/power-data-overview' && req.method === 'GET') {
+      const { handler } = await import('../power-data-overview/index.ts')
+      return await handler(req)
     }
     
     // Device Power Specs endpoints

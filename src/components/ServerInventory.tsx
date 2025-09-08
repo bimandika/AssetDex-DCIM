@@ -95,19 +95,45 @@ const coreServerSchema = z.object({
   environment: z.string().optional().nullable(),
 });
 
-// Zod schema for the "Add Rack" dialog input with enhanced validation
+// Zod schema for the "Add Rack" dialog input with enhanced validation and power specifications
 const addRackSchema = z.object({
   rack_name: z.string()
     .min(1, 'Rack name is required')
     .max(50, 'Rack name must be 50 characters or less')
     .regex(/^[A-Za-z0-9\-_]+$/, 'Rack name can only contain letters, numbers, hyphens, and underscores')
-    .transform(val => val.trim()),
+    .transform((val: string) => val.trim()),
   dc_site: z.string().min(1, 'Datacenter site is required'),
   dc_building: z.string().min(1, 'Building is required'),
   dc_floor: z.string().min(1, 'Floor is required'),
   dc_room: z.string().min(1, 'Room is required'),
   description: z.string().max(40, 'Description must be 40 characters or less').optional(),
+  power_capacity_kva: z.number()
+    .min(0.1, 'Power capacity must be at least 0.1 KVA')
+    .max(100, 'Power capacity cannot exceed 100 KVA')
+    .default(4.2),
+  power_factor: z.number()
+    .min(0.1, 'Power factor must be at least 0.1')
+    .max(1.0, 'Power factor cannot exceed 1.0')
+    .default(0.8),
+  power_config_preset: z.string().optional(),
 });
+
+// Common power configurations for rack creation
+interface PowerConfig {
+  name: string;
+  kva: number;
+  powerFactor: number;
+  description: string;
+}
+
+const COMMON_POWER_CONFIGS: PowerConfig[] = [
+  { name: "Standard 20A@208V", kva: 4.2, powerFactor: 0.8, description: "Single 20A 208V circuit" },
+  { name: "Standard 30A@208V", kva: 6.2, powerFactor: 0.8, description: "Single 30A 208V circuit" },
+  { name: "Dual 20A@208V", kva: 8.3, powerFactor: 0.8, description: "Dual 20A 208V circuits" },
+  { name: "High Density 30A@208V", kva: 12.5, powerFactor: 0.8, description: "Dual 30A 208V circuits" },
+  { name: "Enterprise 60A@208V", kva: 25.0, powerFactor: 0.8, description: "High density enterprise rack" },
+  { name: "Custom", kva: 0, powerFactor: 0.8, description: "Enter custom values" }
+];
 
 const ServerInventory = () => {
   // State for server data
@@ -282,12 +308,14 @@ const { logDataOperation } = useActivityLogger();
   const watchedUnit = useWatch({ control: form.control, name: 'unit' });
   const watchedUnitHeight = useWatch({ control: form.control, name: 'unit_height' });
 
-  // Initialize form for "Add Rack" dialog
+  // Initialize form for "Add Rack" dialog with power specifications
   const {
     register: registerRack,
     handleSubmit: handleRackSubmit,
     formState: { errors: rackErrors },
     reset: resetRackForm,
+    watch: watchRack,
+    setValue: setRackValue,
   } = useForm<{ 
     rack_name: string; 
     dc_site: string; 
@@ -295,6 +323,9 @@ const { logDataOperation } = useActivityLogger();
     dc_floor: string; 
     dc_room: string; 
     description?: string; 
+    power_capacity_kva: number;
+    power_factor: number;
+    power_config_preset?: string;
   }>({
     resolver: zodResolver(addRackSchema),
     defaultValues: {
@@ -304,8 +335,33 @@ const { logDataOperation } = useActivityLogger();
       dc_floor: '1',
       dc_room: 'MDF',
       description: '',
+      power_capacity_kva: 4.2,
+      power_factor: 0.8,
+      power_config_preset: '',
     },
   });
+
+  // State for power calculations in rack form
+  const [calculatedWatts, setCalculatedWatts] = useState(0);
+  const powerCapacityKva = watchRack('power_capacity_kva');
+  const powerFactor = watchRack('power_factor');
+
+  // Calculate watts when KVA or power factor changes
+  useEffect(() => {
+    const kva = powerCapacityKva || 4.2;
+    const pf = powerFactor || 0.8;
+    setCalculatedWatts(Math.round(kva * pf * 1000));
+  }, [powerCapacityKva, powerFactor]);
+
+  // Handle power preset selection
+  const handlePowerPresetChange = (presetName: string) => {
+    const preset = COMMON_POWER_CONFIGS.find(p => p.name === presetName);
+    if (preset && preset.name !== 'Custom') {
+      setRackValue('power_capacity_kva', preset.kva);
+      setRackValue('power_factor', preset.powerFactor);
+    }
+    setRackValue('power_config_preset', presetName);
+  };
 
   // Effect to update available units when rack or height changes in the server form
   useEffect(() => {
@@ -947,7 +1003,7 @@ const { logDataOperation } = useActivityLogger();
     return <Badge variant="outline">{allocation}</Badge>;
   };
 
-  // Function to handle "Add Rack" form submission
+  // Function to handle "Add Rack" form submission with power specifications
   const onAddRackSubmit = async (values: { 
     rack_name: string; 
     dc_site: string; 
@@ -955,6 +1011,9 @@ const { logDataOperation } = useActivityLogger();
     dc_floor: string; 
     dc_room: string; 
     description?: string; 
+    power_capacity_kva: number;
+    power_factor: number;
+    power_config_preset?: string;
   }) => {
     // Permission check: Assuming engineer role can add racks
     if (!hasRole('engineer')) {
@@ -998,7 +1057,10 @@ const { logDataOperation } = useActivityLogger();
           dc_building: values.dc_building,
           dc_floor: values.dc_floor,
           dc_room: values.dc_room,
-          total_units: 42
+          total_units: 42,
+          power_capacity_kva: values.power_capacity_kva,
+          power_factor: values.power_factor,
+          power_capacity_watts: Math.round(values.power_capacity_kva * values.power_factor * 1000)
         })
       });
 
@@ -1208,6 +1270,73 @@ const { logDataOperation } = useActivityLogger();
                       {rackErrors.description && (
                         <p className="text-sm text-red-500">{rackErrors.description.message}</p>
                       )}
+                    </div>
+                    
+                    {/* Power Specifications Section */}
+                    <div className="space-y-4 border-t pt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="power_config_preset">Power Configuration Preset</Label>
+                        <select
+                          id="power_config_preset"
+                          disabled={isAddingRack}
+                          onChange={(e) => handlePowerPresetChange(e.target.value)}
+                          className="w-full px-3 py-2 border rounded-md border-gray-300"
+                        >
+                          <option value="">Select a preset configuration...</option>
+                          {COMMON_POWER_CONFIGS.map((config) => (
+                            <option key={config.name} value={config.name}>
+                              {config.name} ({config.kva} KVA) - {config.description}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="power_capacity_kva">Power Capacity (KVA) *</Label>
+                          <Input
+                            id="power_capacity_kva"
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            max="100"
+                            placeholder="4.2"
+                            disabled={isAddingRack}
+                            {...registerRack('power_capacity_kva', { valueAsNumber: true })}
+                            className={rackErrors.power_capacity_kva ? 'border-red-500' : ''}
+                          />
+                          {rackErrors.power_capacity_kva && (
+                            <p className="text-sm text-red-500">{rackErrors.power_capacity_kva.message}</p>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="power_factor">Power Factor *</Label>
+                          <Input
+                            id="power_factor"
+                            type="number"
+                            step="0.01"
+                            min="0.1"
+                            max="1.0"
+                            placeholder="0.8"
+                            disabled={isAddingRack}
+                            {...registerRack('power_factor', { valueAsNumber: true })}
+                            className={rackErrors.power_factor ? 'border-red-500' : ''}
+                          />
+                          {rackErrors.power_factor && (
+                            <p className="text-sm text-red-500">{rackErrors.power_factor.message}</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-blue-50 p-3 rounded-md">
+                        <p className="text-sm font-medium text-blue-700">
+                          Calculated Power Capacity: {calculatedWatts} Watts
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Power Factor × 1000 = {calculatedWatts}W
+                        </p>
+                      </div>
                     </div>
                     <DialogFooter>
                       <Button

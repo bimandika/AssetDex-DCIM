@@ -56,8 +56,10 @@ const AddDeviceDialog: React.FC<AddDeviceDialogProps> = ({ open, onClose, onAdd 
       psu_wattage: '',
       psu_efficiency: '80+ Gold',
       redundant_psu: false,
+      // These will be auto-calculated from psu_wattage
       power_consumption_idle: '',
-      power_consumption_max: ''
+      power_consumption_max: '',
+      typical_power_watts: ''
     }
   });
 
@@ -89,6 +91,58 @@ const AddDeviceDialog: React.FC<AddDeviceDialogProps> = ({ open, onClose, onAdd 
     power: []
   });
   const [loadingComponents, setLoadingComponents] = useState(false);
+
+  // Function to estimate power consumption from PSU wattage
+  const estimatePowerFromPSU = (psuWatts: number, deviceType: string = 'Server') => {
+    if (!psuWatts || psuWatts <= 0) return { idle: '', max: '', typical: '' };
+
+    let maxRatio = 0.75;
+    let typicalRatio = 0.45;
+    let idleRatio = 0.20;
+
+    // Adjust ratios based on device type
+    if (deviceType === 'Storage') {
+      maxRatio = 0.70;
+      typicalRatio = 0.55;
+      idleRatio = 0.35;
+    } else if (deviceType === 'Network') {
+      maxRatio = 0.90;
+      typicalRatio = 0.70;
+      idleRatio = 0.60;
+    }
+
+    // Adjust ratios based on PSU size for efficiency
+    if (psuWatts <= 300) {
+      maxRatio += 0.10;
+      typicalRatio += 0.05;
+    } else if (psuWatts >= 750) {
+      maxRatio -= 0.05;
+      typicalRatio -= 0.10;
+    }
+
+    return {
+      idle: Math.round(psuWatts * idleRatio).toString(),
+      max: Math.round(psuWatts * maxRatio).toString(),
+      typical: Math.round(psuWatts * typicalRatio).toString()
+    };
+  };
+
+  // Auto-calculate power consumption when PSU wattage changes
+  const handlePSUWattageChange = (wattage: string) => {
+    const watts = parseInt(wattage) || 0;
+    const estimates = estimatePowerFromPSU(watts, formData.device_type);
+    
+    setFormData(prev => ({
+      ...prev,
+      power_specs: {
+        ...prev.power_specs,
+        psu_wattage: wattage,
+        power_consumption_idle: estimates.idle,
+        power_consumption_max: estimates.max,
+        typical_power_watts: estimates.typical
+      }
+    }));
+  };
 
   // Load available components from the database
   const loadAvailableComponents = async () => {
@@ -611,12 +665,103 @@ const AddDeviceDialog: React.FC<AddDeviceDialogProps> = ({ open, onClose, onAdd 
           )}
 
           {activeTab === 'power' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Power Specifications</h3>
               
-              {/* Component Selection Section */}
+              {/* PSU Specification Form */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-yellow-900 mb-4 flex items-center gap-2">
+                  ⚡ PSU Configuration
+                  <span className="text-xs text-yellow-700 font-normal">(Auto-calculates power consumption)</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-700 mb-1">PSU Wattage *</label>
+                    <input
+                      type="number"
+                      value={formData.power_specs.psu_wattage}
+                      onChange={(e) => handlePSUWattageChange(e.target.value)}
+                      placeholder="650"
+                      min="100"
+                      max="2000"
+                      step="50"
+                      className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+                    />
+                    <p className="text-xs text-yellow-600 mt-1">Enter PSU capacity in watts (e.g., 650W PSU)</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-700 mb-1">PSU Efficiency</label>
+                    <select
+                      value={formData.power_specs.psu_efficiency}
+                      onChange={(e) => handleInputChange('psu_efficiency', e.target.value, 'power_specs')}
+                      className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+                    >
+                      <option value="Standard">Standard (80%)</option>
+                      <option value="80+ Bronze">80+ Bronze (82%)</option>
+                      <option value="80+ Silver">80+ Silver (85%)</option>
+                      <option value="80+ Gold">80+ Gold (87%)</option>
+                      <option value="80+ Platinum">80+ Platinum (90%)</option>
+                      <option value="80+ Titanium">80+ Titanium (92%)</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <label className="flex items-center space-x-2 text-sm text-yellow-700">
+                      <input
+                        type="checkbox"
+                        checked={formData.power_specs.redundant_psu}
+                        onChange={(e) => handleInputChange('redundant_psu', e.target.checked, 'power_specs')}
+                        className="text-yellow-600 focus:ring-yellow-500 border-yellow-300 rounded"
+                      />
+                      <span>Redundant PSU</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Auto-calculated Power Consumption Display */}
+                {formData.power_specs.psu_wattage && parseInt(formData.power_specs.psu_wattage) > 0 && (
+                  <div className="bg-white border border-yellow-300 rounded-lg p-4">
+                    <h5 className="text-sm font-semibold text-yellow-900 mb-3">📊 Estimated Power Consumption</h5>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-2xl font-bold text-green-600">{formData.power_specs.power_consumption_idle}W</div>
+                        <div className="text-xs text-gray-600">Idle Power</div>
+                        <div className="text-xs text-gray-500">
+                          {formData.power_specs.power_consumption_idle && formData.power_specs.psu_wattage ? 
+                            Math.round((parseInt(formData.power_specs.power_consumption_idle) / parseInt(formData.power_specs.psu_wattage)) * 100) : 0}% of PSU
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-yellow-600">{formData.power_specs.typical_power_watts}W</div>
+                        <div className="text-xs text-gray-600">Typical Power</div>
+                        <div className="text-xs text-gray-500">
+                          {formData.power_specs.typical_power_watts && formData.power_specs.psu_wattage ? 
+                            Math.round((parseInt(formData.power_specs.typical_power_watts) / parseInt(formData.power_specs.psu_wattage)) * 100) : 0}% of PSU
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-red-600">{formData.power_specs.power_consumption_max}W</div>
+                        <div className="text-xs text-gray-600">Max Power</div>
+                        <div className="text-xs text-gray-500">
+                          {formData.power_specs.power_consumption_max && formData.power_specs.psu_wattage ? 
+                            Math.round((parseInt(formData.power_specs.power_consumption_max) / parseInt(formData.power_specs.psu_wattage)) * 100) : 0}% of PSU
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-yellow-200 text-xs text-gray-600">
+                      <p><strong>Cable Type:</strong> {parseInt(formData.power_specs.psu_wattage || '0') <= 400 ? 'C13 (Standard)' : 'C19 (High Power)'}</p>
+                      <p><strong>Note:</strong> These values are estimated based on typical server power consumption patterns. Actual values may vary based on workload and configuration.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Component Selection Section (Optional) */}
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-red-900 mb-2">Select Power Components</h4>
+                <h4 className="text-sm font-semibold text-red-900 mb-2">Select Specific Power Components (Optional)</h4>
+                <p className="text-xs text-red-700 mb-3">Add specific PSU models for detailed compatibility tracking</p>
                 <div className="grid grid-cols-1 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-red-700 mb-1">Available Power Components</label>
