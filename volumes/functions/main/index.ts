@@ -115,6 +115,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Update rack description endpoint - matches supabase.functions.invoke() calls
+    if (url.pathname === '/update-rack-description' && req.method === 'POST') {
+      const { handler } = await import('../update-rack-description/index.ts')
+      return await handler(req)
+    }
+
     // Dashboard manager endpoint
     if (url.pathname === '/dashboard-manager' && ["GET", "POST", "PUT", "DELETE", "OPTIONS"].includes(req.method)) {
       const { handler } = await import('../dashboard-manager/index.ts')

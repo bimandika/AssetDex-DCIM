@@ -192,14 +192,25 @@ export function EnumColorManager({ enumType, availableValues, onColorChange }: E
               <Select
                 value={newColor.enum_value}
                 onValueChange={(value) => setNewColor({ ...newColor, enum_value: value })}
+                disabled={availableEnumValues.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select enum value" />
+                  <SelectValue placeholder={
+                    availableEnumValues.length === 0 
+                      ? "All enum values have colors assigned" 
+                      : "Select enum value"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableEnumValues.map(value => (
-                    <SelectItem key={value} value={value}>{value}</SelectItem>
-                  ))}
+                  {availableEnumValues.length === 0 ? (
+                    <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                      All enum values already have colors assigned
+                    </div>
+                  ) : (
+                    availableEnumValues.map(value => (
+                      <SelectItem key={value} value={value}>{value}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -227,7 +238,10 @@ export function EnumColorManager({ enumType, availableValues, onColorChange }: E
           </div>
           
           <div className="flex gap-2">
-            <Button onClick={handleSaveColor} disabled={loading}>
+            <Button 
+              onClick={handleSaveColor} 
+              disabled={loading || availableEnumValues.length === 0}
+            >
               <Plus className="w-4 h-4 mr-2" />
               Add Color
             </Button>
@@ -236,6 +250,18 @@ export function EnumColorManager({ enumType, availableValues, onColorChange }: E
               Generate Defaults
             </Button>
           </div>
+          
+          {availableEnumValues.length === 0 && (
+            <div className="text-sm text-muted-foreground bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="font-medium">All enum values have colors assigned</span>
+              </div>
+              <p className="mt-1 text-xs">
+                You can edit existing colors below or delete a color to make room for a new assignment.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Existing Colors */}

@@ -52,7 +52,18 @@ export const handler = async (req: Request): Promise<Response> => {
 
     // Parse request body
     const requestBody = await req.json()
-    const { rack_name, description, dc_site, dc_building, dc_floor, dc_room, total_units } = requestBody
+    const { 
+      rack_name, 
+      description, 
+      dc_site, 
+      dc_building, 
+      dc_floor, 
+      dc_room, 
+      total_units,
+      power_capacity_kva,
+      power_factor,
+      power_config_preset
+    } = requestBody
 
     // For Supabase Edge Function calls, use rack_name from body
     if (!rackId || rackId === 'update-rack-description') {
@@ -86,6 +97,9 @@ export const handler = async (req: Request): Promise<Response> => {
           dc_room: dc_room || 'MDF',
           description: description || '',
           total_units: total_units || 42,
+          power_capacity_kva: power_capacity_kva || 4.2,
+          power_factor: power_factor || 0.8,
+          power_config_preset: power_config_preset || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -117,6 +131,9 @@ export const handler = async (req: Request): Promise<Response> => {
     if (dc_floor !== undefined) updateData.dc_floor = dc_floor
     if (dc_room !== undefined) updateData.dc_room = dc_room
     if (total_units !== undefined) updateData.total_units = total_units
+    if (power_capacity_kva !== undefined) updateData.power_capacity_kva = power_capacity_kva
+    if (power_factor !== undefined) updateData.power_factor = power_factor
+    if (power_config_preset !== undefined) updateData.power_config_preset = power_config_preset
 
     const { data: updatedData, error: updateError } = await supabaseClient
       .from('rack_metadata')

@@ -97,6 +97,22 @@ const App = () => (
                   } 
                 />
                 <Route 
+                  path="/power-usage" 
+                  element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/power" 
+                  element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
                   path="/reports" 
                   element={
                     <ProtectedRoute>

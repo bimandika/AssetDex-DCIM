@@ -121,3 +121,5 @@ export const useRoomData = (filters: FilterState): UseRoomDataResult => {
 
   return { racksData, loading, error, refetch: fetchRoomData };
 };
+
+export type { RackInfo, ServerInfo };

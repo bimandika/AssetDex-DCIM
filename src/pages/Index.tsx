@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Server, Database, LayoutDashboard, Settings, Filter, Users } from "lucide-react";
+import { Server, Database, LayoutDashboard, Settings, Filter, Users, Zap } from "lucide-react";
 import ServerInventory from "@/components/ServerInventory";
 import Dashboard from "@/components/Dashboard";
 import RackView from "@/components/RackView";
 import RoomView from "@/components/RoomView";
 import Reports from "@/components/Reports";
 import ServerProperties from "@/components/ServerProperties";
-import DataCenterView from "@/components/DataCenterView";
+import PowerUsage from "@/components/PowerUsage";
 import UserManagement from "@/components/UserManagement";
 import UserMenu from "@/components/UserMenu";
 import SettingsDialog from "@/components/SettingsDialog";
@@ -34,7 +34,9 @@ const Index = () => {
     '/racks': 'rackview',
     '/roomview': 'roomview',
     '/rooms': 'roomview',
-    '/datacenter': 'datacenter',
+    '/datacenter': 'powerusage',
+    '/power-usage': 'powerusage',
+    '/power': 'powerusage',
     '/reports': 'reports',
     '/properties': 'properties',
     '/users': 'users',
@@ -48,7 +50,7 @@ const Index = () => {
     'servers': '/serverinventory',
     'rackview': '/rackview',
     'roomview': '/roomview',
-    'datacenter': '/datacenter',
+    'powerusage': '/power-usage',
     'reports': '/reports',
     'properties': '/properties',
     'users': '/users',
@@ -188,9 +190,9 @@ const Index = () => {
               <Database className="h-4 w-4" />
               <span className="hidden sm:inline">Room View</span>
             </TabsTrigger>
-            <TabsTrigger value="datacenter" className="flex items-center space-x-2">
-              <Database className="h-4 w-4" />
-              <span className="hidden sm:inline">DC View</span>
+            <TabsTrigger value="powerusage" className="flex items-center space-x-2">
+              <Zap className="h-4 w-4" />
+              <span className="hidden sm:inline">Power Usage</span>
             </TabsTrigger>
             {/* Only show Properties tab to engineers and super admins */}
             {canWrite && (
@@ -239,8 +241,8 @@ const Index = () => {
             <RoomView onRackClick={handleViewRack} />
           </TabsContent>
 
-          <TabsContent value="datacenter" className="space-y-6">
-            <DataCenterView onViewRack={handleViewRack} />
+          <TabsContent value="powerusage" className="space-y-6">
+            <PowerUsage onViewRack={handleViewRack} />
           </TabsContent>
 
           {canWrite && (

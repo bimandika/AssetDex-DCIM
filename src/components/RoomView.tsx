@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 import { useRoomData } from "@/hooks/useRoomData";
 import { useEnumColors } from "@/hooks/useEnumColors";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle, Palette } from "lucide-react";
+import { Database, RotateCcw, ChevronLeft, ChevronRight, Eye, Monitor, Loader2, AlertCircle, Palette, RefreshCw } from "lucide-react";
 import { debugServerData, getLogicalViewStats } from "@/utils/debugRoomView";
 import { EnumColorManager } from "@/components/EnumColorManager";
-import { EnumColorDemo } from "@/components/EnumColorDemo";
 import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
 
 type ViewMode = 'physical' | 'logical';
@@ -48,6 +48,8 @@ const RoomView = () => {
   useUrlState('roomView_page', currentPage, setCurrentPage);
   useUrlState('roomView_mode', viewMode, setViewMode);
   const [showColorManager, setShowColorManager] = useState(false);
+  
+  const { toast } = useToast();
   const racksPerPage = 12;
 
   // Use hierarchical filter hook but only up to room level
@@ -57,11 +59,33 @@ const RoomView = () => {
   const { racksData, loading, error } = useRoomData(filters);
   
   // Enum colors hook for coloring servers by allocation and model
-  const { getColor: getAllocationColor, lastUpdate: allocationLastUpdate } = useEnumColors('allocation_type');
-  const { getColor: getModelColor, lastUpdate: modelLastUpdate } = useEnumColors('model_type');
+  const { getColor: getAllocationColor, lastUpdate: allocationLastUpdate, fetchColors: fetchAllocationColors } = useEnumColors('allocation_type');
+  const { getColor: getModelColor, lastUpdate: modelLastUpdate, fetchColors: fetchModelColors } = useEnumColors('model_type');
   
   // Force re-render when colors are updated from other components
   const [colorRefreshKey, setColorRefreshKey] = useState(0);
+  const [isRefreshingColors, setIsRefreshingColors] = useState(false);
+  
+  // Refresh colors function
+  const refreshColors = async () => {
+    setIsRefreshingColors(true);
+    try {
+      await Promise.all([fetchAllocationColors(), fetchModelColors()]);
+      setColorRefreshKey(prev => prev + 1);
+      toast({
+        title: "Success",
+        description: "Colors refreshed successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to refresh colors",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRefreshingColors(false);
+    }
+  };
   
   useEffect(() => {
     const handleColorUpdate = () => {
@@ -329,9 +353,13 @@ const RoomView = () => {
             )}
           </div>
 
-          <Button onClick={resetFilters} variant="outline" size="sm">
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset
+          <Button 
+            onClick={resetFilters} 
+            variant="outline" 
+            size="sm"
+            title="Reset filters"
+          >
+            <RotateCcw className="h-4 w-4" />
           </Button>
           
           <Button 
@@ -339,9 +367,27 @@ const RoomView = () => {
             variant="outline" 
             size="sm"
             className="ml-2"
+            title="Manage colors"
           >
-            <Palette className="h-4 w-4 mr-2" />
-            Colors
+            <Palette className="h-4 w-4" />
+          </Button>
+          
+          <Button 
+            onClick={refreshColors} 
+            variant="outline" 
+            size="sm"
+            className="ml-2"
+            disabled={isRefreshingColors}
+            title="Refresh color assignments"
+          >
+            {isRefreshingColors ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <RefreshCw className="h-3 w-3" />
+                <Palette className="h-3 w-3 ml-1" />
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -418,12 +464,11 @@ const RoomView = () => {
           {/* Color Management Section */}
           {showColorManager && (
             <div className="mb-6 space-y-4">
-              <EnumColorDemo />
               <EnumColorManager 
                 enumType={viewMode === 'logical' ? 'allocation_type' : 'model_type'}
-                onColorChange={() => {
-                  // Trigger re-render when colors change
-                  // The hooks will automatically refetch colors
+                onColorChange={async () => {
+                  // Trigger refresh when colors change
+                  await refreshColors();
                 }}
               />
             </div>

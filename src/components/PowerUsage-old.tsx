@@ -1,14 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building, Server, Filter, Eye, Map, Search, BarChart3 } from "lucide-react";
+import { Building, Server, Filter, Eye, Map, Search, BarChart3, Zap } from "lucide-react";
 import RackVisualization from "./datacenter/RackVisualization";
+import { PowerBar } from "./power/PowerUsageCard";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
+import { usePowerData } from "@/hooks/usePowerData";
+
+interface EnumsData {
+  sites: string[];
+  floors: string[];
+  rooms: string[];
+  racks: string[];
+}
 
 interface RackInfo {
   id: string;
@@ -60,32 +69,104 @@ const mockRacks: RackInfo[] = [
   }
 ];
 
-interface DataCenterViewProps {
+interface PowerUsageProps {
   onViewRack?: (rackId: string) => void;
 }
 
-const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
+const PowerUsage = ({ onViewRack }: PowerUsageProps) => {
+  // State for filters
   const [selectedSite, setSelectedSite] = useState('');
   const [selectedBuilding, setSelectedBuilding] = useState('');
   const [selectedFloor, setSelectedFloor] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
+  
+  // URL state persistence
   useUrlState('dc_site', selectedSite, setSelectedSite);
   useUrlState('dc_building', selectedBuilding, setSelectedBuilding);
   useUrlState('dc_floor', selectedFloor, setSelectedFloor);
   useUrlState('dc_room', selectedRoom, setSelectedRoom);
 
+  // Legacy filter states (keeping for compatibility)
   const [selectedDataCenter, setSelectedDataCenter] = useState("DC-East");
-  const [filterBy, setFilterBy] = useState<"all" | "status" | "utilization">("all");
+  const [filterBy, setFilterBy] = useState<"all" | "status" | "utilization" | "power">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "Normal" | "Warning" | "Critical">("all");
   const [utilizationFilter, setUtilizationFilter] = useState<number>(0);
+  const [powerFilter, setPowerFilter] = useState<"all" | "low" | "normal" | "high" | "critical">("all");
+  const [powerThreshold, setPowerThreshold] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRack, setSelectedRack] = useState<string | null>(null);
+  
+  // Enum data state
+  const [enumsData, setEnumsData] = useState<EnumsData>({
+    sites: [],
+    floors: [],
+    rooms: [],
+    racks: []
+  });
+  const [enumsLoading, setEnumsLoading] = useState(true);
+  
   const { toast } = useToast();
+  
+  // Power data integration
+  const { globalPower, formatPower } = usePowerData();
+
+  // Fetch enum data from API
+  useEffect(() => {
+    const fetchEnumsData = async () => {
+      try {
+        setEnumsLoading(true);
+        const apiUrl = import.meta.env.VITE_SUPABASE_URL ? 
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-enums` : 
+          'http://localhost:8000/functions/v1/get-enums';
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        setEnumsData({
+          sites: data.sites || [],
+          floors: data.floors || [],
+          rooms: data.rooms || [],
+          racks: data.racks || []
+        });
+      } catch (error) {
+        console.error('Error fetching enums data:', error);
+        // Set fallback data
+        setEnumsData({
+          sites: ['DC-East', 'DC-West', 'DC-Central', 'DC-North'],
+          floors: ['1', '2', '3', '4'],
+          rooms: ['101', '102', '103', 'MDF'],
+          racks: ['RACK-01', 'RACK-02', 'RACK-03']
+        });
+      } finally {
+        setEnumsLoading(false);
+      }
+    };
+
+    fetchEnumsData();
+  }, []);
 
   const filteredRacks = mockRacks.filter(rack => {
     if (rack.location !== selectedDataCenter) return false;
     if (filterBy === "status" && statusFilter !== "all" && rack.status !== statusFilter) return false;
     if (filterBy === "utilization" && (rack.occupied / rack.capacity * 100) < utilizationFilter) return false;
+    if (filterBy === "power") {
+      const powerPercent = rack.powerUsage;
+      if (powerFilter === "low" && powerPercent >= 50) return false;
+      if (powerFilter === "normal" && (powerPercent < 50 || powerPercent >= 80)) return false;
+      if (powerFilter === "high" && (powerPercent < 80 || powerPercent >= 95)) return false;
+      if (powerFilter === "critical" && powerPercent < 95) return false;
+      if (powerThreshold > 0 && powerPercent < powerThreshold) return false;
+    }
     if (searchTerm && !rack.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     return true;
   });
@@ -138,12 +219,164 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Data Center View</h2>
-          <p className="text-slate-600">Overview of all racks organized by floors with enhanced search</p>
+          <h2 className="text-2xl font-bold text-slate-900">Power Usage</h2>
+          <p className="text-slate-600">Monitor and manage power consumption across all data center facilities</p>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Filters - Moved to top */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Filter className="h-5 w-5" />
+            <span>Filters</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="space-y-2">
+              <Label>Data Center</Label>
+              <Select value={selectedSite || selectedDataCenter} onValueChange={(value) => {
+                setSelectedSite(value);
+                setSelectedDataCenter(value);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder={enumsLoading ? "Loading..." : "Select data center"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {enumsData.sites.map(site => (
+                    <SelectItem key={site} value={site}>{site}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Floor</Label>
+              <Select value={selectedFloor} onValueChange={setSelectedFloor}>
+                <SelectTrigger>
+                  <SelectValue placeholder={enumsLoading ? "Loading..." : "Select floor"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Floors</SelectItem>
+                  {enumsData.floors.map(floor => (
+                    <SelectItem key={floor} value={floor}>Floor {floor}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Room</Label>
+              <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                <SelectTrigger>
+                  <SelectValue placeholder={enumsLoading ? "Loading..." : "Select room"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Rooms</SelectItem>
+                  {enumsData.rooms.map(room => (
+                    <SelectItem key={room} value={room}>{room}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Filter By</Label>
+              <Select value={filterBy} onValueChange={(value: "all" | "status" | "utilization" | "power") => setFilterBy(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="utilization">Utilization</SelectItem>
+                  <SelectItem value="power">Power Usage</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Search Racks</Label>
+              <Input
+                placeholder="Search rack names..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Secondary Filter Row */}
+          {filterBy !== "all" && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t">
+              {filterBy === "status" && (
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={statusFilter} onValueChange={(value: "all" | "Normal" | "Warning" | "Critical") => setStatusFilter(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="Normal">Normal</SelectItem>
+                      <SelectItem value="Warning">Warning</SelectItem>
+                      <SelectItem value="Critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {filterBy === "utilization" && (
+                <div className="space-y-2">
+                  <Label>Min Utilization (%)</Label>
+                  <Input
+                    type="number"
+                    value={utilizationFilter}
+                    onChange={(e) => setUtilizationFilter(parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              )}
+              
+              {filterBy === "power" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Power Level</Label>
+                    <Select value={powerFilter} onValueChange={(value: "all" | "low" | "normal" | "high" | "critical") => setPowerFilter(value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Levels</SelectItem>
+                        <SelectItem value="low">Low (&lt;50%)</SelectItem>
+                        <SelectItem value="normal">Normal (50-79%)</SelectItem>
+                        <SelectItem value="high">High (80-94%)</SelectItem>
+                        <SelectItem value="critical">Critical (≥95%)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Min Power Threshold (%)</Label>
+                    <Input
+                      type="number"
+                      value={powerThreshold}
+                      onChange={(e) => setPowerThreshold(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Summary Cards - Moved below filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -185,10 +418,17 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <div className="h-5 w-5 bg-red-500 rounded"></div>
+              <Zap className="h-5 w-5 text-purple-600" />
               <div>
-                <p className="text-sm text-slate-600">Critical Racks</p>
-                <p className="text-2xl font-bold text-red-600">{filteredRacks.filter(rack => rack.status === "Critical").length}</p>
+                <p className="text-sm text-slate-600">Power Usage</p>
+                <p className="text-2xl font-bold">
+                  {globalPower ? formatPower(globalPower.total_usage_watts) : '117kW'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {globalPower?.usage_percent ? 
+                    `${globalPower.usage_percent.toFixed(1)}% of ${formatPower(globalPower.total_capacity_watts)}` 
+                    : '5.4% of 2.2MW'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -237,7 +477,7 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
 
             <div className="space-y-2">
               <Label>Filter By</Label>
-              <Select value={filterBy} onValueChange={(value: "all" | "status" | "utilization") => setFilterBy(value)}>
+              <Select value={filterBy} onValueChange={(value: "all" | "status" | "utilization" | "power") => setFilterBy(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -245,6 +485,7 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="status">Status</SelectItem>
                   <SelectItem value="utilization">Utilization</SelectItem>
+                  <SelectItem value="power">Power Usage</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -273,11 +514,40 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
                   <Input
                     type="number"
                     value={utilizationFilter}
-                    onChange={(e) => setUtilizationFilter(parseInt(e.target.value) || 0)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUtilizationFilter(parseInt(e.target.value) || 0)}
                     placeholder="0"
                     min="0"
                     max="100"
                   />
+                </>
+              )}
+
+              {filterBy === "power" && (
+                <>
+                  <Label>Power Level</Label>
+                  <Select value={powerFilter} onValueChange={(value: "all" | "low" | "normal" | "high" | "critical") => setPowerFilter(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Levels</SelectItem>
+                      <SelectItem value="low">Low (&lt;50%)</SelectItem>
+                      <SelectItem value="normal">Normal (50-80%)</SelectItem>
+                      <SelectItem value="high">High (80-95%)</SelectItem>
+                      <SelectItem value="critical">Critical (&gt;95%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2">
+                    <Label>Min Power Threshold (%)</Label>
+                    <Input
+                      type="number"
+                      value={powerThreshold}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPowerThreshold(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
                 </>
               )}
             </div>
@@ -357,10 +627,17 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
                           <span className="font-medium">{Math.round((rack.occupied / rack.capacity) * 100)}%</span>
                         </div>
                         
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-600">Power Usage:</span>
-                          <span className="font-medium">{rack.powerUsage}%</span>
-                        </div>
+                        {/* Power Usage with PowerBar */}
+                        <PowerBar 
+                          currentWatts={Math.round(rack.powerUsage * 10)} // Mock watts based on percentage
+                          capacityWatts={1000} // Mock capacity
+                          usagePercent={rack.powerUsage}
+                          status={
+                            rack.powerUsage >= 95 ? 'critical' : 
+                            rack.powerUsage >= 80 ? 'warning' : 
+                            'normal'
+                          }
+                        />
                         
                         <div className="pt-2 border-t">
                           <div className="flex items-center justify-between text-xs">
@@ -413,4 +690,4 @@ const DataCenterView = ({ onViewRack }: DataCenterViewProps) => {
   );
 };
 
-export default DataCenterView;
+export default PowerUsage;

@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { useRackData, ViewMode } from "@/hooks/useRackData";
 import { useHierarchicalFilter } from "@/hooks/useHierarchicalFilter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +15,37 @@ import { Database, Eye, Monitor, Info, Edit3, RotateCcw } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useAutoSave, useRestoreForm, useUrlState } from '@/hooks/useAutoSave';
+
+// Power configuration presets (same as ServerInventory)
+interface PowerConfig {
+  name: string;
+  kva: number;
+  powerFactor: number;
+  description: string;
+}
+
+const COMMON_POWER_CONFIGS: PowerConfig[] = [
+  { name: "Standard 20A@208V", kva: 4.2, powerFactor: 0.8, description: "Single 20A 208V circuit" },
+  { name: "Standard 30A@208V", kva: 6.2, powerFactor: 0.8, description: "Single 30A 208V circuit" },
+  { name: "Dual 20A@208V", kva: 8.3, powerFactor: 0.8, description: "Dual 20A 208V circuits" },
+  { name: "High Density 30A@208V", kva: 12.5, powerFactor: 0.8, description: "Dual 30A 208V circuits" },
+  { name: "Enterprise 60A@208V", kva: 25.0, powerFactor: 0.8, description: "High density enterprise rack" },
+  { name: "Custom", kva: 0, powerFactor: 0.8, description: "Enter custom values" }
+];
+
+// Validation schema for editing rack
+const editRackSchema = z.object({
+  description: z.string().max(40, 'Description must be 40 characters or less').optional(),
+  power_capacity_kva: z.number()
+    .min(0.1, 'Power capacity must be at least 0.1 KVA')
+    .max(100, 'Power capacity cannot exceed 100 KVA')
+    .default(4.2),
+  power_factor: z.number()
+    .min(0.1, 'Power factor must be at least 0.1')
+    .max(1.0, 'Power factor cannot exceed 1.0')
+    .default(0.8),
+  power_config_preset: z.string().optional(),
+});
 
 interface RackViewProps {
   onEditServer?: (serverId: string) => void;
@@ -28,6 +62,43 @@ const RackView = ({ onEditServer }: RackViewProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  
+  // Form state for editing rack with power specifications
+  const [calculatedWatts, setCalculatedWatts] = useState(0);
+  
+  // Initialize form for editing rack with power specifications
+  const editRackForm = useForm({
+    resolver: zodResolver(editRackSchema),
+    defaultValues: {
+      description: '',
+      power_capacity_kva: 4.2,
+      power_factor: 0.8,
+      power_config_preset: '',
+    },
+  });
+
+  const { register: registerEditRack, handleSubmit: handleEditRackSubmit, formState: { errors: editRackErrors }, reset: resetEditRackForm, watch: watchEditRack, setValue: setEditRackValue } = editRackForm;
+
+  // Watch power values for calculation
+  const powerCapacityKva = watchEditRack('power_capacity_kva');
+  const powerFactor = watchEditRack('power_factor');
+
+  // Calculate watts when KVA or power factor changes
+  useEffect(() => {
+    const kva = powerCapacityKva || 4.2;
+    const pf = powerFactor || 0.8;
+    setCalculatedWatts(Math.round(kva * pf * 1000));
+  }, [powerCapacityKva, powerFactor]);
+
+  // Handle power preset selection
+  const handlePowerPresetChange = (presetName: string) => {
+    const preset = COMMON_POWER_CONFIGS.find(p => p.name === presetName);
+    if (preset && preset.name !== 'Custom') {
+      setEditRackValue('power_capacity_kva', preset.kva);
+      setEditRackValue('power_factor', preset.powerFactor);
+    }
+    setEditRackValue('power_config_preset', presetName);
+  };
 
   // Use hierarchical filter hook
   const { hierarchyData, filters, loading: filterLoading, defaultRack, updateFilter, resetFilters } = useHierarchicalFilter();
@@ -53,7 +124,7 @@ const RackView = ({ onEditServer }: RackViewProps) => {
     }
   }, [rackData]);
 
-  // Function to fetch rack description from database using Edge Function
+  // Function to fetch rack data including power specifications from database using Edge Function
   const fetchRackDescription = async () => {
     if (!rackData) return;
     
@@ -64,27 +135,36 @@ const RackView = ({ onEditServer }: RackViewProps) => {
       });
 
       if (error) {
-        console.error('Error fetching rack description:', error);
+        console.error('Error fetching rack data:', error);
         return;
       }
 
-      if (data && data.data && data.data.description) {
-        setRackDescription(data.data.description);
+      if (data && data.data) {
+        const rackInfo = data.data;
+        setRackDescription(rackInfo.description || '');
+        
+        // Populate form with existing power specifications
+        resetEditRackForm({
+          description: rackInfo.description || '',
+          power_capacity_kva: rackInfo.power_capacity_kva || 4.2,
+          power_factor: rackInfo.power_factor || 0.8,
+          power_config_preset: rackInfo.power_config_preset || '',
+        });
       }
     } catch (error) {
-      console.error('Error fetching rack description:', error);
+      console.error('Error fetching rack data:', error);
     }
   };
 
-  // Function to save rack description using Supabase Edge Function
-  const saveRackDescription = async () => {
+  // Function to save rack data including power specifications using Supabase Edge Function
+  const saveRackData = async (formData: any) => {
     if (!rackData) return;
     
     setIsSaving(true);
     setSaveMessage("");
     
     try {
-      // Use the Supabase Edge Function we created
+      // Use the update-rack-description Edge Function with enhanced data
       const { error } = await supabase.functions.invoke('update-rack-description', {
         body: {
           rack_name: rackData.name,
@@ -92,7 +172,10 @@ const RackView = ({ onEditServer }: RackViewProps) => {
           dc_building: 'Building-A', // You may need to get this from rack data
           dc_floor: '1', // You may need to get this from rack data
           dc_room: 'MDF', // You may need to get this from rack data
-          description: rackDescription
+          description: formData.description,
+          power_capacity_kva: formData.power_capacity_kva,
+          power_factor: formData.power_factor,
+          power_config_preset: formData.power_config_preset
         }
       });
 
@@ -100,13 +183,17 @@ const RackView = ({ onEditServer }: RackViewProps) => {
         throw error;
       }
 
-      setSaveMessage("Description saved successfully!");
+      setSaveMessage("Rack information saved successfully!");
       setTimeout(() => setSaveMessage(""), 3000);
-      // Refresh the description display
+      
+      // Update local state
+      setRackDescription(formData.description || '');
+      
+      // Refresh the rack data
       await fetchRackDescription();
     } catch (error) {
-      console.error('Error saving rack description:', error);
-      setSaveMessage("Error saving description");
+      console.error('Error saving rack data:', error);
+      setSaveMessage("Error saving rack information");
       setTimeout(() => setSaveMessage(""), 3000);
     } finally {
       setIsSaving(false);
@@ -690,60 +777,133 @@ const RackView = ({ onEditServer }: RackViewProps) => {
 
       {/* Edit Rack Dialog */}
       <Dialog open={isEditingDescription} onOpenChange={setIsEditingDescription}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Edit3 className="h-5 w-5" />
-              <span>Edit Rack</span>
+              <span>Edit Rack - {rackData?.name}</span>
             </DialogTitle>
             <DialogDescription>
-              Update the rack description for {rackData?.name}
+              Update rack information including power specifications
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="description" className="text-right">
-                Description
-              </Label>
-              <Input
-                id="description"
-                value={rackDescription}
-                onChange={(e) => setRackDescription(e.target.value)}
-                placeholder="Enter rack description"
-                maxLength={40}
-                className="col-span-3"
-              />
+          
+          <form onSubmit={handleEditRackSubmit(saveRackData)} className="space-y-6">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_description">Description</Label>
+                <Input
+                  id="edit_description"
+                  placeholder="Enter rack description"
+                  maxLength={40}
+                  disabled={isSaving}
+                  {...registerEditRack('description')}
+                  className={editRackErrors.description ? 'border-red-500' : ''}
+                />
+                {editRackErrors.description && (
+                  <p className="text-sm text-red-500">{editRackErrors.description.message}</p>
+                )}
+                <div className="text-xs text-gray-500 text-right">
+                  {watchEditRack('description')?.length || 0}/40 characters
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-gray-500 text-right">
-              {rackDescription.length}/40 characters
+
+            {/* Power Specifications Section */}
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="text-lg font-medium">Power Specifications</h3>
+              
+              <div className="space-y-2">
+                <Label htmlFor="edit_power_config_preset">Power Configuration Preset</Label>
+                <select
+                  id="edit_power_config_preset"
+                  disabled={isSaving}
+                  onChange={(e) => handlePowerPresetChange(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md border-gray-300"
+                  value={watchEditRack('power_config_preset') || ''}
+                >
+                  <option value="">Select a preset configuration...</option>
+                  {COMMON_POWER_CONFIGS.map((config) => (
+                    <option key={config.name} value={config.name}>
+                      {config.name} ({config.kva} KVA) - {config.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit_power_capacity_kva">Power Capacity (KVA) *</Label>
+                  <Input
+                    id="edit_power_capacity_kva"
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="100"
+                    placeholder="4.2"
+                    disabled={isSaving}
+                    {...registerEditRack('power_capacity_kva', { valueAsNumber: true })}
+                    className={editRackErrors.power_capacity_kva ? 'border-red-500' : ''}
+                  />
+                  {editRackErrors.power_capacity_kva && (
+                    <p className="text-sm text-red-500">{editRackErrors.power_capacity_kva.message}</p>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit_power_factor">Power Factor *</Label>
+                  <Input
+                    id="edit_power_factor"
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    max="1.0"
+                    placeholder="0.8"
+                    disabled={isSaving}
+                    {...registerEditRack('power_factor', { valueAsNumber: true })}
+                    className={editRackErrors.power_factor ? 'border-red-500' : ''}
+                  />
+                  {editRackErrors.power_factor && (
+                    <p className="text-sm text-red-500">{editRackErrors.power_factor.message}</p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 p-3 rounded-md">
+                <p className="text-sm font-medium text-blue-700">
+                  Calculated Power Capacity: {calculatedWatts} Watts
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Power Factor × 1000 = {calculatedWatts}W
+                </p>
+              </div>
             </div>
+
+            {/* Save Message */}
             {saveMessage && (
               <div className={`text-sm ${saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
                 {saveMessage}
               </div>
             )}
-          </div>
-          <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => setIsEditingDescription(false)}
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="button" 
-              onClick={async () => {
-                await saveRackDescription();
-                if (!saveMessage.includes('Error') && !saveMessage.includes('Failed')) {
-                  setTimeout(() => setIsEditingDescription(false), 1000);
-                }
-              }}
-              disabled={isSaving}
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
-          </DialogFooter>
+
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsEditingDescription(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

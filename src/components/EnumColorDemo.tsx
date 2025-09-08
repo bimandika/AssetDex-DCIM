@@ -19,7 +19,7 @@ export function EnumColorDemo() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Enum Color System Demo</CardTitle>
+          <CardTitle>Current Colors</CardTitle>
         </CardHeader>
         <CardContent>
           <p>Loading colors...</p>
@@ -31,7 +31,7 @@ export function EnumColorDemo() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Enum Color System Demo</CardTitle>
+        <CardTitle>Current Colors</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
