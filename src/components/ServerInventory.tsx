@@ -1311,7 +1311,7 @@ const { logDataOperation } = useActivityLogger();
                         </div>
                         
                         <div className="space-y-2">
-                          <Label htmlFor="power_factor">Power Factor *</Label>
+                          <Label htmlFor="power_factor">Usable Power *</Label>
                           <Input
                             id="power_factor"
                             type="number"
@@ -1334,7 +1334,7 @@ const { logDataOperation } = useActivityLogger();
                           Calculated Power Capacity: {calculatedWatts} Watts
                         </p>
                         <p className="text-xs text-blue-600 mt-1">
-                          Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Power Factor × 1000 = {calculatedWatts}W
+                          Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Usable Power × 1000 = {calculatedWatts}W
                         </p>
                       </div>
                     </div>

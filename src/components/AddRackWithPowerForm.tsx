@@ -213,7 +213,7 @@ export const AddRackWithPowerForm = () => {
               </div>
               
               <div>
-                <Label htmlFor="powerFactor">Power Factor</Label>
+                <Label htmlFor="powerFactor">Usable Power</Label>
                 <Input
                   id="powerFactor"
                   type="number"
@@ -232,15 +232,15 @@ export const AddRackWithPowerForm = () => {
                 <div className="h-10 flex items-center px-3 bg-gray-100 border rounded-md">
                   <span className="font-medium text-gray-700">{calculatedWatts.toLocaleString()}W</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">KVA × Power Factor × 1000</p>
+                <p className="text-xs text-gray-500 mt-1">KVA × Usable Power × 1000</p>
               </div>
             </div>
 
             {/* Power Calculation Help */}
             <div className="mt-4 p-3 bg-blue-100 rounded-md">
               <p className="text-sm text-blue-800">
-                <strong>Power Calculation:</strong> The actual usable power is calculated as KVA × Power Factor. 
-                Most IT equipment has a power factor of 0.8, meaning an 8.3 KVA circuit provides about 6,640 watts of usable power.
+                <strong>Power Calculation:</strong> The actual usable power is calculated as KVA × Usable Power. 
+                Most IT equipment has a usable power ratio of 0.8, meaning an 8.3 KVA circuit provides about 6,640 watts of usable power.
               </p>
             </div>
           </div>

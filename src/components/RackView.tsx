@@ -852,7 +852,7 @@ const RackView = ({ onEditServer }: RackViewProps) => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="edit_power_factor">Power Factor *</Label>
+                  <Label htmlFor="edit_power_factor">Usable Power *</Label>
                   <Input
                     id="edit_power_factor"
                     type="number"
@@ -875,7 +875,7 @@ const RackView = ({ onEditServer }: RackViewProps) => {
                   Calculated Power Capacity: {calculatedWatts} Watts
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Power Factor × 1000 = {calculatedWatts}W
+                  Formula: {powerCapacityKva || 4.2} KVA × {powerFactor || 0.8} Usable Power × 1000 = {calculatedWatts}W
                 </p>
               </div>
             </div>
