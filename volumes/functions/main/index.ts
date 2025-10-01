@@ -46,6 +46,12 @@ serve(async (req) => {
       return await handler(req)
     }
 
+    // Admin backup endpoint
+    if (url.pathname === '/admin-backup' && ["GET", "POST", "DELETE", "OPTIONS"].includes(req.method)) {
+      const handler = await import('../admin-backup/index.ts')
+      return await handler.default(req)
+    }
+
     // Property manager endpoint
     if (url.pathname === '/property-manager' && ["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
       const { handler } = await import('../property-manager/index.ts')

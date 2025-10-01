@@ -1,0 +1,9 @@
+[functions.admin-backup]
+# Require JWT verification for super admin access
+verify_jwt = true
+
+# Allow CORS for all origins
+cors = true
+allowed_origins = ["*"]
+allowed_headers = ["Authorization", "Content-Type", "apikey", "x-client-info"]
+allowed_methods = ["GET", "POST", "DELETE", "OPTIONS"]

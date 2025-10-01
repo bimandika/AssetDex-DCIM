@@ -1,0 +1,566 @@
+
+-- =============================================================================
+-- AssetDex DCIM Database Backup
+-- Created: 2025-10-01 09:40:33 UTC
+-- Backup Name: automated_backup
+-- =============================================================================
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+-- Disable triggers for faster import
+SET session_replication_role = replica;
+
+
+
+-- =============================================================================
+-- Table: user_roles (1 rows)
+-- =============================================================================
+TRUNCATE TABLE public.user_roles CASCADE;
+
+-- Table user_roles contains 1 rows
+-- Sample data:
+-- [{"id":"5373572b-0b1d-498c-b8aa-bd2eb3577749","user_id":"b423c306-4387-4d69-8fc3-0218ab48ef77","role":"super_admin","created_at":"2025-10-01T09:38:12.574214+00:00"}]
+
+
+-- =============================================================================
+-- Table: activity_logs (1 rows)
+-- =============================================================================
+TRUNCATE TABLE public.activity_logs CASCADE;
+
+-- Table activity_logs contains 1 rows
+-- Recent activity logs:
+-- [{"id":"b0672f89-a1a5-4263-a024-c4d77b516da6","action":"UPDATE","category":"data","severity":"info","created_at":"2025-10-01T09:40:12.777246+00:00"}]
+
+
+-- =============================================================================
+-- Table: dashboard_widgets (30 rows)
+-- =============================================================================
+TRUNCATE TABLE public.dashboard_widgets CASCADE;
+
+-- Table dashboard_widgets contains 30 rows
+-- Sample data unavailable: column "type" does not exist
+
+
+-- =============================================================================
+-- Table: dashboards (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.dashboards CASCADE;
+
+-- Table dashboards contains 3 rows
+-- Sample data:
+-- [{"id":"48c2861e-5bb9-4fd0-a4f7-44f23781f437","name":"Server Allocation Overview","description":"Dashboard showing server counts and distribution by allocation type","user_id":"b423c306-4387-4d69-8fc3-0218ab48ef77","layout":[],"filters":{},"settings":{"theme": "default", "gridSize": 12, "autoRefresh": true, "refreshInterval": 300},"status":"active","is_public":true,"created_at":"2025-10-01T09:38:12.66728+00:00","updated_at":"2025-10-01T09:38:12.66728+00:00"}, {"id":"e4781d93-09f5-422a-837e-aa13149dd10d","name":"Server Environment & Status","description":"Dashboard showing server counts and distribution by environment and status","user_id":"b423c306-4387-4d69-8fc3-0218ab48ef77","layout":[],"filters":{},"settings":{"theme": "default", "gridSize": 12, "autoRefresh": true, "refreshInterval": 300},"status":"active","is_public":true,"created_at":"2025-10-01T09:38:12.673236+00:00","updated_at":"2025-10-01T09:38:12.673236+00:00"}]
+
+
+-- =============================================================================
+-- Table: device_compatibility (2 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_compatibility CASCADE;
+
+-- Table device_compatibility contains 2 rows
+-- Sample data:
+-- [{"id":"fe9c483d-bea9-4018-b46b-35835499d810","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","compatible_with":"f51edeaf-5bc2-4859-87e8-adc78910405c","compatibility_type":"memory","notes":"Compatible DDR4 modules","created_at":"2025-10-01T09:38:12.733287"}, {"id":"85c84430-0c10-4a2c-b783-57e30d280943","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","compatible_with":"c041b1cd-f1a8-4031-92fb-2930510da630","compatibility_type":"storage","notes":"NVMe SSDs supported","created_at":"2025-10-01T09:38:12.733287"}]
+
+
+-- =============================================================================
+-- Table: device_components (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_components CASCADE;
+
+-- No data in table device_components
+
+
+-- =============================================================================
+-- Table: device_cpu_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_cpu_specs CASCADE;
+
+-- Table device_cpu_specs contains 3 rows
+-- Sample data:
+-- [{"id":"27e656e4-39f5-4345-b026-b4df861be6c1","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","cpu_model":"Intel Xeon Platinum 8358×2","cpu_generation":"7th Gen","physical_cores":32,"logical_cores":64,"cpu_quantity":2,"base_frequency_ghz":2.60,"boost_frequency_ghz":3.20,"cpu_architecture":"x86_64","tdp_watts":250,"l1_cache_kb":null,"l2_cache_mb":null,"l3_cache_mb":null,"instruction_sets":null,"created_at":"2025-10-01T09:38:12.727555"}, {"id":"38c4800b-33e5-4074-8c5b-ec8439154258","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","cpu_model":"Intel Xeon Gold 6338×2","cpu_generation":"3rd Gen","physical_cores":32,"logical_cores":64,"cpu_quantity":2,"base_frequency_ghz":2.00,"boost_frequency_ghz":3.10,"cpu_architecture":"x86_64","tdp_watts":205,"l1_cache_kb":null,"l2_cache_mb":null,"l3_cache_mb":null,"instruction_sets":null,"created_at":"2025-10-01T09:38:12.727555"}]
+
+
+-- =============================================================================
+-- Table: device_glossary (5 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_glossary CASCADE;
+
+-- Table device_glossary contains 5 rows
+-- Power data overview:
+-- {"summary": {"ready_for_auto_assignment": 0, "servers_pending_assignment": 0}, "device_glossary": {"total_devices": 5, "devices_with_psu_specs": 0, "power_coverage_percent": 60.00, "devices_with_power_specs": 3}, "server_inventory": {"total_servers": 276, "power_assignment_percent": 100.00, "servers_with_power_specs": 276, "servers_needing_power_specs": 0}}
+
+
+-- =============================================================================
+-- Table: device_management_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_management_specs CASCADE;
+
+-- Table device_management_specs contains 3 rows
+-- Sample data:
+-- [{"id":"38a48a66-bcd9-49d7-9cb0-a5fddbe4ca1b","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","management_type":"IPMI","remote_console_support":true,"power_control_support":true,"created_at":"2025-10-01T09:38:12.73234"}, {"id":"875af537-8fe1-42fb-bda6-3ab71127a302","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","management_type":"iLO","remote_console_support":true,"power_control_support":true,"created_at":"2025-10-01T09:38:12.73234"}]
+
+
+-- =============================================================================
+-- Table: device_memory_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_memory_specs CASCADE;
+
+-- Table device_memory_specs contains 3 rows
+-- Sample data:
+-- [{"id":"3d139697-b3a3-4cd3-9e46-b1bd176e95f3","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","total_capacity_gb":1024,"memory_type":"DDR4","memory_frequency_mhz":3200,"module_count":32,"module_capacity_gb":32,"ecc_support":true,"maximum_capacity_gb":2048,"memory_channels":8,"created_at":"2025-10-01T09:38:12.728647"}, {"id":"df12414a-c59a-4ddc-b9f4-a3e9ba26d90e","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","total_capacity_gb":512,"memory_type":"DDR4","memory_frequency_mhz":2933,"module_count":16,"module_capacity_gb":32,"ecc_support":true,"maximum_capacity_gb":1024,"memory_channels":8,"created_at":"2025-10-01T09:38:12.728647"}]
+
+
+-- =============================================================================
+-- Table: device_network_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_network_specs CASCADE;
+
+-- Table device_network_specs contains 3 rows
+-- Sample data:
+-- [{"id":"ca8919b3-b9a0-4ccd-8212-02b5994c0c94","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","nic_slot_number":0,"nic_type":"Onboard","nic_manufacturer":"Intel","nic_model":"I350-AM4","port_type":"RJ45","port_speed_gbps":1,"port_quantity":4,"connector_type":"RJ45","is_management_port":false,"supported_modules":null,"driver_support":null,"created_at":"2025-10-01T09:38:12.730524"}, {"id":"ea9a47a5-d4bf-4c71-94ed-ffd619ac3be1","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","nic_slot_number":1,"nic_type":"PCIe","nic_manufacturer":"Broadcom","nic_model":"BCM57414","port_type":"SFP+","port_speed_gbps":10,"port_quantity":2,"connector_type":"SFP+","is_management_port":false,"supported_modules":null,"driver_support":null,"created_at":"2025-10-01T09:38:12.730524"}]
+
+
+-- =============================================================================
+-- Table: device_power_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_power_specs CASCADE;
+
+-- Table device_power_specs contains 3 rows
+-- Sample data:
+-- [{"id":"7760a077-b747-4712-a819-abaa86d6c72d","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","psu_slot_number":1,"max_power_watts":1300,"power_cable_type":"C13","created_at":"2025-10-01T09:38:12.731442","idle_power_watts":null,"typical_power_watts":null}, {"id":"a10a14b1-6b20-4be9-ad93-480d6718977d","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","psu_slot_number":1,"max_power_watts":800,"power_cable_type":"C13","created_at":"2025-10-01T09:38:12.731442","idle_power_watts":null,"typical_power_watts":null}]
+
+
+-- =============================================================================
+-- Table: device_power_templates (11 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_power_templates CASCADE;
+
+-- Table device_power_templates contains 11 rows
+-- Sample data:
+-- [{"id":"4f2b2ef5-32b7-41ab-aa7e-a635d0edca82","manufacturer":"Dell","model":"PowerEdge R750","device_type":"Server","typical_power_watts":450,"max_power_watts":500,"idle_power_watts":250,"power_cable_type":"C19","form_factor":"2U","created_at":"2025-10-01T09:38:12.75418+00:00"}, {"id":"ba5d254a-77e5-45d7-9d26-f982aac86462","manufacturer":"Dell","model":"PowerEdge R740","device_type":"Server","typical_power_watts":350,"max_power_watts":400,"idle_power_watts":200,"power_cable_type":"C13","form_factor":"2U","created_at":"2025-10-01T09:38:12.75418+00:00"}]
+
+
+-- =============================================================================
+-- Table: device_storage_specs (3 rows)
+-- =============================================================================
+TRUNCATE TABLE public.device_storage_specs CASCADE;
+
+-- Table device_storage_specs contains 3 rows
+-- Sample data:
+-- [{"id":"5f74fa26-5404-4b37-8465-a0f72855cfad","device_id":"032d996e-c404-45bc-96d4-60f11971ba3d","storage_slot_number":1,"storage_model":"Samsung PM1633a","storage_type":"SATA_SSD","capacity_gb":480,"interface_type":"SATA","hot_plug_support":true,"drive_form_factor":"2.5\"","performance_tier":"Enterprise","warranty_years":5,"quantity":1,"created_at":"2025-10-01T09:38:12.729593"}, {"id":"eaa1e992-6092-4b8c-b890-39c7842ead34","device_id":"f51edeaf-5bc2-4859-87e8-adc78910405c","storage_slot_number":1,"storage_model":"Intel DC P4610","storage_type":"NVME_SSD","capacity_gb":960,"interface_type":"NVMe","hot_plug_support":true,"drive_form_factor":"M.2","performance_tier":"Datacenter","warranty_years":5,"quantity":1,"created_at":"2025-10-01T09:38:12.729593"}]
+
+
+-- =============================================================================
+-- Table: enum_colors (17 rows)
+-- =============================================================================
+TRUNCATE TABLE public.enum_colors CASCADE;
+
+-- Table enum_colors contains 17 rows
+-- Sample data:
+-- [{"id":"30f3e9ea-b4f3-42ca-b1ef-23099274c65f","created_at":"2025-10-01T09:38:12.557157+00:00","updated_at":"2025-10-01T09:38:12.557157+00:00","enum_type":"allocation_type","enum_value":"PAAS","color_hex":"#10B981","color_name":"Green","user_id":null,"organization_id":null,"is_active":true,"created_by":null}, {"id":"6e67325e-3034-41d4-8a65-33e573d9b695","created_at":"2025-10-01T09:38:12.557157+00:00","updated_at":"2025-10-01T09:38:12.557157+00:00","enum_type":"allocation_type","enum_value":"IAAS","color_hex":"#3B82F6","color_name":"Blue","user_id":null,"organization_id":null,"is_active":true,"created_by":null}]
+
+
+-- =============================================================================
+-- Table: filter_preference_history (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.filter_preference_history CASCADE;
+
+-- No data in table filter_preference_history
+
+
+-- =============================================================================
+-- Table: global_filter_defaults (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.global_filter_defaults CASCADE;
+
+-- No data in table global_filter_defaults
+
+
+-- =============================================================================
+-- Table: profiles (1 rows)
+-- =============================================================================
+TRUNCATE TABLE public.profiles CASCADE;
+
+-- Table profiles contains 1 rows
+-- Sample data:
+-- [{"id":"b423c306-4387-4d69-8fc3-0218ab48ef77","username":"admin","full_name":"","status":true,"created_at":"2025-10-01T09:38:12.574214+00:00","updated_at":"2025-10-01T09:38:12.574214+00:00"}]
+
+
+-- =============================================================================
+-- Table: property_definitions (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.property_definitions CASCADE;
+
+-- No data in table property_definitions
+
+
+-- =============================================================================
+-- Table: rack_metadata (38 rows)
+-- =============================================================================
+TRUNCATE TABLE public.rack_metadata CASCADE;
+
+-- Table rack_metadata contains 38 rows
+-- Sample data:
+-- [{"rack_name":"RACK-02","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"2","dc_room":"201","description":null,"total_units":42,"power_capacity_watts":12000,"cooling_capacity_btu":null,"created_at":"2025-10-01T09:38:12.530655+00:00","updated_at":"2025-10-01T09:38:12.530655+00:00","power_capacity_kva":null,"power_factor":0.80,"power_config_preset":null}, {"rack_name":"RACK-01","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"1","dc_room":"MDF","description":null,"total_units":42,"power_capacity_watts":12000,"cooling_capacity_btu":null,"created_at":"2025-10-01T09:38:12.530655+00:00","updated_at":"2025-10-01T09:38:12.530655+00:00","power_capacity_kva":null,"power_factor":0.80,"power_config_preset":null}]
+
+
+-- =============================================================================
+-- Table: server_position_history (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.server_position_history CASCADE;
+
+-- No data in table server_position_history
+
+
+-- =============================================================================
+-- Table: server_power_specs (276 rows)
+-- =============================================================================
+TRUNCATE TABLE public.server_power_specs CASCADE;
+
+-- Table server_power_specs contains 276 rows
+-- Sample data:
+-- [{"id":"e6409d7b-6cf1-4209-8779-a64980e682a7","server_id":"f9492658-ea38-4b10-883b-ff1f1895aea1","psu_slot_number":1,"max_power_watts":400,"idle_power_watts":200,"typical_power_watts":320,"power_cable_type":"C13","created_at":"2025-10-01T09:38:12.737023","updated_at":"2025-10-01T09:38:12.737023"}, {"id":"cf37cadb-61ce-40d4-bf3a-863d4bfb3075","server_id":"9993d36c-4c93-4626-aa5e-0576ebb53d89","psu_slot_number":1,"max_power_watts":400,"idle_power_watts":200,"typical_power_watts":320,"power_cable_type":"C13","created_at":"2025-10-01T09:38:12.737023","updated_at":"2025-10-01T09:38:12.737023"}]
+
+
+-- =============================================================================
+-- Table: servers (276 rows)
+-- =============================================================================
+TRUNCATE TABLE public.servers CASCADE;
+
+-- Table servers contains 276 rows
+-- Sample servers data (first 5 rows):
+-- [{"id":"06f1e3cc-5397-4971-b48d-5472d08d6970","serial_number":"SN2023S004","hostname":"stage-web-01","brand":"Dell","model":"PowerEdge R740","ip_address":"192.168.7.10","ip_oob":"10.0.3.1","operating_system":"Ubuntu 20.04 LTS","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"2","dc_room":"205","allocation":"IAAS","status":"Active","device_type":"Server","rack":"RACK-03","unit":"U40","unit_height":2,"warranty":"2025-12-31","notes":"Staging web server","environment":"Pre-Production","created_by":null,"created_at":"2025-10-01T09:38:12.531655+00:00","updated_at":"2025-10-01T09:38:12.531655+00:00"}, {"id":"0cdf7920-9c51-488c-8cc6-6973c1e18561","serial_number":"SN2023D003","hostname":"db-backup-01","brand":"Dell","model":"PowerEdge R750","ip_address":"192.168.2.12","ip_oob":"10.0.0.6","operating_system":"RHEL 8","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"1","dc_room":"201","allocation":"Database","status":"Active","device_type":"Server","rack":"RACK-02","unit":"U26","unit_height":2,"warranty":"2026-06-30","notes":"Backup database server","environment":"Production","created_by":null,"created_at":"2025-10-01T09:38:12.531655+00:00","updated_at":"2025-10-01T09:38:12.531655+00:00"}, {"id":"116818c5-cecb-474b-9b10-919c6199ef25","serial_number":"SN2023D005","hostname":"dev-db-01","brand":"Dell","model":"PowerEdge R740","ip_address":"192.168.5.11","ip_oob":"10.0.1.2","operating_system":"Oracle Linux 8","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"3","dc_room":"302","allocation":"Database","status":"Active","device_type":"Server","rack":"RACK-03","unit":"U19","unit_height":2,"warranty":"2025-12-31","notes":"Development database","environment":"Development","created_by":null,"created_at":"2025-10-01T09:38:12.531655+00:00","updated_at":"2025-10-01T09:38:12.531655+00:00"}, {"id":"11fce890-2cf3-4f21-aa4c-3cc41d07a661","serial_number":"SN2023N003","hostname":"edge-rtr-01","brand":"Juniper","model":"MX204","ip_address":"192.168.4.12","ip_oob":"10.0.0.12","operating_system":"JunOS 21.2","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"1","dc_room":"MDF","allocation":"IAAS","status":"Active","device_type":"Network","rack":"RACK-01","unit":"U3","unit_height":1,"warranty":"2027-01-31","notes":"Edge router","environment":"Production","created_by":null,"created_at":"2025-10-01T09:38:12.531655+00:00","updated_at":"2025-10-01T09:38:12.531655+00:00"}, {"id":"1d1c5462-0229-4ced-badd-ab0b447a4702","serial_number":"SN2023A001","hostname":"monitor-01","brand":"Dell","model":"PowerEdge R750","ip_address":"192.168.8.10","ip_oob":"10.0.4.1","operating_system":"Ubuntu 22.04 LTS","dc_site":"DC-East","dc_building":"Building-A","dc_floor":"2","dc_room":"201","allocation":"IAAS","status":"Active","device_type":"Server","rack":"RACK-01","unit":"U28","unit_height":2,"warranty":"2026-12-31","notes":"Monitoring server","environment":"Production","created_by":null,"created_at":"2025-10-01T09:38:12.531655+00:00","updated_at":"2025-10-01T09:38:12.531655+00:00"}]
+
+
+-- =============================================================================
+-- Table: user_filter_preferences (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.user_filter_preferences CASCADE;
+
+-- No data in table user_filter_preferences
+
+
+-- =============================================================================
+-- Table: widget_data_cache (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.widget_data_cache CASCADE;
+
+-- No data in table widget_data_cache
+
+
+-- =============================================================================
+-- Table: widget_data_sources (0 rows)
+-- =============================================================================
+TRUNCATE TABLE public.widget_data_sources CASCADE;
+
+-- No data in table widget_data_sources
+
+
+-- =============================================================================
+-- Comprehensive Data Summary
+-- =============================================================================
+-- This section uses existing database functions to provide detailed insights
+
+-- Power Infrastructure Overview:
+-- {"summary": {"ready_for_auto_assignment": 0, "servers_pending_assignment": 0}, "device_glossary": {"total_devices": 5, "devices_with_psu_specs": 0, "power_coverage_percent": 60.00, "devices_with_power_specs": 3}, "server_inventory": {"total_servers": 276, "power_assignment_percent": 100.00, "servers_with_power_specs": 276, "servers_needing_power_specs": 0}}
+
+
+
+-- =============================================================================
+-- Custom Enum Values (Dropdowns)
+-- =============================================================================
+-- Complete enum configuration data:
+-- {"racks": ["RACK-01", "RACK-02", "RACK-03", "RACK-04", "RACK-05", "RACK-06", "RACK-07", "RACK-08", "RACK-09", "RACK-10", "RACK-11", "RACK-12", "RACK-13", "RACK-14", "RACK-15", "RACK-16", "RACK-17", "RACK-18", "RACK-19", "RACK-20", "RACK-21", "RACK-22", "RACK-23", "RACK-24", "RACK-25", "RACK-26", "RACK-27", "RACK-28", "RACK-29", "RACK-30", "RACK-31", "RACK-32", "RACK-33", "RACK-34", "RACK-35", "RACK-36", "RACK-37", "RACK-38", "RACK-39", "RACK-40", "RACK-41", "RACK-42", "RACK-43", "RACK-44", "RACK-45", "RACK-46", "RACK-47", "RACK-48", "RACK-49", "RACK-50"], "rooms": ["MDF", "101", "102", "103", "104", "105", "106", "107", "108", "109", "110", "201", "202", "203", "204", "205", "206", "207", "208", "209", "210", "301", "302", "303", "304", "305", "306", "307", "308", "309", "310", "401", "402", "403", "404", "405", "406", "407", "408", "409", "410", "Server Room A", "Server Room B", "Network Room", "Storage Room", "Other"], "sites": ["DC-East", "DC-West", "DC-North", "DC-South", "DC-Central", "DC1", "DC2", "DC3", "DC4", "DC5"], "units": ["U1", "U2", "U3", "U4", "U5", "U6", "U7", "U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18", "U19", "U20", "U21", "U22", "U23", "U24", "U25", "U26", "U27", "U28", "U29", "U30", "U31", "U32", "U33", "U34", "U35", "U36", "U37", "U38", "U39", "U40", "U41", "U42"], "brands": ["Dell", "HPE", "Cisco", "Juniper", "NetApp", "Huawei", "Inspur", "Kaytus", "ZTE", "Meta Brain"], "floors": ["1", "2", "3", "4", "5", "B1", "B2", "Ground", "Mezzanine"], "models": ["PowerEdge R740", "PowerEdge R750", "PowerEdge R750xd", "PowerVault ME4", "ProLiant DL380", "ProLiant DL360", "Apollo 4510", "ASA 5525-X", "Nexus 93180YC-EX", "MX204", "AFF A400", "Other"], "status": ["Active", "Ready", "Inactive", "Maintenance", "Decommissioned", "Retired"], "osTypes": ["Ubuntu 22.04 LTS", "Ubuntu 20.04 LTS", "RHEL 8", "CentOS 7", "Oracle Linux 8", "Windows Server 2022", "Windows Server 2019", "Storage OS 2.1", "Cisco ASA 9.16", "NX-OS 9.3", "JunOS 21.2", "ONTAP 9.10", "Other"], "buildings": ["Building-A", "Building-B", "Building-C", "Building-D", "Building-E", "Other"], "userRoles": ["super_admin", "engineer", "viewer"], "chart_type": ["bar", "line", "pie", "area", "timeline"], "deviceTypes": ["Server", "Storage", "Network"], "widget_type": ["metric", "chart", "table", "timeline", "stat", "gauge", "list"], "allocationTypes": ["IAAS", "PAAS", "SAAS", "Load Balancer", "Database"], "dashboard_status": ["active", "archived", "draft"], "environmentTypes": ["Production", "Testing", "Pre-Production", "Development"]}
+
+
+
+-- Re-enable triggers
+SET session_replication_role = DEFAULT;
+
+-- =============================================================================
+-- Backup completed successfully
+-- Created: 2025-10-01 09:40:33 UTC
+-- Tables exported with full data
+-- =============================================================================
+
+
+-- Custom Enum Values Backup
+-- {
+  "racks": [
+    "RACK-01",
+    "RACK-02",
+    "RACK-03",
+    "RACK-04",
+    "RACK-05",
+    "RACK-06",
+    "RACK-07",
+    "RACK-08",
+    "RACK-09",
+    "RACK-10",
+    "RACK-11",
+    "RACK-12",
+    "RACK-13",
+    "RACK-14",
+    "RACK-15",
+    "RACK-16",
+    "RACK-17",
+    "RACK-18",
+    "RACK-19",
+    "RACK-20",
+    "RACK-21",
+    "RACK-22",
+    "RACK-23",
+    "RACK-24",
+    "RACK-25",
+    "RACK-26",
+    "RACK-27",
+    "RACK-28",
+    "RACK-29",
+    "RACK-30",
+    "RACK-31",
+    "RACK-32",
+    "RACK-33",
+    "RACK-34",
+    "RACK-35",
+    "RACK-36",
+    "RACK-37",
+    "RACK-38",
+    "RACK-39",
+    "RACK-40",
+    "RACK-41",
+    "RACK-42",
+    "RACK-43",
+    "RACK-44",
+    "RACK-45",
+    "RACK-46",
+    "RACK-47",
+    "RACK-48",
+    "RACK-49",
+    "RACK-50"
+  ],
+  "rooms": [
+    "MDF",
+    "101",
+    "102",
+    "103",
+    "104",
+    "105",
+    "106",
+    "107",
+    "108",
+    "109",
+    "110",
+    "201",
+    "202",
+    "203",
+    "204",
+    "205",
+    "206",
+    "207",
+    "208",
+    "209",
+    "210",
+    "301",
+    "302",
+    "303",
+    "304",
+    "305",
+    "306",
+    "307",
+    "308",
+    "309",
+    "310",
+    "401",
+    "402",
+    "403",
+    "404",
+    "405",
+    "406",
+    "407",
+    "408",
+    "409",
+    "410",
+    "Server Room A",
+    "Server Room B",
+    "Network Room",
+    "Storage Room",
+    "Other"
+  ],
+  "sites": [
+    "DC-East",
+    "DC-West",
+    "DC-North",
+    "DC-South",
+    "DC-Central",
+    "DC1",
+    "DC2",
+    "DC3",
+    "DC4",
+    "DC5"
+  ],
+  "units": [
+    "U1",
+    "U2",
+    "U3",
+    "U4",
+    "U5",
+    "U6",
+    "U7",
+    "U8",
+    "U9",
+    "U10",
+    "U11",
+    "U12",
+    "U13",
+    "U14",
+    "U15",
+    "U16",
+    "U17",
+    "U18",
+    "U19",
+    "U20",
+    "U21",
+    "U22",
+    "U23",
+    "U24",
+    "U25",
+    "U26",
+    "U27",
+    "U28",
+    "U29",
+    "U30",
+    "U31",
+    "U32",
+    "U33",
+    "U34",
+    "U35",
+    "U36",
+    "U37",
+    "U38",
+    "U39",
+    "U40",
+    "U41",
+    "U42"
+  ],
+  "brands": [
+    "Dell",
+    "HPE",
+    "Cisco",
+    "Juniper",
+    "NetApp",
+    "Huawei",
+    "Inspur",
+    "Kaytus",
+    "ZTE",
+    "Meta Brain"
+  ],
+  "floors": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "B1",
+    "B2",
+    "Ground",
+    "Mezzanine"
+  ],
+  "models": [
+    "PowerEdge R740",
+    "PowerEdge R750",
+    "PowerEdge R750xd",
+    "PowerVault ME4",
+    "ProLiant DL380",
+    "ProLiant DL360",
+    "Apollo 4510",
+    "ASA 5525-X",
+    "Nexus 93180YC-EX",
+    "MX204",
+    "AFF A400",
+    "Other"
+  ],
+  "status": [
+    "Active",
+    "Ready",
+    "Inactive",
+    "Maintenance",
+    "Decommissioned",
+    "Retired"
+  ],
+  "osTypes": [
+    "Ubuntu 22.04 LTS",
+    "Ubuntu 20.04 LTS",
+    "RHEL 8",
+    "CentOS 7",
+    "Oracle Linux 8",
+    "Windows Server 2022",
+    "Windows Server 2019",
+    "Storage OS 2.1",
+    "Cisco ASA 9.16",
+    "NX-OS 9.3",
+    "JunOS 21.2",
+    "ONTAP 9.10",
+    "Other"
+  ],
+  "buildings": [
+    "Building-A",
+    "Building-B",
+    "Building-C",
+    "Building-D",
+    "Building-E",
+    "Other"
+  ],
+  "userRoles": [
+    "super_admin",
+    "engineer",
+    "viewer"
+  ],
+  "chart_type": [
+    "bar",
+    "line",
+    "pie",
+    "area",
+    "timeline"
+  ],
+  "deviceTypes": [
+    "Server",
+    "Storage",
+    "Network"
+  ],
+  "widget_type": [
+    "metric",
+    "chart",
+    "table",
+    "timeline",
+    "stat",
+    "gauge",
+    "list"
+  ],
+  "allocationTypes": [
+    "IAAS",
+    "PAAS",
+    "SAAS",
+    "Load Balancer",
+    "Database"
+  ],
+  "dashboard_status": [
+    "active",
+    "archived",
+    "draft"
+  ],
+  "environmentTypes": [
+    "Production",
+    "Testing",
+    "Pre-Production",
+    "Development"
+  ]
+}
+
+-- Activity Summary (Last 7 Days)
+-- null
