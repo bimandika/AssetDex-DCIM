@@ -158,12 +158,6 @@ const Index = () => {
               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                 System Online
               </Badge>
-              <SettingsDialog onLogoUpdate={handleLogoUpdate}>
-                <Button variant="outline" size="sm">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </Button>
-              </SettingsDialog>
               <UserMenu />
             </div>
           </div>
