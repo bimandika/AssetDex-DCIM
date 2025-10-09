@@ -152,7 +152,7 @@ serve(async (req) => {
     }
     
     // Activity logs endpoint
-    if (url.pathname === '/activity-logs' && req.method === 'GET') {
+    if (url.pathname === '/activity-logs' && (req.method === 'GET' || req.method === 'POST')) {
       const { handler } = await import('../activity-logs/index.ts')
       return await handler(req)
     }

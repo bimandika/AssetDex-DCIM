@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -85,22 +85,35 @@ export default function ActivityLogsViewer() {
     
     try {
       const offset = (currentPage - 1) * itemsPerPage;
+      
+      // Get authentication token
+      const token = localStorage.getItem('sb-access-token') || sessionStorage.getItem('sb-access-token');
+      
+      console.log('Fetching logs with token:', token ? 'Present' : 'Missing');
+      console.log('Fetching from:', `http://localhost:8000/functions/v1/activity-logs?limit=${itemsPerPage}&offset=${offset}`);
+      
       const response = await fetch(
         `http://localhost:8000/functions/v1/activity-logs?limit=${itemsPerPage}&offset=${offset}`,
         {
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
           }
         }
       );
       
+      console.log('Fetch response status:', response.status);
+      const responseText = await response.text();
+      console.log('Response body:', responseText);
+      
       if (response.ok) {
-        const data = await response.json();
+        const data = JSON.parse(responseText);
+        console.log('Parsed data:', data);
         setLogs(data.logs || []);
         setTotalCount(data.totalCount || 0);
         setLastRefresh(new Date());
       } else {
-        throw new Error(`HTTP ${response.status}: Failed to fetch logs`);
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
       }
     } catch (error) {
       console.error('Failed to fetch logs:', error);
@@ -155,18 +168,79 @@ export default function ActivityLogsViewer() {
     setExpandedRows(newExpanded);
   };
 
+  // Function to mask sensitive data in activity logs
+  const maskSensitiveData = (obj: any): any => {
+    if (!obj || typeof obj !== 'object') return obj;
+    
+    const sensitiveFields = [
+      'encrypted_password',
+      'password',
+      'password_hash',
+      'recovery_token',
+      'confirmation_token',
+      'phone_change_token',
+      'email_change_token_new',
+      'email_change_token_current',
+      'reauthentication_token',
+      'access_token',
+      'refresh_token',
+      'api_key',
+      'secret_key',
+      'private_key',
+      'session_token',
+      'auth_token'
+    ];
+    
+    const maskValue = (value: any, key: string): any => {
+      if (sensitiveFields.includes(key.toLowerCase())) {
+        if (typeof value === 'string' && value.length > 0) {
+          return '***MASKED***';
+        }
+        return value;
+      }
+      
+      if (Array.isArray(value)) {
+        return value.map((item, index) => maskValue(item, index.toString()));
+      }
+      
+      if (typeof value === 'object' && value !== null) {
+        return maskSensitiveData(value);
+      }
+      
+      return value;
+    };
+    
+    const masked: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      masked[key] = maskValue(value, key);
+    }
+    
+    return masked;
+  };
+
   const getActionIcon = (action: string) => {
+    if (!action) return <Activity className="w-4 h-4 text-blue-500" />;
     switch (action.toLowerCase()) {
       case 'create': case 'insert': return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'update': case 'modify': return <Settings className="w-4 h-4 text-blue-500" />;
       case 'delete': case 'remove': return <XCircle className="w-4 h-4 text-red-500" />;
       case 'login': case 'signin': return <User className="w-4 h-4 text-green-500" />;
       case 'logout': case 'signout': return <User className="w-4 h-4 text-gray-500" />;
+      case 'maintenance': return <Activity className="w-4 h-4 text-orange-500" />;
+      case 'component_replacement': return <Activity className="w-4 h-4 text-yellow-500" />;
+      case 'decommission': return <Activity className="w-4 h-4 text-red-500" />;
+      case 'audit': return <Activity className="w-4 h-4 text-purple-500" />;
+      case 'security_audit': return <Activity className="w-4 h-4 text-red-500" />;
+      case 'site_visit': return <Activity className="w-4 h-4 text-green-500" />;
+      case 'troubleshooting': return <Activity className="w-4 h-4 text-orange-500" />;
+      case 'health_check': return <Activity className="w-4 h-4 text-green-500" />;
+      case 'custom': return <Activity className="w-4 h-4 text-gray-500" />;
       default: return <Activity className="w-4 h-4 text-blue-500" />;
     }
   };
 
   const getResourceIcon = (resourceType: string) => {
+    if (!resourceType) return <Activity className="w-4 h-4 text-gray-500" />;
     switch (resourceType.toLowerCase()) {
       case 'users': case 'user': return <Users className="w-4 h-4 text-blue-500" />;
       case 'servers': case 'server': return <Server className="w-4 h-4 text-green-500" />;
@@ -177,6 +251,7 @@ export default function ActivityLogsViewer() {
   };
 
   const getSeverityVariant = (severity: string) => {
+    if (!severity) return 'outline' as const;
     switch (severity.toLowerCase()) {
       case 'error': case 'critical': return 'destructive' as const;
       case 'warning': return 'secondary' as const;
@@ -186,6 +261,7 @@ export default function ActivityLogsViewer() {
   };
 
   const getSeverityIcon = (severity: string) => {
+    if (!severity) return <Activity className="w-3 h-3" />;
     switch (severity.toLowerCase()) {
       case 'error': case 'critical': return <XCircle className="w-3 h-3" />;
       case 'warning': return <AlertTriangle className="w-3 h-3" />;
@@ -287,6 +363,13 @@ export default function ActivityLogsViewer() {
           const deviceType = log.details?.new_values?.device_type || log.details?.old_values?.device_type || 'Device';
           description = `${deviceType} ${sn || log.resource_id}`;
           resourceDisplay = 'Server';
+        }
+        // Manual activity detection
+        else if (log.details?.manualEntry === true) {
+          const resourceName = log.details?.resourceName || log.resource_id || 'Unknown';
+          const activityType = log.details?.maintenanceType || log.details?.activityType || '';
+          description = `${activityType ? activityType + ' on ' : ''}${resourceName}`;
+          resourceDisplay = log.resource_type || 'Manual Entry';
         }
 
         return {
@@ -614,13 +697,13 @@ export default function ActivityLogsViewer() {
                   </TableHeader>
                   <TableBody>
                     {processedLogs.map((log: any, index) => (
-                      <TableRow 
-                        key={log.id} 
-                        className={`hover:bg-blue-50 transition-all duration-300 group cursor-pointer border-l-4 border-transparent hover:border-blue-400 ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                        }`}
-                        onClick={() => toggleRowExpansion(log.id)}
-                      >
+                      <React.Fragment key={log.id}>
+                        <TableRow 
+                          className={`hover:bg-blue-50 transition-all duration-300 group cursor-pointer border-l-4 border-transparent hover:border-blue-400 ${
+                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          }`}
+                          onClick={() => toggleRowExpansion(log.id)}
+                        >
                         <TableCell className="font-mono text-xs py-4">
                           <div className="flex flex-col space-y-2">
                             <span className="font-semibold text-gray-900 bg-blue-100 px-3 py-1 rounded-lg text-xs">
@@ -680,6 +763,10 @@ export default function ActivityLogsViewer() {
                             variant="ghost"
                             size="sm"
                             className="opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-blue-100 rounded-lg"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRowExpansion(log.id);
+                            }}
                           >
                             {expandedRows.has(log.id) ? (
                               <ChevronDown className="w-4 h-4 text-blue-600" />
@@ -689,6 +776,60 @@ export default function ActivityLogsViewer() {
                           </Button>
                         </TableCell>
                       </TableRow>
+                      
+                      {/* Expanded Details Row */}
+                      {expandedRows.has(log.id) && (
+                        <TableRow className="bg-blue-50/30 border-l-4 border-blue-400">
+                          <TableCell colSpan={7} className="py-6 px-8">
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-sm text-gray-900">Activity Details</h4>
+                                  <div className="text-xs space-y-1">
+                                    <div><span className="font-medium">ID:</span> {log.id}</div>
+                                    <div><span className="font-medium">User ID:</span> {log.user_id || 'System'}</div>
+                                    <div><span className="font-medium">Resource ID:</span> {log.resource_id || 'N/A'}</div>
+                                    <div><span className="font-medium">Correlation ID:</span> {log.correlation_id || 'N/A'}</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-sm text-gray-900">Timestamps</h4>
+                                  <div className="text-xs space-y-1">
+                                    <div><span className="font-medium">Activity Time:</span> {new Date(log.timestamp).toLocaleString()}</div>
+                                    <div><span className="font-medium">Created At:</span> {new Date(log.created_at).toLocaleString()}</div>
+                                  </div>
+                                </div>
+                                
+                                {log.tags && log.tags.length > 0 && (
+                                  <div className="space-y-2">
+                                    <h4 className="font-semibold text-sm text-gray-900">Tags</h4>
+                                    <div className="flex flex-wrap gap-1">
+                                      {log.tags.map((tag: string, idx: number) => (
+                                        <Badge key={idx} variant="outline" className="text-xs">
+                                          {tag}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {log.details && Object.keys(log.details).length > 0 && (
+                                <div className="space-y-2">
+                                  <h4 className="font-semibold text-sm text-gray-900">Additional Details</h4>
+                                  <div className="bg-gray-100 rounded-lg p-3 max-h-40 overflow-y-auto">
+                                    <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+                                      {JSON.stringify(maskSensitiveData(log.details), null, 2)}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>

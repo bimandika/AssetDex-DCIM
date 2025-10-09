@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { processLogoUpload, checkLogoExists } from "@/utils/fileUpload";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, Upload, X, Image } from "lucide-react";
+import { Upload, X, Image, RefreshCw } from "lucide-react";
 
 interface SettingsDialogProps {
   children: React.ReactNode;
@@ -22,39 +23,77 @@ interface SettingsDialogProps {
 const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [organizationName, setOrganizationName] = useState("DCIMS");
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { hasRole } = useAuth();
   const { toast } = useToast();
 
-  const canEdit = hasRole('engineer');
+  const canEdit = hasRole('engineer') || hasRole('super_admin');
 
   // Check if custom logo exists when dialog opens
-  const checkLogoExists = () => {
-    const img = document.createElement('img');
-    img.onload = () => setHasCustomLogo(true);
-    img.onerror = () => setHasCustomLogo(false);
-    img.src = '/logo.png?' + Date.now(); // Add timestamp to avoid cache
+  const checkForLogo = async () => {
+    setChecking(true);
+    try {
+      const exists = await checkLogoExists();
+      setHasCustomLogo(exists);
+    } catch (error) {
+      console.error('Error checking logo:', error);
+      setHasCustomLogo(false);
+    } finally {
+      setChecking(false);
+    }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRefreshLogo = async () => {
+    await checkForLogo();
+    toast({
+      title: "Logo Status Updated",
+      description: hasCustomLogo ? "Custom logo detected" : "No custom logo found",
+    });
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    setUploading(true);
+
+    try {
+      const result = await processLogoUpload(file);
+      
+      if (result.success) {
+        toast({
+          title: "Logo Prepared Successfully",
+          description: result.message,
+        });
+        
+        // Check for logo existence after a short delay
+        setTimeout(() => {
+          checkForLogo();
+        }, 2000);
+      } else {
+        toast({
+          title: "Upload Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
       toast({
-        title: "Invalid File Type",
-        description: "Please select an image file (PNG, JPG, etc.)",
+        title: "Upload Error",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setUploading(false);
+      // Clear the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
-
-    toast({
-      title: "Logo Upload Instructions",
-      description: "Please save your selected image as 'logo.png' in the /public folder of your project, then refresh the page.",
-    });
   };
 
   const removeLogo = () => {
@@ -80,7 +119,7 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
     <Dialog open={open} onOpenChange={(isOpen) => {
       setOpen(isOpen);
       if (isOpen) {
-        checkLogoExists();
+        checkForLogo();
         setOrganizationName(localStorage.getItem('organizationName') || 'DCIMS');
       }
     }}>
@@ -119,22 +158,44 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
             </div>
             {!canEdit && (
               <p className="text-sm text-muted-foreground">
-                You need engineer permissions to edit settings.
+                You need engineer or super admin permissions to edit settings.
               </p>
             )}
           </div>
 
           {/* Logo Upload */}
           <div className="space-y-2">
-            <Label>Organization Logo</Label>
+            <div className="flex items-center justify-between">
+              <Label>Organization Logo</Label>
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefreshLogo}
+                  disabled={checking}
+                  className="text-xs"
+                >
+                  <RefreshCw className={`h-3 w-3 mr-1 ${checking ? 'animate-spin' : ''}`} />
+                  {checking ? 'Checking...' : 'Refresh'}
+                </Button>
+              )}
+            </div>
             
             {hasCustomLogo && (
               <div className="flex items-center space-x-2 p-3 border rounded-lg bg-gray-50">
                 <img
-                  src={'/logo.png?' + Date.now()}
+                  src={`/logo.png?t=${Date.now()}`}
                   alt="Current logo"
                   className="h-12 w-12 object-contain"
-                  onError={() => setHasCustomLogo(false)}
+                  onError={(e) => {
+                    // Try SVG fallback
+                    const target = e.target as HTMLImageElement;
+                    if (target.src.includes('.png')) {
+                      target.src = `/logo.svg?t=${Date.now()}`;
+                    } else {
+                      setHasCustomLogo(false);
+                    }
+                  }}
                 />
                 <div className="flex-1">
                   <p className="text-sm font-medium">Current Logo</p>
@@ -184,7 +245,7 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
                   {uploading ? 'Uploading...' : hasCustomLogo ? 'Replace Logo' : 'Upload Logo'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Upload PNG, JPG or other image formats. Max size: 5MB
+                  Upload PNG, JPG or other image formats. The image will be automatically resized and downloaded as 'logo.png'. Place the downloaded file in your /public folder and click refresh.
                 </p>
               </div>
             )}

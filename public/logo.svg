@@ -1,0 +1,10 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="200" fill="#2563eb" rx="10"/>
+  <text x="100" y="80" font-family="Arial" font-size="28" font-weight="bold" 
+        text-anchor="middle" fill="white">DCIMS</text>
+  <text x="100" y="120" font-family="Arial" font-size="14" 
+        text-anchor="middle" fill="white">Asset Management</text>
+  <circle cx="100" cy="150" r="8" fill="white"/>
+  <circle cx="80" cy="150" r="4" fill="white"/>
+  <circle cx="120" cy="150" r="4" fill="white"/>
+</svg>

@@ -1,6 +1,5 @@
 // Activity logging hook for frontend
 import { useAuth } from './useAuth'
-import { supabase } from '@/integrations/supabase/client'
 
 export interface ActivityLogEntry {
   category: string;
@@ -18,7 +17,13 @@ export const useActivityLogger = () => {
 
   const logActivity = async (entry: ActivityLogEntry) => {
     const activityData = {
-      ...entry,
+      category: entry.category,
+      action: entry.action,
+      resource_type: entry.resourceType, // Map camelCase to snake_case
+      resource_id: entry.resourceId,     // Map camelCase to snake_case
+      details: entry.details,
+      severity: entry.severity,
+      tags: entry.tags,
       user_id: user?.id,
       timestamp: new Date().toISOString(),
       userAgent: navigator.userAgent,
@@ -33,14 +38,36 @@ export const useActivityLogger = () => {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
       }
     };
+    
     try {
-      await supabase.functions.invoke('activity-logs', {
+      // Use direct fetch instead of supabase.functions.invoke for consistency
+      const token = localStorage.getItem('sb-access-token') || sessionStorage.getItem('sb-access-token');
+      
+      console.log('Logging activity:', entry.action, 'with token:', token ? 'Present' : 'Missing');
+      console.log('Activity data:', activityData);
+      
+      const response = await fetch('http://localhost:8000/functions/v1/activity-logs', {
         method: 'POST',
-        body: activityData
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(activityData)
       });
+      
+      console.log('Response status:', response.status);
+      const responseText = await response.text();
+      console.log('Response body:', responseText);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${responseText}`);
+      }
+      
+      console.log('Activity logged successfully:', entry.action);
     } catch (error) {
       // Optionally handle local fallback
       console.error('Activity log failed', error);
+      throw error; // Re-throw so the UI can handle it
     }
   };
 

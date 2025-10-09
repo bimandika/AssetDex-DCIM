@@ -47,7 +47,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Routine maintenance or servicing',
     icon: Wrench,
     category: 'maintenance',
-    action: 'maintenance',
+    action: 'MAINTENANCE',
     resourceType: 'server',
     severity: 'info',
     defaultDetails: {
@@ -62,7 +62,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Hard drive or SSD replacement',
     icon: HardDrive,
     category: 'maintenance',
-    action: 'component_replacement',
+    action: 'COMPONENT_REPLACEMENT',
     resourceType: 'server',
     severity: 'warning',
     defaultDetails: {
@@ -78,7 +78,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Power supply unit replacement',
     icon: Zap,
     category: 'maintenance',
-    action: 'component_replacement',
+    action: 'COMPONENT_REPLACEMENT',
     resourceType: 'server',
     severity: 'warning',
     defaultDetails: {
@@ -94,7 +94,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Replace or upgrade motherboard',
     icon: Cpu,
     category: 'maintenance',
-    action: 'component_replacement',
+    action: 'COMPONENT_REPLACEMENT',
     resourceType: 'server',
     severity: 'critical',
     defaultDetails: {
@@ -111,7 +111,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'RAM installation or replacement',
     icon: Settings,
     category: 'maintenance',
-    action: 'component_replacement',
+    action: 'COMPONENT_REPLACEMENT',
     resourceType: 'server',
     severity: 'info',
     defaultDetails: {
@@ -128,7 +128,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Server decommissioning and removal',
     icon: Trash2,
     category: 'lifecycle',
-    action: 'decommission',
+    action: 'DECOMMISSION',
     resourceType: 'server',
     severity: 'critical',
     defaultDetails: {
@@ -145,7 +145,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Compliance or inventory audit',
     icon: FileSearch,
     category: 'audit',
-    action: 'audit',
+    action: 'AUDIT',
     resourceType: 'server',
     severity: 'info',
     defaultDetails: {
@@ -162,7 +162,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Security compliance verification',
     icon: Shield,
     category: 'audit',
-    action: 'security_audit',
+    action: 'SECURITY_AUDIT',
     resourceType: 'server',
     severity: 'warning',
     defaultDetails: {
@@ -179,7 +179,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Physical site inspection or visit',
     icon: Eye,
     category: 'inspection',
-    action: 'site_visit',
+    action: 'SITE_VISIT',
     resourceType: 'datacenter',
     severity: 'info',
     defaultDetails: {
@@ -194,7 +194,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Investigation and problem resolution',
     icon: AlertTriangle,
     category: 'support',
-    action: 'troubleshooting',
+    action: 'TROUBLESHOOTING',
     resourceType: 'server',
     severity: 'warning',
     defaultDetails: {
@@ -210,7 +210,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'System health verification',
     icon: CheckCircle,
     category: 'inspection',
-    action: 'health_check',
+    action: 'HEALTH_CHECK',
     resourceType: 'server',
     severity: 'info',
     defaultDetails: {
@@ -225,7 +225,7 @@ const activityTemplates: ActivityTemplate[] = [
     description: 'Custom activity or task',
     icon: Edit3,
     category: 'other',
-    action: 'custom',
+    action: 'CUSTOM',
     resourceType: 'server',
     severity: 'info',
     defaultDetails: {
@@ -347,8 +347,8 @@ export const ManualActivityDialog: React.FC<ManualActivityDialogProps> = ({
     } catch (error) {
       console.error('Failed to log activity:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to log activity. Please try again.',
+        title: 'Error Logging Activity',
+        description: error instanceof Error ? error.message : 'Failed to log activity. Please check your connection and try again.',
         variant: 'destructive'
       });
     } finally {
