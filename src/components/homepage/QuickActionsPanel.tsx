@@ -109,6 +109,15 @@ const quickActions: QuickAction[] = [
     roles: ['super_admin'],
     category: 'secondary',
     color: 'hover:bg-slate-50 border-slate-200'
+  },
+  {
+    id: 'log-manual-activity',
+    title: 'Add Activity',
+    description: 'Record maintenance or visits',
+    icon: Plus,
+    roles: ['engineer', 'super_admin'],
+    category: 'secondary',
+    color: 'hover:bg-slate-50 border-slate-200'
   }
 ];
 

@@ -10,12 +10,14 @@ import { PersonalizedHero } from "./homepage/PersonalizedHero";
 import { RealTimeMetrics } from "./homepage/RealTimeMetrics";
 import { QuickActionsPanel } from "./homepage/QuickActionsPanel";
 import { LiveAlerts } from "./homepage/LiveAlerts";
+import { ManualActivityDialog } from "./ManualActivityDialog";
 import { useHomepageMetrics } from "@/hooks/useHomepageMetrics";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
+  const [showActivityDialog, setShowActivityDialog] = useState(false);
   const navigate = useNavigate();
   const { user, hasRole } = useAuth();
   const { toast } = useToast();
@@ -76,6 +78,9 @@ const Dashboard = () => {
           title: 'Alerts',
           description: 'Comprehensive alerts view coming soon',
         });
+        break;
+      case 'log-manual-activity':
+        setShowActivityDialog(true);
         break;
       default:
         if (url) {
@@ -246,6 +251,12 @@ const Dashboard = () => {
           <CustomDashboard />
         </TabsContent>
       </Tabs>
+
+      {/* Manual Activity Dialog */}
+      <ManualActivityDialog 
+        open={showActivityDialog}
+        onOpenChange={setShowActivityDialog}
+      />
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ManualActivityDialog } from '@/components/ManualActivityDialog';
 import { 
   Search, 
   Filter, 
@@ -27,7 +28,8 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Plus
 } from 'lucide-react';
 
 interface ActivityLog {
@@ -66,6 +68,7 @@ export default function ActivityLogsViewer() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
+  const [showActivityDialog, setShowActivityDialog] = useState(false);
   
   const [filters, setFilters] = useState<FilterState>({
     search: '',
@@ -352,6 +355,16 @@ export default function ActivityLogsViewer() {
               >
                 <Download className="w-4 h-4" />
                 <span>Export</span>
+              </Button>
+              
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setShowActivityDialog(true)}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Activity</span>
               </Button>
             </div>
           </div>
@@ -756,6 +769,18 @@ export default function ActivityLogsViewer() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Manual Activity Dialog */}
+      <ManualActivityDialog 
+        open={showActivityDialog}
+        onOpenChange={(open) => {
+          setShowActivityDialog(open);
+          if (!open) {
+            // Refresh logs after adding new activity
+            handleRefresh();
+          }
+        }}
+      />
     </div>
   );
 }
