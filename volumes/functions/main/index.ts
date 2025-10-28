@@ -253,6 +253,12 @@ serve(async (req) => {
       return await handler.default(req)
     }
     
+    // Report data endpoint
+    if (url.pathname === '/report-data' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+      const { handler } = await import('../report-data/index.ts')
+      return await handler(req)
+    }
+    
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
       headers: { 'Content-Type': 'application/json' }

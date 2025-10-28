@@ -9,7 +9,8 @@ COPY package*.json ./
 COPY bun.lockb ./
 
 # Install dependencies (including devDependencies for build)
-RUN npm ci
+# Use npm install to update lock file if needed, then use npm ci for clean install
+RUN npm install --package-lock-only && npm ci
 
 # Copy source code
 COPY . .

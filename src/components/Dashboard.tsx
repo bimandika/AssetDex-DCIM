@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LayoutDashboard, Wrench } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import CustomDashboard from "./dashboard/CustomDashboard";
 import { PersonalizedHero } from "./homepage/PersonalizedHero";
 import { RealTimeMetrics } from "./homepage/RealTimeMetrics";
@@ -171,22 +171,41 @@ const Dashboard = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
                 ) : chartData && chartData.serversByModel.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={400}>
                     <PieChart>
                       <Pie
                         data={chartData.serversByModel}
-                        cx="50%"
+                        cx="35%"
                         cy="50%"
-                        outerRadius={100}
-                        fill="#8884d8"
+                        outerRadius={120}
                         dataKey="count"
-                        label={({ name, count }) => `${name}: ${count}`}
+                        nameKey="name"
+                        label={({ percent }: any) => percent > 0.03 ? `${(percent * 100).toFixed(0)}%` : ''}
+                        labelLine={false}
                       >
                         {chartData.serversByModel.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'white', 
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px'
+                        }}
+                        formatter={(value: any, name: string, props: any) => [value, props.payload.name]}
+                      />
+                      <Legend 
+                        layout="vertical"
+                        verticalAlign="middle" 
+                        align="right"
+                        wrapperStyle={{ paddingLeft: '20px', fontSize: '12px' }}
+                        iconType="circle"
+                        formatter={(value: any, entry: any) => {
+                          const payload = entry.payload;
+                          return `${payload.name} (${payload.count})`;
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
@@ -215,23 +234,42 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 {loading ? (
-                  <div className="h-[300px] flex items-center justify-center">
+                  <div className="h-[400px] flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
                 ) : chartData && chartData.serversByLocation.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chartData.serversByLocation}>
+                  <ResponsiveContainer width="100%" height={500}>
+                    <BarChart 
+                      data={chartData.serversByLocation}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="location" stroke="#64748b" />
+                      <XAxis 
+                        dataKey="location" 
+                        stroke="#64748b"
+                        fontSize={11}
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                        interval={0}
+                      />
                       <YAxis stroke="#64748b" />
                       <Tooltip 
                         contentStyle={{ 
                           backgroundColor: 'white', 
                           border: '1px solid #e2e8f0',
                           borderRadius: '6px'
-                        }} 
+                        }}
+                        formatter={(value: any, name: string) => {
+                          if (name === 'Server Count') return [value, 'Server Count'];
+                          return [value, name];
+                        }}
                       />
-                      <Bar dataKey="servers" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Legend 
+                        wrapperStyle={{ paddingTop: '20px' }}
+                        iconType="rect"
+                      />
+                      <Bar dataKey="servers" name="Server Count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
