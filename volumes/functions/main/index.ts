@@ -254,7 +254,10 @@ serve(async (req) => {
     }
     
     // Report data endpoint
-    if (url.pathname === '/report-data' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+    if (url.pathname === '/report-data' || url.pathname === '/functions/v1/report-data') {
+      if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
+      }
       const { handler } = await import('../report-data/index.ts')
       return await handler(req)
     }
