@@ -699,12 +699,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 120, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.serversByModel || []}
-                      cx="35%"
+                      cx="45%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="model"
                       label={({ percent }: any) => percent > 0.03 ? `${(percent * 100).toFixed(0)}%` : ''}
@@ -726,7 +726,7 @@ const Reports = () => {
                       align="right" 
                       verticalAlign="middle"
                       iconType="circle"
-                      wrapperStyle={{ paddingLeft: '20px' }}
+                      wrapperStyle={{ paddingLeft: '10px', fontSize: '12px' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -744,12 +744,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 80, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.deviceTypeDistribution || []}
                       cx="50%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="deviceType"
                       label={({ percent }: any) => `${(percent * 100).toFixed(0)}%`}
@@ -872,12 +872,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 120, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.operatingSystemDistribution || []}
-                      cx="35%"
+                      cx="45%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="os"
                       label={({ percent }: any) => percent > 0.03 ? `${(percent * 100).toFixed(0)}%` : ''}
@@ -955,12 +955,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 80, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.environmentDistribution || []}
                       cx="50%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="environment"
                       label={({ percent }: any) => `${(percent * 100).toFixed(0)}%`}
@@ -994,12 +994,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 80, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.serversByStatus || []}
                       cx="50%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="status"
                       label={({ percent }: any) => `${(percent * 100).toFixed(0)}%`}
@@ -1035,12 +1035,12 @@ const Reports = () => {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
-                  <PieChart>
+                  <PieChart margin={{ top: 20, right: 80, bottom: 20, left: 20 }}>
                     <Pie
                       data={metrics?.warrantyStatus || []}
                       cx="50%"
                       cy="50%"
-                      outerRadius="80%"
+                      outerRadius="75%"
                       dataKey="count"
                       nameKey="status"
                       label={({ percent }: any) => `${(percent * 100).toFixed(0)}%`}

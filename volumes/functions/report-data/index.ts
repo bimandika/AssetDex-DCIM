@@ -756,6 +756,11 @@ async function calculateTopUtilizedRacks(supabase: any, servers: any[]): Promise
     const rack = server.rack || 'Unknown';
     const rackKey = `${dc}-${rack}`;
     
+    // Debug logging to see actual data
+    if (rackUsage && Object.keys(rackUsage).length < 5) {
+      console.log(`Server data - DC: "${dc}", Rack: "${rack}", RackKey: "${rackKey}"`);
+    }
+    
     if (!rackUsage[rackKey]) {
       rackUsage[rackKey] = { dc, servers: 0, usedRU: 0 };
     }
@@ -778,14 +783,38 @@ async function calculateTopUtilizedRacks(supabase: any, servers: any[]): Promise
     rackCapacity[rackKey] = rack.total_ru || 42;
   });
 
+  // Check if all servers are in the same data center
+  const uniqueDCs = [...new Set(servers.map(server => server.dc_site || 'Unknown'))];
+  const isSingleDC = uniqueDCs.length === 1;
+
   return Object.entries(rackUsage)
     .map(([rackKey, usage]) => {
-      const [dc, rackId] = rackKey.split('-');
+      // Split rackKey and handle cases where rack might contain the DC name
+      const parts = rackKey.split('-');
+      let dc, rackId;
+      
+      if (parts.length === 2) {
+        [dc, rackId] = parts;
+      } else if (parts.length > 2) {
+        // Handle cases like "DC EAST-R01" where DC has spaces
+        dc = parts.slice(0, -1).join('-');
+        rackId = parts[parts.length - 1];
+      } else {
+        dc = 'Unknown';
+        rackId = rackKey;
+      }
+      
+      // Debug logging
+      console.log(`Processing rack: ${rackKey} -> DC: ${dc}, RackID: ${rackId}`);
+      
       const capacity = rackCapacity[rackKey] || 42; // Default to 42U if no metadata
       const utilizationPct = Math.min(100, Math.round((usage.usedRU / capacity) * 100));
       
       return {
-        rack: `${dc}-${rackId}`,
+        // Create more meaningful rack names - add index if all racks have same name
+        rack: isSingleDC && rackId === 'East' ? `Rack ${Object.keys(rackUsage).indexOf(rackKey) + 1}` :
+              isSingleDC ? rackId : 
+              `${dc} - ${rackId}`,
         dataCenter: dc,
         rackId: rackId,
         servers: usage.servers,
