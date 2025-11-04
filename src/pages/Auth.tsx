@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { CheckCircle, X } from "lucide-react";
 import { Database, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, getOrganizationName, initializeOrgNameSystem } from "@/utils/fileUpload";
+import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, initializeOrgNameSystem } from "@/utils/fileUpload";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +18,7 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState("signin");
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
+  const [organizationName, setOrganizationName] = useState("DCIMS");
   const [signUpState, setSignUpState] = useState({
     loading: false,
     success: false,
@@ -57,7 +58,8 @@ const Auth = () => {
       console.log('🚀 Auth.tsx - Starting logo check...');
       
       // Initialize organization name system first
-      initializeOrgNameSystem();
+      const orgName = await initializeOrgNameSystem();
+      setOrganizationName(orgName);
       
       // Log current localStorage state
       const logoUrl = localStorage.getItem('organization-logo-url');
@@ -176,7 +178,7 @@ const Auth = () => {
           )}
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
-              {getOrganizationName()}
+              {organizationName}
             </h1>
             <p className="text-slate-600">Data Center Inventory Management</p>
           </div>

@@ -13,7 +13,7 @@ import PowerUsage from "@/components/PowerUsage";
 import UserManagement from "@/components/UserManagement";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
-import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, getOrganizationName, initializeOrgNameSystem } from "@/utils/fileUpload";
+import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, getOrganizationNameSync, initializeOrgNameSystem } from "@/utils/fileUpload";
 import ActivityLogsViewer from "@/components/admin/ActivityLogsViewer";
 import DeviceGlossaryList from "@/components/device-glossary/DeviceGlossaryList";
 
@@ -89,8 +89,11 @@ const Index = () => {
 
   useEffect(() => {
     // Initialize organization name system
-    const initializedOrgName = initializeOrgNameSystem();
-    setOrganizationName(initializedOrgName);
+    const initializeOrgName = async () => {
+      const initializedOrgName = await initializeOrgNameSystem();
+      setOrganizationName(initializedOrgName);
+    };
+    initializeOrgName();
 
     // Check for custom logo on component mount
     const checkCustomLogo = async () => {
@@ -114,7 +117,7 @@ const Index = () => {
       setHasCustomLogo(exists);
       
       // Also refresh organization name
-      const savedName = getOrganizationName();
+      const savedName = getOrganizationNameSync();
       if (savedName) {
         setOrganizationName(savedName);
       }
@@ -127,7 +130,7 @@ const Index = () => {
 
     // Listen for organization name update events
     const handleOrgNameUpdated = () => {
-      const savedName = getOrganizationName();
+      const savedName = getOrganizationNameSync();
       if (savedName) {
         setOrganizationName(savedName);
       }

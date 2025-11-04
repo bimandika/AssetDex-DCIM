@@ -466,11 +466,33 @@ export const saveOrganizationName = (name: string) => {
   window.dispatchEvent(storageEvent);
 };
 
-export const getOrganizationName = (): string => {
-  // First try localStorage (user customization)
+// Get organization name from database with localStorage fallback
+export const getOrganizationName = async (): Promise<string> => {
+  // First try localStorage (user temporary customization)
   const localName = getOrgNameFromStorage();
   if (localName) {
     return localName;
+  }
+  
+  // Try to get from database
+  try {
+    const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
+    const response = await fetch(`${baseUrl}/functions/v1/app-settings?key=organization_name`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      }
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.value) {
+        console.log('🗄️ Using organization name from database:', result.value);
+        return result.value;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error fetching organization name from database:', error);
   }
   
   // Fallback to environment variable
@@ -482,6 +504,24 @@ export const getOrganizationName = (): string => {
   
   // Final fallback
   console.log('🔧 Using default organization name: DCIMS');
+  return 'DCIMS';
+};
+
+// Synchronous version for immediate use (uses localStorage/env only)
+export const getOrganizationNameSync = (): string => {
+  // First try localStorage
+  const localName = getOrgNameFromStorage();
+  if (localName) {
+    return localName;
+  }
+  
+  // Fallback to environment variable
+  const envName = import.meta.env.VITE_ORGANIZATION_NAME;
+  if (envName) {
+    return envName;
+  }
+  
+  // Final fallback
   return 'DCIMS';
 };
 
@@ -612,23 +652,21 @@ export const manualSaveLogoUrl = (url: string) => {
 };
 
 // Initialize organization name system
-export const initializeOrgNameSystem = (): string => {
+export const initializeOrgNameSystem = async (): Promise<string> => {
   console.log('🎯 Initializing organization name system...');
   
-  // First try to get name from any storage
+  // First try to get name from any local storage
   let orgName = getOrgNameFromStorage();
-  console.log('🔍 Organization name from storage:', orgName);
+  console.log('🔍 Organization name from local storage:', orgName);
   
-  // If no name found in storage, check environment variable
+  // If no name found in storage, check database then environment
   if (!orgName) {
-    const envName = import.meta.env.VITE_ORGANIZATION_NAME;
-    if (envName) {
-      console.log('🌍 Using organization name from environment variable:', envName);
-      orgName = envName as string;
-      // Don't persist env variable to localStorage - let it stay as fallback
-    } else {
-      console.log('🔧 No organization name found anywhere, using default...');
-      orgName = 'DCIMS';
+    try {
+      orgName = await getOrganizationName();
+      console.log('🔍 Organization name after database check:', orgName);
+    } catch (error) {
+      console.error('❌ Error fetching from database, using fallback:', error);
+      orgName = getOrganizationNameSync();
     }
   } else {
     // If found in storage, re-persist to ensure all storage methods are populated
@@ -640,39 +678,43 @@ export const initializeOrgNameSystem = (): string => {
   return orgName;
 };
 
-// Update organization name in .env file permanently
-export const updateOrganizationNameInEnv = async (name: string): Promise<{success: boolean, message: string}> => {
+// Update organization name in database permanently
+export const updateOrganizationNameInDatabase = async (name: string): Promise<{success: boolean, message: string}> => {
   try {
     const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:8000';
-    const response = await fetch(`${baseUrl}/functions/v1/update-org-name`, {
+    const response = await fetch(`${baseUrl}/functions/v1/app-settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ 
+        key: 'organization_name', 
+        value: name,
+        description: 'Organization display name'
+      })
     });
 
     const result = await response.json();
     
     if (response.ok && result.success) {
-      console.log('✅ Organization name updated in .env file:', name);
+      console.log('✅ Organization name updated in database:', name);
       return {
         success: true,
-        message: 'Organization name saved permanently to configuration file'
+        message: 'Organization name saved permanently to database'
       };
     } else {
-      console.error('❌ Failed to update .env file:', result);
+      console.error('❌ Failed to update database:', result);
       return {
         success: false,
-        message: result.error || 'Failed to update configuration file'
+        message: result.error || 'Failed to update database'
       };
     }
   } catch (error) {
-    console.error('❌ Error calling update-org-name function:', error);
+    console.error('❌ Error calling app-settings function:', error);
     return {
       success: false,
-      message: 'Network error while updating configuration'
+      message: 'Network error while updating database'
     };
   }
 };

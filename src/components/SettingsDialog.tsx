@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { processLogoUpload, checkLogoExists, getCurrentLogoUrl, saveOrganizationName, getOrganizationName, updateOrganizationNameInEnv } from "@/utils/fileUpload";
+import { processLogoUpload, checkLogoExists, getCurrentLogoUrl, saveOrganizationName, getOrganizationNameSync, updateOrganizationNameInDatabase } from "@/utils/fileUpload";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, X, Image, RefreshCw } from "lucide-react";
 
 interface SettingsDialogProps {
@@ -26,7 +25,6 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [organizationName, setOrganizationName] = useState("DCIMS");
-  const [savePermanently, setSavePermanently] = useState(false);
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { hasRole } = useAuth();
@@ -132,28 +130,21 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
 
   const updateOrganizationName = async () => {
     try {
-      // Always save to localStorage first
+      // Always save to localStorage first for immediate UI update
       saveOrganizationName(organizationName);
       
-      // If permanent save is requested, also save to .env file
-      if (savePermanently) {
-        const result = await updateOrganizationNameInEnv(organizationName);
-        if (result.success) {
-          toast({
-            title: "Settings Saved Permanently",
-            description: "Organization name has been saved to configuration file and will persist across restarts.",
-          });
-        } else {
-          toast({
-            title: "Partial Success",
-            description: "Organization name updated temporarily. " + result.message,
-            variant: "destructive",
-          });
-        }
+      // Also save to database for persistence
+      const result = await updateOrganizationNameInDatabase(organizationName);
+      if (result.success) {
+        toast({
+          title: "Settings Saved",
+          description: "Organization name has been saved permanently to database.",
+        });
       } else {
         toast({
-          title: "Settings Updated",
-          description: "Organization name has been updated temporarily.",
+          title: "Partial Success", 
+          description: "Organization name updated temporarily. Database save failed: " + result.message,
+          variant: "destructive",
         });
       }
     } catch (error) {
@@ -171,7 +162,7 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
       setOpen(isOpen);
       if (isOpen) {
         checkForLogo();
-        setOrganizationName(getOrganizationName());
+        setOrganizationName(getOrganizationNameSync());
       }
     }}>
       <DialogTrigger asChild>
@@ -207,18 +198,6 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
                 </Button>
               )}
             </div>
-            {canEdit && (
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="save-permanently"
-                  checked={savePermanently}
-                  onCheckedChange={(checked) => setSavePermanently(checked as boolean)}
-                />
-                <Label htmlFor="save-permanently" className="text-sm text-slate-600">
-                  Save permanently to configuration file (survives browser restarts)
-                </Label>
-              </div>
-            )}
             {!canEdit && (
               <p className="text-sm text-muted-foreground">
                 You need engineer or super admin permissions to edit settings.

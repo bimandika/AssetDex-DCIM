@@ -268,6 +268,12 @@ serve(async (req) => {
       return await handler(req)
     }
     
+    // App settings endpoint
+    if (url.pathname === '/app-settings' && ["GET", "POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../app-settings/index.ts')
+      return await handler(req)
+    }
+    
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
       headers: { 'Content-Type': 'application/json' }
