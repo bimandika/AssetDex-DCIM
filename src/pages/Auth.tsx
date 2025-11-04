@@ -7,15 +7,17 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { CheckCircle, X, AlertCircle } from "lucide-react";
+import { CheckCircle, X } from "lucide-react";
 import { Database, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, getOrganizationName, initializeOrgNameSystem } from "@/utils/fileUpload";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState("signin");
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const [signUpState, setSignUpState] = useState({
     loading: false,
     success: false,
@@ -48,6 +50,53 @@ const Auth = () => {
       navigate("/");
     }
   }, [user, navigate]);
+
+  // Check for custom logo on component mount
+  useEffect(() => {
+    const checkCustomLogo = async () => {
+      console.log('🚀 Auth.tsx - Starting logo check...');
+      
+      // Initialize organization name system first
+      initializeOrgNameSystem();
+      
+      // Log current localStorage state
+      const logoUrl = localStorage.getItem('organization-logo-url');
+      console.log('📦 localStorage logo URL:', logoUrl);
+      
+      try {
+        // Use the new initialization system
+        const exists = await initializeLogoSystem();
+        console.log('🔍 Logo exists result:', exists);
+        setHasCustomLogo(exists);
+      } catch (error) {
+        console.error('❌ Error checking logo:', error);
+        setHasCustomLogo(false);
+      }
+    };
+    
+    checkCustomLogo();
+    
+    // Listen for logo updates
+    const handleLogoUpdated = async () => {
+      try {
+        const exists = await checkLogoExists();
+        setHasCustomLogo(exists);
+      } catch (error) {
+        console.error('Error checking logo:', error);
+        setHasCustomLogo(false);
+      }
+    };
+
+    window.addEventListener('logoUpdated', handleLogoUpdated);
+    window.addEventListener('storage', handleLogoUpdated);
+    window.addEventListener('forceLogoUpdate', handleLogoUpdated);
+
+    return () => {
+      window.removeEventListener('logoUpdated', handleLogoUpdated);
+      window.removeEventListener('storage', handleLogoUpdated);
+      window.removeEventListener('forceLogoUpdate', handleLogoUpdated);
+    };
+  }, []);
 
   const handleSignIn = async (e: any) => {
     e.preventDefault();
@@ -111,11 +160,24 @@ const Auth = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
-          <div className="p-3 bg-blue-600 rounded-lg mr-3">
-            <Database className="h-8 w-8 text-white" />
-          </div>
+          {hasCustomLogo ? (
+            <div className="p-3 bg-white rounded-lg mr-3 overflow-hidden">
+              <img
+                src={getCurrentLogoUrl()}
+                alt="Organization Logo"
+                className="h-8 w-8 object-contain"
+                onError={() => setHasCustomLogo(false)}
+              />
+            </div>
+          ) : (
+            <div className="p-3 bg-blue-600 rounded-lg mr-3">
+              <Database className="h-8 w-8 text-white" />
+            </div>
+          )}
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">DCIMS</h1>
+            <h1 className="text-3xl font-bold text-slate-900">
+              {getOrganizationName()}
+            </h1>
             <p className="text-slate-600">Data Center Inventory Management</p>
           </div>
         </div>

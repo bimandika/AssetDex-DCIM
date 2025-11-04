@@ -262,6 +262,12 @@ serve(async (req) => {
       return await handler(req)
     }
     
+    // Upload logo endpoint
+    if (url.pathname === '/upload-logo' && ["POST", "OPTIONS"].includes(req.method)) {
+      const { handler } = await import('../upload-logo/index.ts')
+      return await handler(req)
+    }
+    
     return new Response(JSON.stringify({ error: 'Not Found' }), { 
       status: 404,
       headers: { 'Content-Type': 'application/json' }

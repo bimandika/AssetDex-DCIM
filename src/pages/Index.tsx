@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Server, Database, LayoutDashboard, Settings, Filter, Users, Zap } from "lucide-react";
 import ServerInventory from "@/components/ServerInventory";
@@ -14,9 +12,8 @@ import ServerProperties from "@/components/ServerProperties";
 import PowerUsage from "@/components/PowerUsage";
 import UserManagement from "@/components/UserManagement";
 import UserMenu from "@/components/UserMenu";
-import SettingsDialog from "@/components/SettingsDialog";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
+import { checkLogoExists, getCurrentLogoUrl, initializeLogoSystem, getOrganizationName, initializeOrgNameSystem } from "@/utils/fileUpload";
 import ActivityLogsViewer from "@/components/admin/ActivityLogsViewer";
 import DeviceGlossaryList from "@/components/device-glossary/DeviceGlossaryList";
 
@@ -68,7 +65,6 @@ const Index = () => {
   const [organizationName, setOrganizationName] = useState("DCIMS");
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const { hasRole } = useAuth();
-  const { toast } = useToast();
 
   // Sync activeTab with URL changes
   useEffect(() => {
@@ -92,34 +88,61 @@ const Index = () => {
   const isAdmin = hasRole('super_admin');
 
   useEffect(() => {
-    // Load organization name from localStorage
-    const savedName = localStorage.getItem('organizationName');
-    if (savedName) {
-      setOrganizationName(savedName);
-    }
+    // Initialize organization name system
+    const initializedOrgName = initializeOrgNameSystem();
+    setOrganizationName(initializedOrgName);
 
-    // Check if custom logo exists
-    const checkLogoExists = () => {
-      const img = document.createElement('img');
-      img.onload = () => setHasCustomLogo(true);
-      img.onerror = () => setHasCustomLogo(false);
-      img.src = '/logo.png?' + Date.now();
+    // Check for custom logo on component mount
+    const checkCustomLogo = async () => {
+      console.log('🚀 Index.tsx - Starting logo check...');
+      
+      // Log current localStorage state
+      const logoUrl = localStorage.getItem('organization-logo-url');
+      console.log('📦 localStorage logo URL:', logoUrl);
+      
+      // Use the new initialization system
+      const exists = await initializeLogoSystem();
+      console.log('🔍 Logo exists result:', exists);
+      
+      setHasCustomLogo(exists);
     };
-    checkLogoExists();
-  }, []);
+    checkCustomLogo();
 
-  const handleLogoUpdate = () => {
-    // Refresh logo check and organization name
-    const savedName = localStorage.getItem('organizationName');
-    if (savedName) {
-      setOrganizationName(savedName);
-    }
+    // Listen for logo updates from SettingsDialog
+    const handleLogoUpdated = async () => {
+      const exists = await checkLogoExists();
+      setHasCustomLogo(exists);
+      
+      // Also refresh organization name
+      const savedName = getOrganizationName();
+      if (savedName) {
+        setOrganizationName(savedName);
+      }
+    };
+
+    // Listen for custom logo update events
+    window.addEventListener('logoUpdated', handleLogoUpdated);
+    window.addEventListener('storage', handleLogoUpdated);
+    window.addEventListener('forceLogoUpdate', handleLogoUpdated);
+
+    // Listen for organization name update events
+    const handleOrgNameUpdated = () => {
+      const savedName = getOrganizationName();
+      if (savedName) {
+        setOrganizationName(savedName);
+      }
+    };
     
-    const img = document.createElement('img');
-    img.onload = () => setHasCustomLogo(true);
-    img.onerror = () => setHasCustomLogo(false);
-    img.src = '/logo.png?' + Date.now();
-  };
+    window.addEventListener('organizationNameUpdated', handleOrgNameUpdated);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('logoUpdated', handleLogoUpdated);
+      window.removeEventListener('storage', handleLogoUpdated);
+      window.removeEventListener('forceLogoUpdate', handleLogoUpdated);
+      window.removeEventListener('organizationNameUpdated', handleOrgNameUpdated);
+    };
+  }, []);
 
   const handleViewRack = (rackId: string) => {
     setSelectedRackId(rackId);
@@ -134,9 +157,9 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               {hasCustomLogo ? (
-                <div className="h-10 w-10 rounded-lg overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                <div className="h-10 w-10 rounded-lg overflow-hidden bg-white flex items-center justify-center">
                   <img
-                    src={'/logo.png?' + Date.now()}
+                    src={getCurrentLogoUrl()}
                     alt="Organization Logo"
                     className="h-8 w-8 object-contain"
                     onError={() => setHasCustomLogo(false)}

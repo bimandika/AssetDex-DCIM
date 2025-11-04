@@ -1,3 +1,4 @@
+import { checkLogoExists } from "@/utils/fileUpload";
 import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,16 @@ const UserMenu = () => {
   const navigate = useNavigate();
 
   const handleLogoUpdate = () => {
-    // Refresh the page to show updated logo/organization name
-    window.location.reload();
+    // Trigger a custom event to notify other components about logo update
+    window.dispatchEvent(new CustomEvent('logoUpdated'));
+    
+    // Also refresh localStorage data for immediate effect
+    const event = new StorageEvent('storage', {
+      key: 'organization-logo-url',
+      newValue: localStorage.getItem('organization-logo-url'),
+      storageArea: localStorage
+    });
+    window.dispatchEvent(event);
   };
 
   const handleOpenSettings = () => {

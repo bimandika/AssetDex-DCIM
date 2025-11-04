@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { processLogoUpload, checkLogoExists } from "@/utils/fileUpload";
+import { processLogoUpload, checkLogoExists, getCurrentLogoUrl, saveOrganizationName, getOrganizationName, updateOrganizationNameInEnv } from "@/utils/fileUpload";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Upload, X, Image, RefreshCw } from "lucide-react";
 
 interface SettingsDialogProps {
@@ -25,6 +26,7 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
   const [uploading, setUploading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [organizationName, setOrganizationName] = useState("DCIMS");
+  const [savePermanently, setSavePermanently] = useState(false);
   const [hasCustomLogo, setHasCustomLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { hasRole } = useAuth();
@@ -48,6 +50,16 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
 
   const handleRefreshLogo = async () => {
     await checkForLogo();
+    
+    // Force refresh all logo states across the app
+    window.dispatchEvent(new CustomEvent('logoUpdated'));
+    const event = new StorageEvent('storage', {
+      key: 'organization-logo-url',
+      newValue: localStorage.getItem('organization-logo-url'),
+      storageArea: localStorage
+    });
+    window.dispatchEvent(event);
+    
     toast({
       title: "Logo Status Updated",
       description: hasCustomLogo ? "Custom logo detected" : "No custom logo found",
@@ -65,14 +77,27 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
       
       if (result.success) {
         toast({
-          title: "Logo Prepared Successfully",
-          description: result.message,
+          title: "Logo Uploaded Successfully!",
+          description: "Your logo has been saved and is now active.",
         });
         
-        // Check for logo existence after a short delay
+        // Trigger immediate logo update
+        onLogoUpdate?.();
+        
+        // Force refresh logo status immediately
+        await checkForLogo();
+        
+        // Dispatch multiple events to ensure all components update
         setTimeout(() => {
-          checkForLogo();
-        }, 2000);
+          window.dispatchEvent(new CustomEvent('logoUpdated'));
+          const event = new StorageEvent('storage', {
+            key: 'organization-logo-url',
+            newValue: localStorage.getItem('organization-logo-url'),
+            storageArea: localStorage
+          });
+          window.dispatchEvent(event);
+        }, 100);
+        
       } else {
         toast({
           title: "Upload Failed",
@@ -105,14 +130,40 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
     onLogoUpdate?.();
   };
 
-  const updateOrganizationName = () => {
-    // For simplicity, just store in localStorage
-    localStorage.setItem('organizationName', organizationName);
-    
-    toast({
-      title: "Settings Updated",
-      description: "Organization name has been updated.",
-    });
+  const updateOrganizationName = async () => {
+    try {
+      // Always save to localStorage first
+      saveOrganizationName(organizationName);
+      
+      // If permanent save is requested, also save to .env file
+      if (savePermanently) {
+        const result = await updateOrganizationNameInEnv(organizationName);
+        if (result.success) {
+          toast({
+            title: "Settings Saved Permanently",
+            description: "Organization name has been saved to configuration file and will persist across restarts.",
+          });
+        } else {
+          toast({
+            title: "Partial Success",
+            description: "Organization name updated temporarily. " + result.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Settings Updated",
+          description: "Organization name has been updated temporarily.",
+        });
+      }
+    } catch (error) {
+      console.error('Error updating organization name:', error);
+      toast({
+        title: "Update Failed",
+        description: "Failed to update organization name. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -120,7 +171,7 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
       setOpen(isOpen);
       if (isOpen) {
         checkForLogo();
-        setOrganizationName(localStorage.getItem('organizationName') || 'DCIMS');
+        setOrganizationName(getOrganizationName());
       }
     }}>
       <DialogTrigger asChild>
@@ -156,6 +207,18 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
                 </Button>
               )}
             </div>
+            {canEdit && (
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="save-permanently"
+                  checked={savePermanently}
+                  onCheckedChange={(checked) => setSavePermanently(checked as boolean)}
+                />
+                <Label htmlFor="save-permanently" className="text-sm text-slate-600">
+                  Save permanently to configuration file (survives browser restarts)
+                </Label>
+              </div>
+            )}
             {!canEdit && (
               <p className="text-sm text-muted-foreground">
                 You need engineer or super admin permissions to edit settings.
@@ -169,11 +232,11 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
               <Label>Organization Logo</Label>
               {canEdit && (
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={handleRefreshLogo}
                   disabled={checking}
-                  className="text-xs"
+                  className="text-xs h-6 px-2"
                 >
                   <RefreshCw className={`h-3 w-3 mr-1 ${checking ? 'animate-spin' : ''}`} />
                   {checking ? 'Checking...' : 'Refresh'}
@@ -184,15 +247,21 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
             {hasCustomLogo && (
               <div className="flex items-center space-x-2 p-3 border rounded-lg bg-gray-50">
                 <img
-                  src={`/logo.png?t=${Date.now()}`}
+                  src={getCurrentLogoUrl()}
                   alt="Current logo"
                   className="h-12 w-12 object-contain"
                   onError={(e) => {
                     // Try SVG fallback
                     const target = e.target as HTMLImageElement;
-                    if (target.src.includes('.png')) {
+                    const storageUrl = localStorage.getItem('organization-logo-url');
+                    if (storageUrl && target.src.includes(storageUrl)) {
+                      // If storage URL fails, try local PNG
+                      target.src = `/logo.png?t=${Date.now()}`;
+                    } else if (target.src.includes('.png')) {
+                      // If PNG fails, try SVG
                       target.src = `/logo.svg?t=${Date.now()}`;
                     } else {
+                      // All failed, no custom logo
                       setHasCustomLogo(false);
                     }
                   }}
@@ -227,11 +296,11 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
             )}
 
             {canEdit && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -244,9 +313,16 @@ const SettingsDialog = ({ children, onLogoUpdate }: SettingsDialogProps) => {
                   <Upload className="h-4 w-4 mr-2" />
                   {uploading ? 'Uploading...' : hasCustomLogo ? 'Replace Logo' : 'Upload Logo'}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  Upload PNG, JPG or other image formats. The image will be automatically resized and downloaded as 'logo.png'. Place the downloaded file in your /public folder and click refresh.
-                </p>
+                
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="font-medium text-green-700 mb-2">✅ Recommended</div>
+                  <div className="space-y-1 text-sm text-gray-600">
+                    <div>• Square: 256×256px</div>
+                    <div>• Wide: 300×100px</div>
+                    <div>• PNG with transparency</div>
+                    <div>• Clean, simple design</div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

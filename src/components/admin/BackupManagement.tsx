@@ -17,6 +17,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from 'react-router-dom';
+import { checkLogoExists, getCurrentLogoUrl } from '@/utils/fileUpload';
 import UserMenu from '@/components/UserMenu';
 
 interface BackupInfo {
@@ -54,13 +55,25 @@ export default function BackupManagement() {
     }
 
     // Check if custom logo exists
-    const checkLogoExists = () => {
-      const img = document.createElement('img');
-      img.onload = () => setHasCustomLogo(true);
-      img.onerror = () => setHasCustomLogo(false);
-      img.src = '/logo.png?' + Date.now();
+    const checkCustomLogo = async () => {
+      const exists = await checkLogoExists();
+      setHasCustomLogo(exists);
     };
-    checkLogoExists();
+    checkCustomLogo();
+
+    // Listen for logo updates
+    const handleLogoUpdated = async () => {
+      const exists = await checkLogoExists();
+      setHasCustomLogo(exists);
+    };
+
+    window.addEventListener('logoUpdated', handleLogoUpdated);
+    window.addEventListener('storage', handleLogoUpdated);
+
+    return () => {
+      window.removeEventListener('logoUpdated', handleLogoUpdated);
+      window.removeEventListener('storage', handleLogoUpdated);
+    };
   }, []);
 
   const loadBackups = async () => {
@@ -296,7 +309,7 @@ export default function BackupManagement() {
               {hasCustomLogo ? (
                 <div className="h-10 w-10 rounded-lg overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
                   <img
-                    src={'/logo.png?' + Date.now()}
+                    src={getCurrentLogoUrl()}
                     alt="Organization Logo"
                     className="h-8 w-8 object-contain"
                     onError={() => setHasCustomLogo(false)}
